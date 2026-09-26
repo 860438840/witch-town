@@ -174,6 +174,31 @@ describe('绿卡和蓝卡', () => {
     expect(s.players[3].blue).toEqual([]);
   });
 
+  it('嫁祸：接收者已有情侣卡时，转来的情侣卡进弃牌堆，其他蓝卡照常转移', () => {
+    let s = fixedGame();
+    const m1 = placeBlue(s, 3, 'matchmaker');
+    placeBlue(s, 3, 'asylum');
+    placeBlue(s, 4, 'matchmaker');
+    const sg = giveCard(s, 2, 'scapegoat');
+    s = act(s, { type: 'play', seat: 2, cardId: sg.id, targets: [3, 4] });
+    expect(s.players[3].blue).toEqual([]);
+    expect(s.players[4].blue.map((c) => c.kind).sort()).toEqual(['asylum', 'matchmaker']);
+    expect(s.discard.some((c) => c.id === m1.id)).toBe(true);
+  });
+
+  it('嫁祸：接收者已被拘留时，转来的拘留卡进弃牌堆', () => {
+    let s = fixedGame();
+    const st1 = giveCard(s, 2, 'stocks');
+    s = act(s, { type: 'play', seat: 2, cardId: st1.id, targets: [3] });
+    const st2 = giveCard(s, 2, 'stocks');
+    s = act(s, { type: 'play', seat: 2, cardId: st2.id, targets: [4] });
+    const sg = giveCard(s, 2, 'scapegoat');
+    s = act(s, { type: 'play', seat: 2, cardId: sg.id, targets: [3, 4] });
+    expect(s.players[3].green).toEqual([]);
+    expect(s.players[4].green.map((c) => c.id)).toEqual([st2.id]);
+    expect(s.discard.some((c) => c.id === st1.id)).toBe(true);
+  });
+
   it('同一人不能放两张情侣', () => {
     let s = fixedGame();
     const m1 = giveCard(s, 2, 'matchmaker');

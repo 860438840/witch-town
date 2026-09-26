@@ -2,7 +2,7 @@ import { isBlack, isRed, RED_POINTS } from './cards';
 import { RuleError } from './errors';
 import { getPlayer, setPhase, toCard } from './state';
 import { checkTrial } from './trial';
-import type { CardKind, GameState, RedKind } from './types';
+import type { Card, CardKind, GameState, RedKind } from './types';
 
 /** 计划 C 会在这里加入部长（证据只算 1 点） */
 export function accusationValue(_s: GameState, kind: RedKind, _actor: number, _target: number): number {
@@ -96,9 +96,19 @@ export function playCard(s: GameState, seat: number, cardId: string, targets: nu
     }
     case 'scapegoat': {
       const to = ts[1];
+      // 接收者已有情侣或拘留时，转来的同类卡进弃牌堆，避免叠加
+      const alreadyHas = (cards: Card[], kind: CardKind) => cards.some((c) => c.kind === kind);
+      const hasMatchmaker = alreadyHas(to.blue, 'matchmaker');
+      const hasStocks = alreadyHas(to.green, 'stocks');
       to.red.push(...target.red);
-      to.blue.push(...target.blue);
-      to.green.push(...target.green);
+      for (const c of target.blue) {
+        if (c.kind === 'matchmaker' && hasMatchmaker) s.discard.push(c);
+        else to.blue.push(c);
+      }
+      for (const c of target.green) {
+        if (c.kind === 'stocks' && hasStocks) s.discard.push(c);
+        else to.green.push(c);
+      }
       target.red = [];
       target.blue = [];
       target.green = [];
