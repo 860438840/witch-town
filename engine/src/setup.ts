@@ -14,10 +14,16 @@ export function createGame(newPlayers: NewPlayer[], rng: Rng): GameState {
   }
 
   const kinds = shuffle(tryalComposition(newPlayers.length), rng);
+  const total = newPlayers.length * TRYALS_PER_PLAYER;
+  // 身份卡 id 用打乱后的编号，避免通过 id 推断出原始座位（阴谋卡会把身份卡换到别的玩家手上）
+  const idNumbers = shuffle(
+    Array.from({ length: total }, (_, i) => i + 1),
+    rng,
+  );
   const players: Player[] = newPlayers.map((np, seat) => {
     const tryals = kinds
       .slice(seat * TRYALS_PER_PLAYER, (seat + 1) * TRYALS_PER_PLAYER)
-      .map((kind, i) => ({ id: `t${seat * TRYALS_PER_PLAYER + i + 1}`, kind, revealed: false }));
+      .map((kind, i) => ({ id: `t${idNumbers[seat * TRYALS_PER_PLAYER + i]}`, kind, revealed: false }));
     return {
       seat,
       openid: np.openid,

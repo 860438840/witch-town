@@ -43,6 +43,19 @@ describe('createGame', () => {
     expect(new Set(ids).size).toBe(60);
   });
 
+  it('F3 回归：身份卡 id 是打乱过的编号，不会泄露原始座位（不总等于 seat*5+i+1 的连续区间）', () => {
+    const naiveSeat0 = ['t1', 't2', 't3', 't4', 't5'];
+    let sawShuffled = false;
+    for (let seed = 1; seed <= 20; seed++) {
+      const seat0Ids = newGame(5, seed).players[0].tryals.map((t) => t.id).sort();
+      if (JSON.stringify(seat0Ids) !== JSON.stringify(naiveSeat0)) {
+        sawShuffled = true;
+        break;
+      }
+    }
+    expect(sawShuffled).toBe(true);
+  });
+
   it('人数不足 4 人时报错', () => {
     const three = [0, 1, 2].map((i) => ({ openid: `u${i}`, name: `P${i}` }));
     expect(() => createGame(three, seededRng(1))).toThrow(RuleError);
