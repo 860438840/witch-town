@@ -1,0 +1,44 @@
+import { revealTryal } from './death';
+import { RuleError } from './errors';
+import { playCard } from './play';
+import type { Rng } from './rng';
+import { getPlayer } from './state';
+import { finishTrial } from './trial';
+import { endTurn } from './turn';
+import type { Action, GameState } from './types';
+
+export function apply(state: GameState, action: Action, rng: Rng): GameState {
+  const s: GameState = JSON.parse(JSON.stringify(state));
+  if (s.phase.kind === 'ended') throw new RuleError('游戏已结束');
+  if (!getPlayer(s, action.seat).alive) throw new RuleError('死亡的玩家不能行动');
+
+  switch (action.type) {
+    case 'play':
+      playCard(s, action.seat, action.cardId, action.targets, action.option);
+      break;
+    case 'endTurn':
+      if (s.phase.kind !== 'day' || s.phase.mode !== 'playing' || s.turn !== action.seat) {
+        throw new RuleError('现在不能结束回合');
+      }
+      endTurn(s);
+      break;
+    case 'revealTryal':
+      handleReveal(s, action.seat, action.tryalId, rng);
+      break;
+    default:
+      throw new RuleError('现在不能执行这个操作');
+  }
+
+  s.version++;
+  return s;
+}
+
+function handleReveal(s: GameState, seat: number, tryalId: string, _rng: Rng): void {
+  const ph = s.phase;
+  if (ph.kind === 'trialReveal' && ph.target === seat) {
+    revealTryal(s, seat, tryalId, 'trial');
+    finishTrial(s, seat);
+    return;
+  }
+  throw new RuleError('现在不能翻开身份卡');
+}
