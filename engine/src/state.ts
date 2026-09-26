@@ -59,6 +59,11 @@ export function setPhase(s: GameState, phase: Phase): void {
   s.phase = phase;
 }
 
+/** 游戏是否已结束。用函数而不是直接比较，避免 TS 在可能结束游戏的调用之后仍沿用旧的类型收窄 */
+export function isEnded(s: GameState): boolean {
+  return s.phase.kind === 'ended';
+}
+
 export function toCard(c: { id: string; kind: CardKind }): Card {
   return { id: c.id, kind: c.kind };
 }

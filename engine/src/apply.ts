@@ -1,3 +1,4 @@
+import { catReveal, conspiracyPick } from './conspiracy';
 import { revealTryal } from './death';
 import { RuleError } from './errors';
 import { confess, protect, witchVote } from './night';
@@ -5,7 +6,7 @@ import { playCard } from './play';
 import type { Rng } from './rng';
 import { getPlayer } from './state';
 import { finishTrial } from './trial';
-import { endTurn } from './turn';
+import { endTurn, startDrawing } from './turn';
 import type { Action, GameState } from './types';
 
 export function apply(state: GameState, action: Action, rng: Rng): GameState {
@@ -35,6 +36,15 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
     case 'confess':
       confess(s, action.seat, action.tryalId, rng);
       break;
+    case 'draw':
+      if (s.phase.kind !== 'day' || s.phase.mode !== 'choose' || s.turn !== action.seat) {
+        throw new RuleError('现在不能抽牌');
+      }
+      startDrawing(s, rng);
+      break;
+    case 'conspiracyPick':
+      conspiracyPick(s, action.seat, action.index, rng);
+      break;
     default:
       throw new RuleError('现在不能执行这个操作');
   }
@@ -43,11 +53,15 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
   return s;
 }
 
-function handleReveal(s: GameState, seat: number, tryalId: string, _rng: Rng): void {
+function handleReveal(s: GameState, seat: number, tryalId: string, rng: Rng): void {
   const ph = s.phase;
   if (ph.kind === 'trialReveal' && ph.target === seat) {
     revealTryal(s, seat, tryalId, 'trial');
     finishTrial(s, seat);
+    return;
+  }
+  if (ph.kind === 'catReveal') {
+    catReveal(s, seat, tryalId, rng);
     return;
   }
   throw new RuleError('现在不能翻开身份卡');

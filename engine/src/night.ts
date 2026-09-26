@@ -1,7 +1,7 @@
 import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
 import { shuffle, type Rng } from './rng';
-import { aliveSeats, constableSeat, getPlayer, setPhase, unrevealed, witchSeats } from './state';
+import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, unrevealed, witchSeats } from './state';
 import { endTurn, startTurn } from './turn';
 import type { GameState } from './types';
 
@@ -83,7 +83,7 @@ function tryResolveNight(s: GameState, rng: Rng): void {
     }
   }
   s.night = null;
-  if ((s.phase as any).kind === 'ended') return;
+  if (isEnded(s)) return;
 
   const victim = getPlayer(s, target);
   const died =
@@ -93,7 +93,7 @@ function tryResolveNight(s: GameState, rng: Rng): void {
     !confessed.has(target);
   s.log.push({ t: 'nightResult', target, died });
   if (died) killPlayer(s, target, 'night');
-  if ((s.phase as any).kind === 'ended') return;
+  if (isEnded(s)) return;
 
   s.deck = shuffle([...s.deck, ...s.discard], rng);
   s.discard = [];
