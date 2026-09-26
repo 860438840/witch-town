@@ -110,14 +110,13 @@ describe('act', () => {
     expect(room(store, code).deadline).toBe(t1 + TURN_MS);
     const s = game(store, code).state;
     const me = s.players[s.turn];
-    const card = me.hand.find((c) => c.kind !== 'curse')!;
+    const card = me.hand.find((c) => c.kind !== 'curse' && c.kind !== 'witness')!;
     const others = s.players.filter((p) => p.seat !== me.seat).map((p) => p.seat);
     const targets = others.slice(0, targetCount(card.kind));
     const t2 = t1 + 5000;
     await run(store, (tx) => act(tx, code, me.openid, { type: 'play', cardId: card.id, targets }, undefined, t2, rng()));
-    if (room(store, code).view!.phase.kind === 'day') {
-      expect(room(store, code).deadline).toBe(t1 + TURN_MS);
-    }
+    expect(room(store, code).view!.phase.kind).toBe('day');
+    expect(room(store, code).deadline).toBe(t1 + TURN_MS);
   });
 });
 
