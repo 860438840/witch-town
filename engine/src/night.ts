@@ -77,7 +77,7 @@ function tryResolveNight(s: GameState, rng: Rng): void {
   const confessed = new Set<number>();
   for (const seat of alive) {
     const tid = night.confessions[seat];
-    if (tid) {
+    if (tid && getPlayer(s, seat).alive && !isEnded(s)) {
       revealTryal(s, seat, tid, 'confess');
       confessed.add(seat);
     }

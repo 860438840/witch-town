@@ -119,4 +119,49 @@ describe('夜晚', () => {
     s = everyoneConfessesNothing(s);
     expect(s.players[3].alive).toBe(false);
   });
+
+  it('F1 回归：情侣中一方自首翻开最后一张身份卡致死，连带死亡的情侣不会导致结算抛错', () => {
+    let s = night();
+    placeBlue(s, 2, 'matchmaker');
+    placeBlue(s, 3, 'matchmaker');
+    for (const t of s.players[2].tryals.slice(0, 4)) t.revealed = true;
+    const lastId = s.players[2].tryals[4].id;
+    const seat3Id = s.players[3].tryals[0].id;
+    s = act(s, { type: 'witchVote', seat: 0, target: 4 });
+    s = act(s, { type: 'protect', seat: 1, target: 4 });
+    expect(() => {
+      s = act(s, { type: 'confess', seat: 2, tryalId: lastId });
+      s = act(s, { type: 'confess', seat: 3, tryalId: seat3Id });
+      s = act(s, { type: 'confess', seat: 0, tryalId: null });
+      s = act(s, { type: 'confess', seat: 1, tryalId: null });
+      s = act(s, { type: 'confess', seat: 4, tryalId: null });
+    }).not.toThrow();
+    expect(s.night).toBeNull();
+    expect(s.players[2].alive).toBe(false);
+    expect(s.players[3].alive).toBe(false);
+    expect(s.players[4].alive).toBe(true);
+  });
+
+  it('F1 回归：情侣一方自首翻开女巫身份卡致死（游戏未结束），结算不抛错', () => {
+    let s = night();
+    setTryals(s, 2, ['witch', V, V, V, V]);
+    placeBlue(s, 2, 'matchmaker');
+    placeBlue(s, 3, 'matchmaker');
+    const witchId = s.players[2].tryals[0].id;
+    const seat3Id = s.players[3].tryals[0].id;
+    s = act(s, { type: 'witchVote', seat: 0, target: 4 });
+    s = act(s, { type: 'witchVote', seat: 2, target: 4 });
+    s = act(s, { type: 'protect', seat: 1, target: 4 });
+    expect(() => {
+      s = act(s, { type: 'confess', seat: 2, tryalId: witchId });
+      s = act(s, { type: 'confess', seat: 3, tryalId: seat3Id });
+      s = act(s, { type: 'confess', seat: 0, tryalId: null });
+      s = act(s, { type: 'confess', seat: 1, tryalId: null });
+      s = act(s, { type: 'confess', seat: 4, tryalId: null });
+    }).not.toThrow();
+    expect(s.night).toBeNull();
+    expect(s.players[2].alive).toBe(false);
+    expect(s.players[3].alive).toBe(false);
+    expect(s.phase.kind).not.toBe('ended');
+  });
 });
