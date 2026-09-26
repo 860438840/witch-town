@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { apply } from '../src/apply';
 import { RuleError } from '../src/errors';
+import { targetCount } from '../src/play';
 import { seededRng } from '../src/rng';
 import { redTotal } from '../src/state';
 import type { Action, GameState } from '../src/types';
 import { fixedGame, giveCard, placeBlue } from './helpers';
 
 const act = (s: GameState, a: Action) => apply(s, a, seededRng(7));
+
+describe('targetCount', () => {
+  it('嫁祸和抢劫需要 2 个目标，其余卡需要 1 个', () => {
+    expect(targetCount('scapegoat')).toBe(2);
+    expect(targetCount('robbery')).toBe(2);
+    for (const kind of ['accusation', 'evidence', 'witness', 'matchmaker', 'asylum', 'piety', 'arson', 'curse', 'stocks', 'alibi'] as const) {
+      expect(targetCount(kind)).toBe(1);
+    }
+  });
+});
 
 describe('红卡与审判', () => {
   it('指控：目标 +1 点，进入出牌模式，手牌减少', () => {

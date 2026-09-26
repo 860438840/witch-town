@@ -4,11 +4,14 @@ import { getPlayer, setPhase, toCard } from './state';
 import { checkTrial } from './trial';
 import type { CardKind, GameState, RedKind } from './types';
 
-const TWO_TARGETS: CardKind[] = ['scapegoat', 'robbery'];
-
 /** 计划 C 会在这里加入部长（证据只算 1 点） */
 export function accusationValue(_s: GameState, kind: RedKind, _actor: number, _target: number): number {
   return RED_POINTS[kind];
+}
+
+/** 这张卡需要选择几名目标：嫁祸和抢劫需要 2 个（一个来源一个去向），其余都是 1 个 */
+export function targetCount(kind: CardKind): number {
+  return kind === 'scapegoat' || kind === 'robbery' ? 2 : 1;
 }
 
 export function playCard(s: GameState, seat: number, cardId: string, targets: number[], option?: string): void {
@@ -21,7 +24,7 @@ export function playCard(s: GameState, seat: number, cardId: string, targets: nu
   const card = actor.hand[idx];
   if (isBlack(card.kind)) throw new RuleError('黑卡不能主动打出');
 
-  const need = TWO_TARGETS.includes(card.kind) ? 2 : 1;
+  const need = targetCount(card.kind);
   if (targets.length !== need) throw new RuleError(`这张卡需要选择 ${need} 名目标`);
   const ts = targets.map((t) => getPlayer(s, t));
   if (ts.some((t) => !t.alive)) throw new RuleError('目标必须是活着的玩家');
