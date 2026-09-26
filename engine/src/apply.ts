@@ -1,5 +1,6 @@
 import { revealTryal } from './death';
 import { RuleError } from './errors';
+import { confess, protect, witchVote } from './night';
 import { playCard } from './play';
 import type { Rng } from './rng';
 import { getPlayer } from './state';
@@ -24,6 +25,15 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       break;
     case 'revealTryal':
       handleReveal(s, action.seat, action.tryalId, rng);
+      break;
+    case 'witchVote':
+      witchVote(s, action.seat, action.target, rng);
+      break;
+    case 'protect':
+      protect(s, action.seat, action.target, rng);
+      break;
+    case 'confess':
+      confess(s, action.seat, action.tryalId, rng);
       break;
     default:
       throw new RuleError('现在不能执行这个操作');
