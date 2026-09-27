@@ -20,8 +20,12 @@ describe('handle', () => {
     const store = new MemoryStore();
     const created = await call(store, 'u0', { type: 'createRoom', profile: { name: 'A' } });
     expect(created.ok).toBe(true);
-    const code = (created as { data: { code: string } }).data.code;
-    expect(await call(store, 'u1', { type: 'joinRoom', code, profile: { name: 'B' } })).toEqual({ ok: true, data: { code } });
+    const code = (created as { data: { code: string; openid: string } }).data.code;
+    expect((created as { data: { code: string; openid: string } }).data.openid).toBe('u0');
+    expect(await call(store, 'u1', { type: 'joinRoom', code, profile: { name: 'B' } })).toEqual({
+      ok: true,
+      data: { code, openid: 'u1' },
+    });
     expect(store.read<RoomDoc>(ROOMS, code)!.seats).toHaveLength(2);
   });
 
