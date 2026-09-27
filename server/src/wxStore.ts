@@ -1,7 +1,7 @@
 import type { Store, Tx } from './store';
 
-/** 云数据库「文档不存在」报错的特征。Task 5 在真实环境确认后按实际报错调整。 */
-export const NOT_FOUND = /does not exist|not exist|DOCUMENT_NOT_EXIST|-502004/i;
+/** 云数据库「文档不存在」报错的特征。只匹配确认过的具体报错，避免把其他错误（如集合不存在）误当成文档不存在。 */
+export const NOT_FOUND = /does not exist|DOCUMENT_NOT_EXIST|-502004/i;
 
 function errorText(e: unknown): string {
   const err = e as { errCode?: unknown; errMsg?: unknown; message?: unknown };
@@ -16,6 +16,9 @@ export function wxStore(db: any): Store {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return await db.runTransaction(async (t: any) => {
+          // SDK 可能会重试这个回调（例如遇到写冲突）；每次重新调用时都要清掉上一次捕获的错误，
+          // 否则最终失败原因会被这次已经作废的旧错误掩盖。
+          thrown = undefined;
           const tx: Tx = {
             async get<T>(collection: string, id: string): Promise<T | null> {
               try {

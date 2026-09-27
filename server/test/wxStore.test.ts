@@ -61,4 +61,59 @@ describe('wxStore', () => {
       }),
     ).rejects.toBe(err);
   });
+
+  it('其他错误码（如 -502005 集合不存在）不当作「文档不存在」，原样抛出（F11）', async () => {
+    const err = { errCode: -502005, errMsg: 'collection not exists' };
+    const db = {
+      async runTransaction(cb: (t: unknown) => Promise<unknown>) {
+        const t = {
+          collection: () => ({
+            doc: () => ({
+              async get() {
+                throw err;
+              },
+            }),
+          }),
+        };
+        return cb(t);
+      },
+    };
+    await expect(wxStore(db).transaction((tx) => tx.get('rooms', '1234'))).rejects.toBe(err);
+  });
+
+  it('SDK 重试事务回调：第一次业务逻辑抛错、第二次成功后，不会用第一次的旧错误掩盖最终结果（F12）', async () => {
+    let cbCalls = 0;
+    const finalError = new Error('提交冲突，事务最终失败');
+    const fakeT = () => ({
+      collection: () => ({
+        doc: () => ({
+          async get() {
+            return { data: { _id: 'x' } };
+          },
+          async set() {},
+        }),
+      }),
+    });
+    const db = {
+      async runTransaction(cb: (t: unknown) => Promise<unknown>) {
+        // 模拟微信 SDK：第一次回调失败后自己重试，重试成功但提交阶段最终仍然失败
+        try {
+          await cb(fakeT());
+        } catch {
+          // SDK 内部吞掉第一次回调的错误，重试
+        }
+        await cb(fakeT());
+        throw finalError;
+      },
+    };
+    const store = wxStore(db);
+    await expect(
+      store.transaction(async () => {
+        cbCalls++;
+        if (cbCalls === 1) throw new RuleError('第一次冲突');
+        return 'ok';
+      }),
+    ).rejects.toBe(finalError);
+    expect(cbCalls).toBe(2);
+  });
 });
