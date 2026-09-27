@@ -189,7 +189,7 @@
   - 角色技能以插件形式注册到固定**钩子**：`beforeDraw`、`afterDraw`、`onTargeted`、`accusationValue`、`trialThreshold`、`beforeTrial`、`afterTrial`、`onTryalRevealed`、`onDeath`、`onConfess`、`onBlueCardPlaced`。裁缝通过「查询右手边角色 → 调用其插件」实现。
   - `project(state, openid) → PrivateView` 和 `projectPublic(state) → PublicView` 负责生成视图。
 - **云函数 `cloudfunctions/game`**：单一入口，按 `action` 分发：`createRoom`、`joinRoom`、`reorderSeats`、`startGame`、`act`（所有游戏内操作）、`tick`（超时推进）。每次写操作在事务中完成：读取 `games` → 校验版本号 → `engine.apply` → 写回 `games`、`rooms`、所有 `hands`。构建时把 `engine/` 编译产物复制进云函数目录。
-- **小程序 `miniprogram/`**：原生小程序 + TypeScript，不使用 uni-app / Taro。
+- **小程序 `miniprogram/`**：原生小程序 + TypeScript，不使用 uni-app / Taro。（2026-09-28 更新：项目已改为微信**小游戏**，客户端目录是 `minigame/`，界面用 Canvas 绘制而不是 WXML；具体设计在计划 B2 之前重新制定，见 §4 开头的说明。）
 
 ### 3.1 数据集合与权限
 

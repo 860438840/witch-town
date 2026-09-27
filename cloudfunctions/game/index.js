@@ -483,7 +483,7 @@ function accusationValue(_s, kind, _actor, _target) {
 function targetCount(kind) {
   return kind === "scapegoat" || kind === "robbery" ? 2 : 1;
 }
-function playCard(s, seat, cardId, targets, option) {
+function playCard(s, seat, cardId, targets2, option) {
   if (s.phase.kind !== "day" || s.phase.mode === "drawing" || s.turn !== seat) {
     throw new RuleError("\u73B0\u5728\u4E0D\u80FD\u51FA\u724C");
   }
@@ -493,10 +493,10 @@ function playCard(s, seat, cardId, targets, option) {
   const card = actor.hand[idx];
   if (isBlack(card.kind)) throw new RuleError("\u9ED1\u5361\u4E0D\u80FD\u4E3B\u52A8\u6253\u51FA");
   const need = targetCount(card.kind);
-  if (targets.length !== need) throw new RuleError(`\u8FD9\u5F20\u5361\u9700\u8981\u9009\u62E9 ${need} \u540D\u76EE\u6807`);
-  const ts = targets.map((t) => getPlayer(s, t));
+  if (targets2.length !== need) throw new RuleError(`\u8FD9\u5F20\u5361\u9700\u8981\u9009\u62E9 ${need} \u540D\u76EE\u6807`);
+  const ts = targets2.map((t) => getPlayer(s, t));
   if (ts.some((t) => !t.alive)) throw new RuleError("\u76EE\u6807\u5FC5\u987B\u662F\u6D3B\u7740\u7684\u73A9\u5BB6");
-  if (need === 2 && targets[0] === targets[1]) throw new RuleError("\u4E24\u4E2A\u76EE\u6807\u4E0D\u80FD\u76F8\u540C");
+  if (need === 2 && targets2[0] === targets2[1]) throw new RuleError("\u4E24\u4E2A\u76EE\u6807\u4E0D\u80FD\u76F8\u540C");
   const target = ts[0];
   if (isRed(card.kind)) {
     if (target.seat === seat) throw new RuleError("\u4E0D\u80FD\u5BF9\u81EA\u5DF1\u6253\u51FA\u7EA2\u5361");
@@ -516,7 +516,7 @@ function playCard(s, seat, cardId, targets, option) {
   }
   actor.hand.splice(idx, 1);
   setPhase(s, { kind: "day", mode: "playing" });
-  s.log.push({ t: "play", seat, kind: card.kind, targets });
+  s.log.push({ t: "play", seat, kind: card.kind, targets: targets2 });
   switch (card.kind) {
     case "accusation":
     case "evidence":
@@ -791,8 +791,10 @@ var CHOICE_MS = 45e3;
 function deadlineKey(s) {
   const ph = s.phase;
   switch (ph.kind) {
-    case "day":
-      return `day:${s.turn}`;
+    case "day": {
+      const turnCount = s.log.filter((e) => e.t === "turn").length;
+      return `day:${s.turn}:${turnCount}`;
+    }
     case "trialReveal":
       return `trial:${ph.target}`;
     case "catReveal":
@@ -808,11 +810,20 @@ function phaseDuration(s) {
 
 // src/lobby.ts
 var STALE_MS = 6 * 36e5;
+var ENDED_GRACE_MS = 30 * 6e4;
+var STRIP_FROM_NAME = /[\u0000-\u001F\u007F-\u009F​-‍﻿]/g;
+function checkAvatar(v) {
+  if (typeof v !== "string") return "";
+  if (v === "") return "";
+  if (v.length > 512) return "";
+  if (!v.startsWith("https://")) return "";
+  return v;
+}
 function checkProfile(p) {
   const raw = p ?? {};
-  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  const name = typeof raw.name === "string" ? raw.name.replace(STRIP_FROM_NAME, "").trim() : "";
   if ([...name].length < 1 || [...name].length > 12) throw new RuleError("\u6635\u79F0\u9700\u8981 1\u201312 \u4E2A\u5B57");
-  return { name, avatar: typeof raw.avatar === "string" ? raw.avatar : "" };
+  return { name, avatar: checkAvatar(raw.avatar) };
 }
 async function loadRoom(tx, code) {
   const room = await tx.get(ROOMS, code);
@@ -830,7 +841,11 @@ async function createRoom(tx, openid, profile, now, rng) {
   for (let attempt = 0; attempt < 30; attempt++) {
     const code = String(1e3 + Math.floor(rng.next() * 9e3));
     const existing = await tx.get(ROOMS, code);
-    if (existing && existing.status !== "ended" && now - existing.updatedAt <= STALE_MS) continue;
+    if (existing) {
+      const active = existing.status !== "ended" && now - existing.updatedAt <= STALE_MS;
+      const recentlyEnded = existing.status === "ended" && now - existing.updatedAt <= ENDED_GRACE_MS;
+      if (active || recentlyEnded) continue;
+    }
     const room = {
       code,
       host: openid,
@@ -838,35 +853,45 @@ async function createRoom(tx, openid, profile, now, rng) {
       seats: [{ openid, ...me }],
       view: null,
       deadline: null,
+      gameId: null,
       updatedAt: now
     };
     await tx.set(ROOMS, code, room);
-    return { code };
+    return { code, openid };
   }
   throw new RuleError("\u6682\u65F6\u6CA1\u6709\u7A7A\u95F2\u7684\u623F\u95F4\u53F7\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5");
 }
 async function joinRoom(tx, code, openid, profile, now) {
-  const me = checkProfile(profile);
   const room = await loadRoom(tx, code);
   const seat = room.seats.find((s) => s.openid === openid);
   if (seat) {
+    if (room.status !== "lobby") return { code, openid };
+    const me = checkProfile(profile);
     seat.name = me.name;
     seat.avatar = me.avatar;
   } else {
+    if (room.status === "ended") throw new RuleError("\u623F\u95F4\u5DF2\u7ED3\u675F");
     if (room.status !== "lobby") throw new RuleError("\u6E38\u620F\u5DF2\u7ECF\u5F00\u59CB\uFF0C\u4E0D\u80FD\u52A0\u5165");
     if (room.seats.length >= MAX_PLAYERS) throw new RuleError("\u623F\u95F4\u5DF2\u6EE1");
+    const me = checkProfile(profile);
     room.seats.push({ openid, ...me });
   }
   room.updatedAt = now;
   await tx.set(ROOMS, code, room);
-  return { code };
+  return { code, openid };
 }
 async function leaveRoom(tx, code, openid, now) {
   const room = await loadRoom(tx, code);
+  if (room.status === "ended") throw new RuleError("\u623F\u95F4\u5DF2\u7ED3\u675F");
   requireLobby(room);
+  if (!room.seats.some((s) => s.openid === openid)) throw new RuleError("\u4F60\u4E0D\u5728\u8FD9\u4E2A\u623F\u95F4\u91CC");
   room.seats = room.seats.filter((s) => s.openid !== openid);
-  if (room.seats.length === 0) room.status = "ended";
-  else if (room.host === openid) room.host = room.seats[0].openid;
+  const humans = room.seats.filter((s) => !isBot(s.openid));
+  if (humans.length === 0) {
+    room.status = "ended";
+  } else if (room.host === openid) {
+    room.host = humans[0].openid;
+  }
   room.updatedAt = now;
   await tx.set(ROOMS, code, room);
   return {};
@@ -897,6 +922,67 @@ async function addBots(tx, code, openid, count, now) {
   return {};
 }
 
+// src/validate.ts
+function fail() {
+  throw new RuleError("\u64CD\u4F5C\u53C2\u6570\u65E0\u6548");
+}
+function isSeat(v, playerCount) {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v < playerCount;
+}
+function isNonNegInt(v) {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+function isBoundedString(v, maxLen, minLen = 1) {
+  return typeof v === "string" && v.length >= minLen && v.length <= maxLen;
+}
+function targets(v, playerCount) {
+  if (!Array.isArray(v) || v.length < 1 || v.length > 2) fail();
+  for (const t of v) if (!isSeat(t, playerCount)) fail();
+  return v;
+}
+function parseClientAction(raw, playerCount) {
+  const r = raw ?? {};
+  switch (r.type) {
+    case "draw":
+      return { type: "draw" };
+    case "endTurn":
+      return { type: "endTurn" };
+    case "play": {
+      if (!isBoundedString(r.cardId, 64)) fail();
+      const ts = targets(r.targets, playerCount);
+      const action = { type: "play", cardId: r.cardId, targets: ts };
+      if (r.option !== void 0) {
+        if (!isBoundedString(r.option, 64, 0)) fail();
+        action.option = r.option;
+      }
+      return action;
+    }
+    case "revealTryal": {
+      if (!isBoundedString(r.tryalId, 64)) fail();
+      return { type: "revealTryal", tryalId: r.tryalId };
+    }
+    case "witchVote": {
+      if (!isSeat(r.target, playerCount)) fail();
+      return { type: "witchVote", target: r.target };
+    }
+    case "protect": {
+      if (!isSeat(r.target, playerCount)) fail();
+      return { type: "protect", target: r.target };
+    }
+    case "confess": {
+      if (r.tryalId === null) return { type: "confess", tryalId: null };
+      if (!isBoundedString(r.tryalId, 64)) fail();
+      return { type: "confess", tryalId: r.tryalId };
+    }
+    case "conspiracyPick": {
+      if (!isNonNegInt(r.index)) fail();
+      return { type: "conspiracyPick", index: r.index };
+    }
+    default:
+      fail();
+  }
+}
+
 // src/game.ts
 async function persist(tx, room, state, prev, now) {
   const key = deadlineKey(state);
@@ -912,8 +998,10 @@ async function persist(tx, room, state, prev, now) {
   };
   await tx.set(GAMES, room.code, gameDoc);
   await tx.set(ROOMS, room.code, roomDoc);
+  const gameId = room.gameId;
   for (const p of state.players) {
-    const hand = { _openid: p.openid, roomId: room.code, view: projectPrivate(state, p.seat) };
+    if (isBot(p.openid)) continue;
+    const hand = { _openid: p.openid, roomId: room.code, gameId, view: projectPrivate(state, p.seat) };
     await tx.set(HANDS, handId(room.code, p.openid), hand);
   }
 }
@@ -931,10 +1019,10 @@ async function startGame(tx, code, openid, now, rng) {
     room.seats.map((s) => ({ openid: s.openid, name: s.name })),
     rng
   );
-  await persist(tx, room, state, null, now);
+  await persist(tx, { ...room, gameId: `${code}-${now}` }, state, null, now);
   return { version: state.version };
 }
-async function act(tx, code, openid, action, expectedVersion, now, rng) {
+async function act(tx, code, openid, rawAction, expectedVersion, now, rng) {
   const room = await loadRoom(tx, code);
   if (room.status !== "playing") throw new RuleError("\u6E38\u620F\u6CA1\u6709\u5728\u8FDB\u884C");
   const game = await loadGame(tx, code);
@@ -943,6 +1031,7 @@ async function act(tx, code, openid, action, expectedVersion, now, rng) {
   }
   const seat = game.state.players.findIndex((p) => p.openid === openid);
   if (seat < 0) throw new RuleError("\u4F60\u4E0D\u5728\u8FD9\u5C40\u6E38\u620F\u4E2D");
+  const action = parseClientAction(rawAction, game.state.players.length);
   const next = apply(game.state, { ...action, seat }, rng);
   await persist(tx, room, next, game, now);
   return { version: next.version };
@@ -1005,7 +1094,7 @@ async function handle(store2, openid, input, now, rng) {
 }
 
 // src/wxStore.ts
-var NOT_FOUND = /does not exist|not exist|DOCUMENT_NOT_EXIST|-502004/i;
+var NOT_FOUND = /does not exist|DOCUMENT_NOT_EXIST|-502004/i;
 function errorText(e) {
   const err = e;
   return [err == null ? void 0 : err.errCode, err == null ? void 0 : err.errMsg, err == null ? void 0 : err.message, String(e)].filter((x) => x !== void 0).join(" ");
@@ -1016,6 +1105,7 @@ function wxStore(db) {
       let thrown = void 0;
       try {
         return await db.runTransaction(async (t) => {
+          thrown = void 0;
           const tx = {
             async get(collection, id) {
               try {
