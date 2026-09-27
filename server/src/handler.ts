@@ -1,5 +1,5 @@
 import { RuleError, type Rng } from '../../engine/src/index';
-import { act, startGame, tick, type ClientAction } from './game';
+import { act, startGame, tick } from './game';
 import { addBots, createRoom, joinRoom, leaveRoom, reorderSeats } from './lobby';
 import type { Store } from './store';
 
@@ -10,7 +10,7 @@ export type Request =
   | { type: 'reorderSeats'; code: string; order: string[] }
   | { type: 'addBots'; code: string; count: number }
   | { type: 'startGame'; code: string }
-  | { type: 'act'; code: string; action: ClientAction; version?: number }
+  | { type: 'act'; code: string; action: unknown; version?: number }
   | { type: 'tick'; code: string };
 
 export type Response = { ok: true; data: unknown } | { ok: false; error: string };

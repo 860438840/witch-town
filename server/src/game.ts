@@ -13,6 +13,7 @@ import { deadlineKey, phaseDuration } from './deadlines';
 import { loadRoom } from './lobby';
 import type { Tx } from './store';
 import { GAMES, handId, HANDS, MIN_PLAYERS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from './types';
+import { parseClientAction } from './validate';
 
 /** 客户端发来的操作：座位由服务器根据 openid 决定 */
 export type ClientAction = { [K in Action['type']]: Omit<Extract<Action, { type: K }>, 'seat'> }[Action['type']];
@@ -61,7 +62,7 @@ export async function act(
   tx: Tx,
   code: string,
   openid: string,
-  action: ClientAction,
+  rawAction: unknown,
   expectedVersion: number | undefined,
   now: number,
   rng: Rng,
@@ -74,6 +75,7 @@ export async function act(
   }
   const seat = game.state.players.findIndex((p) => p.openid === openid);
   if (seat < 0) throw new RuleError('你不在这局游戏中');
+  const action = parseClientAction(rawAction, game.state.players.length);
   const next = apply(game.state, { ...action, seat } as Action, rng);
   await persist(tx, room, next, game, now);
   return { version: next.version };

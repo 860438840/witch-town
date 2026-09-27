@@ -120,6 +120,25 @@ describe('act', () => {
   });
 });
 
+describe('act 拒绝伪造的操作参数（F1）', () => {
+  const exploits: Array<[string, unknown]> = [
+    ['嫁祸用字符串复制座位', { type: 'play', cardId: 'scapegoat-1', targets: [0, '0'] }],
+    ['警长保护目标是字符串', { type: 'protect', target: '4' }],
+    ['女巫投票目标是字符串', { type: 'witchVote', target: '0' }],
+    ['抢劫用字符串座位', { type: 'play', cardId: 'robbery-1', targets: ['1', 2] }],
+    ['传染选号是字符串', { type: 'conspiracyPick', index: '0' }],
+  ];
+
+  it.each(exploits)('%s 被拒绝，且数据库不变', async (_label, action) => {
+    const { store, code } = await started(5);
+    await expect(run(store, (tx) => act(tx, code, 'u0', action as never, undefined, NOW, rng()))).rejects.toThrow(
+      '操作参数无效',
+    );
+    expect(game(store, code).state.version).toBe(0);
+    expect(room(store, code).view!.version).toBe(0);
+  });
+});
+
 describe('tick', () => {
   it('截止时间之前调用什么都不做', async () => {
     const { store, code } = await started(5);
