@@ -13,6 +13,7 @@
 |---|---|
 | 玩法 | 纯线上联机，每人用自己的手机，4–12 人 |
 | 交流 | 小程序内不做聊天/语音；大家另开微信群语音。小程序提供事件日志 |
+| 形态 | **微信小游戏**（AppID `wx5bbb2a460a75b656` 为小游戏账号，2026-09-28 用户决定按小游戏开发）；界面用 Canvas 绘制，§4 的界面设计待计划 B2 前重新设计 |
 | 发布 | 只用开发版/体验版邀请朋友，不正式发布，不考虑版号、审核、运营 |
 | 后端 | 微信云开发，使用免费云环境（未发布阶段免费，额度 20 万次调用/月） |
 | 规则来源 | andyventure.com 网页规则 + 用户实体卡（简体版）照片；缺失细节以官方 Salem 1692 补齐，并经用户确认 |
@@ -188,7 +189,7 @@
   - 角色技能以插件形式注册到固定**钩子**：`beforeDraw`、`afterDraw`、`onTargeted`、`accusationValue`、`trialThreshold`、`beforeTrial`、`afterTrial`、`onTryalRevealed`、`onDeath`、`onConfess`、`onBlueCardPlaced`。裁缝通过「查询右手边角色 → 调用其插件」实现。
   - `project(state, openid) → PrivateView` 和 `projectPublic(state) → PublicView` 负责生成视图。
 - **云函数 `cloudfunctions/game`**：单一入口，按 `action` 分发：`createRoom`、`joinRoom`、`reorderSeats`、`startGame`、`act`（所有游戏内操作）、`tick`（超时推进）。每次写操作在事务中完成：读取 `games` → 校验版本号 → `engine.apply` → 写回 `games`、`rooms`、所有 `hands`。构建时把 `engine/` 编译产物复制进云函数目录。
-- **小程序 `miniprogram/`**：原生小程序 + TypeScript，不使用 uni-app / Taro。
+- **小程序 `miniprogram/`**：原生小程序 + TypeScript，不使用 uni-app / Taro。（2026-09-28 更新：项目已改为微信**小游戏**，客户端目录是 `minigame/`，界面用 Canvas 绘制而不是 WXML；具体设计在计划 B2 之前重新制定，见 §4 开头的说明。）
 
 ### 3.1 数据集合与权限
 
@@ -206,6 +207,8 @@
 - **实时推送备用方案**：若免费环境不支持 `db.watch`，改为每 1.5 秒轮询 `rooms.version`，有变化时再拉取完整数据。
 
 ## 4. 界面
+
+> 注：本节按小程序（WXML）写成。项目已改为小游戏，界面将用 Canvas 绘制，布局与交互在计划 B2 之前重新设计并更新本节。
 
 页面：**首页**（建房 / 输入 4 位房号）→ **房间大厅**（座位列表、房主可拖动调整座位、分享到微信群、开始）→ **游戏桌** → **结算页**（公开所有身份与阵营）。
 
@@ -249,3 +252,14 @@
 - **免费环境的功能限制**：官方未列明具体限制；步骤 0 先验证。
 - **云函数冷启动**：首次调用可能延迟 1–2 秒，回合制可以接受。
 - **规则歧义**：实际游玩中发现的新歧义，记录到本文档 2.10 并补测试。
+
+### 云环境验证结果（2026-09-28，计划 B1 Task 5）
+
+在免费开发环境 `cloud1`（小游戏 AppID `wx5bbb2a460a75b656`）中用临时调试界面 `minigame/game.js` 验证：
+
+- 云函数 `game` 部署成功（云端安装依赖）。调用耗时：冷启动约 2.3 秒，之后 0.7–1.8 秒。
+- 事务可行：`startGame` 在一个事务中写入 1 个 games、1 个 rooms、5 个 hands（1.5 秒）。
+- 文档不存在时，`wxStore` 的 `NOT_FOUND` 能正确识别（建房时查询空房间号正常返回 null），无需调整。
+- `db.watch` 在免费环境的小游戏中可用：rooms（`doc(code).watch`）和 hands（`where({_openid:'{openid}', roomId}).watch`）都能实时推送。**计划 B2 使用实时推送，不需要轮询。**
+- 安全规则生效：客户端读 `games`、读他人 `hands` 均返回 `DATABASE_PERMISSION_DENIED`；本人 `hands` 可读（`_openid` 字段写入正确）。
+- 超时推进：黎明 45 秒后 `tick` 结算放置黑猫并进入白天；非本人回合的操作被规则拒绝（「现在不能抽牌」）。

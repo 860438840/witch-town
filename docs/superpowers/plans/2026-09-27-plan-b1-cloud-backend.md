@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- AppID：`wx39381174201ab82c`。项目根目录：`D:/UNSW/女巫镇`。
+- AppID：`wx5bbb2a460a75b656`（小游戏账号；原测试号 wx39381174201ab82c 不能用云开发）。项目根目录：`D:/UNSW/女巫镇`。
 - 集合与权限（spec §3.1）：`games` 客户端不可读写；`rooms` 房间成员可读、客户端不可写；`hands` 仅本人可读（`doc._openid == auth.openid`）、客户端不可写。
 - `hands` 文档 id 为 `<房间号>_<openid>`，必须带 `_openid` 字段。`games`、`rooms` 文档 id 为 4 位房间号（`1000`–`9999`）。
 - 每次写操作在一个事务中完成；`games.state.version` 作为版本号，客户端可带 `version`，不一致时返回「状态已变化，请重试」。

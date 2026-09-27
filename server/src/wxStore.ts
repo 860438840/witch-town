@@ -1,0 +1,50 @@
+import type { Store, Tx } from './store';
+
+/** 云数据库「文档不存在」报错的特征。只匹配确认过的具体报错，避免把其他错误（如集合不存在）误当成文档不存在。 */
+export const NOT_FOUND = /does not exist|DOCUMENT_NOT_EXIST|-502004/i;
+
+function errorText(e: unknown): string {
+  const err = e as { errCode?: unknown; errMsg?: unknown; message?: unknown };
+  return [err?.errCode, err?.errMsg, err?.message, String(e)].filter((x) => x !== undefined).join(' ');
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function wxStore(db: any): Store {
+  return {
+    async transaction<R>(fn: (tx: Tx) => Promise<R>): Promise<R> {
+      let thrown: unknown = undefined;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return await db.runTransaction(async (t: any) => {
+          // SDK 可能会重试这个回调（例如遇到写冲突）；每次重新调用时都要清掉上一次捕获的错误，
+          // 否则最终失败原因会被这次已经作废的旧错误掩盖。
+          thrown = undefined;
+          const tx: Tx = {
+            async get<T>(collection: string, id: string): Promise<T | null> {
+              try {
+                const res = await t.collection(collection).doc(id).get();
+                const { _id, ...rest } = res.data;
+                return rest as T;
+              } catch (e) {
+                if (NOT_FOUND.test(errorText(e))) return null;
+                throw e;
+              }
+            },
+            async set(collection: string, id: string, data: object): Promise<void> {
+              await t.collection(collection).doc(id).set({ data });
+            },
+          };
+          try {
+            return await fn(tx);
+          } catch (e) {
+            thrown = e;
+            throw e;
+          }
+        });
+      } catch (e) {
+        // SDK 可能把回调里抛出的错误包装成别的对象，这里恢复成原始错误（例如 RuleError）
+        throw thrown ?? e;
+      }
+    },
+  };
+}
