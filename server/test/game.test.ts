@@ -56,6 +56,26 @@ describe('startGame', () => {
     const { store, code } = await started(4);
     await expect(run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()))).rejects.toThrow('游戏已经开始');
   });
+
+  it('开局后房间和每份手牌都带有相同的 gameId，防止房间号复用后读到旧手牌（F7）', async () => {
+    const { store, code } = await started(5);
+    const r = room(store, code);
+    expect(r.gameId).toBe(`${code}-${NOW}`);
+    for (const p of game(store, code).state.players) {
+      const hand = store.read<HandDoc>(HANDS, handId(code, p.openid))!;
+      expect(hand.gameId).toBe(r.gameId);
+    }
+  });
+
+  it('机器人不写入 hands 文档，真人正常写入（F9）', async () => {
+    const { store, code } = await lobbyWith(1);
+    await run(store, (tx) => addBots(tx, code, 'u0', 4, NOW));
+    await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+    expect(store.read(HANDS, handId(code, 'u0'))).not.toBeNull();
+    for (let i = 1; i <= 4; i++) {
+      expect(store.read(HANDS, handId(code, `bot-${i}`))).toBeNull();
+    }
+  });
 });
 
 describe('act', () => {
@@ -178,5 +198,32 @@ describe('tick', () => {
     expect(r.status).toBe('ended');
     expect(r.deadline).toBeNull();
     expect(r.view!.phase.kind).toBe('ended');
+  });
+});
+
+describe('隐私（F13）', () => {
+  it('rooms 的公开视图里没有任何手牌 id，也没有未翻开身份卡的种类', async () => {
+    const { store, code } = await started(5);
+    let t = NOW;
+    for (let i = 0; i < 10; i++) {
+      t += TURN_MS;
+      await run(store, (tx) => tick(tx, code, t, seededRng(i)));
+      if (room(store, code).status !== 'playing') break;
+    }
+    const r = room(store, code);
+    const g = game(store, code);
+    const json = JSON.stringify(r);
+    for (const p of g.state.players) {
+      for (const c of p.hand) expect(json).not.toContain(`"${c.id}"`);
+    }
+    if (r.status !== 'ended') {
+      for (let i = 0; i < g.state.players.length; i++) {
+        for (let j = 0; j < g.state.players[i].tryals.length; j++) {
+          if (!g.state.players[i].tryals[j].revealed) {
+            expect(r.view!.players[i].tryals[j].kind).toBeNull();
+          }
+        }
+      }
+    }
   });
 });

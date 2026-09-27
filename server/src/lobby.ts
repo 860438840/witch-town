@@ -63,6 +63,7 @@ export async function createRoom(
       seats: [{ openid, ...me }],
       view: null,
       deadline: null,
+      gameId: null,
       updatedAt: now,
     };
     await tx.set(ROOMS, code, room);

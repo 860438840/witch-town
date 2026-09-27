@@ -9,8 +9,12 @@ export const CHOICE_MS = 45_000;
 export function deadlineKey(s: GameState): string {
   const ph = s.phase;
   switch (ph.kind) {
-    case 'day':
-      return `day:${s.turn}`;
+    case 'day': {
+      // 只按座位号区分不够：如果只剩 2 人存活（或另一人被拘留），同一座位会连续拿到两个回合，
+      // 单纯的 day:${turn} 会复用上一回合已经过期的截止时间。加入 log 里 turn 事件的计数区分。
+      const turnCount = s.log.filter((e) => e.t === 'turn').length;
+      return `day:${s.turn}:${turnCount}`;
+    }
     case 'trialReveal':
       return `trial:${ph.target}`;
     case 'catReveal':

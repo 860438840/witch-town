@@ -54,6 +54,7 @@ describe('createRoom', () => {
     expect(r.seats).toEqual([{ openid: 'u0', name: '小明', avatar: '' }]);
     expect(r.view).toBeNull();
     expect(r.deadline).toBeNull();
+    expect(r.gameId).toBeNull();
   });
 
   it('房间号被正在使用的房间占用时换一个', async () => {

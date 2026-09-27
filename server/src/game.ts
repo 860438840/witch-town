@@ -12,7 +12,7 @@ import {
 import { deadlineKey, phaseDuration } from './deadlines';
 import { loadRoom } from './lobby';
 import type { Tx } from './store';
-import { GAMES, handId, HANDS, MIN_PLAYERS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from './types';
+import { GAMES, handId, HANDS, isBot, MIN_PLAYERS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from './types';
 import { parseClientAction } from './validate';
 
 /** 客户端发来的操作：座位由服务器根据 openid 决定 */
@@ -33,8 +33,11 @@ async function persist(tx: Tx, room: RoomDoc, state: GameState, prev: GameDoc | 
   };
   await tx.set(GAMES, room.code, gameDoc);
   await tx.set(ROOMS, room.code, roomDoc);
+  // room.gameId 在 startGame 里设置好之后才会调用 persist，playing 状态下必然不是 null
+  const gameId = room.gameId as string;
   for (const p of state.players) {
-    const hand: HandDoc = { _openid: p.openid, roomId: room.code, view: projectPrivate(state, p.seat) };
+    if (isBot(p.openid)) continue; // 机器人没有客户端会读取，不必写 hands 文档
+    const hand: HandDoc = { _openid: p.openid, roomId: room.code, gameId, view: projectPrivate(state, p.seat) };
     await tx.set(HANDS, handId(room.code, p.openid), hand);
   }
 }
@@ -54,7 +57,7 @@ export async function startGame(tx: Tx, code: string, openid: string, now: numbe
     room.seats.map((s) => ({ openid: s.openid, name: s.name })),
     rng,
   );
-  await persist(tx, room, state, null, now);
+  await persist(tx, { ...room, gameId: `${code}-${now}` }, state, null, now);
   return { version: state.version };
 }
 

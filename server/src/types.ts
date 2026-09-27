@@ -35,6 +35,9 @@ export interface RoomDoc {
   view: PublicView | null;
   /** 当前等待阶段的截止时间（毫秒时间戳），大厅和结束后为 null */
   deadline: number | null;
+  /** 本局游戏的唯一标识（startGame 时设为 `${code}-${now}`），大厅阶段为 null。
+   *  房间号被复用重开一局后 gameId 会变化，客户端据此判断自己手里的 hands 文档是否是旧局的残留。 */
+  gameId: string | null;
   updatedAt: number;
 }
 
@@ -49,5 +52,7 @@ export interface GameDoc {
 export interface HandDoc {
   _openid: string;
   roomId: string;
+  /** 对应 RoomDoc.gameId，客户端用它判断这份手牌是不是当前这一局的 */
+  gameId: string;
   view: PrivateView;
 }

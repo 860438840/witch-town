@@ -11,11 +11,22 @@ describe('deadlineKey', () => {
     const s = game();
     s.phase = { kind: 'day', mode: 'choose' };
     s.turn = 2;
-    expect(deadlineKey(s)).toBe('day:2');
+    expect(deadlineKey(s)).toBe('day:2:0');
     s.phase = { kind: 'day', mode: 'playing' };
-    expect(deadlineKey(s)).toBe('day:2');
+    expect(deadlineKey(s)).toBe('day:2:0');
     s.turn = 3;
-    expect(deadlineKey(s)).toBe('day:3');
+    expect(deadlineKey(s)).toBe('day:3:0');
+  });
+
+  it('同一座位连续两次回合（例如只剩 2 人存活，另一人被拘留）时 key 不同（F4）', () => {
+    const s = game();
+    s.phase = { kind: 'day', mode: 'choose' };
+    s.turn = 2;
+    s.log.push({ t: 'turn', seat: 2 });
+    const key1 = deadlineKey(s);
+    s.log.push({ t: 'turn', seat: 2 });
+    const key2 = deadlineKey(s);
+    expect(key1).not.toBe(key2);
   });
 
   it('其他阶段', () => {
