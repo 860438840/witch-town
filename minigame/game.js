@@ -53,7 +53,7 @@ function watch() {
   roomWatcher = db.collection('rooms').doc(code).watch({
     onChange: (snap) => {
       const doc = snap.docs[0];
-      print('rooms 推送', doc ? { status: doc.status, version: doc.view && doc.view.version, phase: doc.view && doc.view.phase, deadline: doc.deadline } : null);
+      print('rooms 推送', doc ? { status: doc.status, version: doc.view && doc.view.version, turn: doc.view && doc.view.turn, players: doc.view && doc.view.players.length, phase: doc.view && doc.view.phase, deadline: doc.deadline } : null);
     },
     onError: (e) => print('rooms 监听失败', e.errMsg || String(e)),
   });
