@@ -18,13 +18,16 @@ export function newState(n = 5, seed = 1): GameState {
   );
 }
 
+/** 数据库快照每次都是新对象；视图深拷贝一份，避免之后改 state 时连带改到旧快照 */
+const snapshot = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
 export function roomOf(s: GameState, gameId = GAME_ID): RoomDoc {
   return {
     code: CODE,
     host: 'u0',
     status: s.phase.kind === 'ended' ? 'ended' : 'playing',
     seats: s.players.map((p) => ({ openid: p.openid, name: p.name, avatar: '' })),
-    view: projectPublic(s),
+    view: snapshot(projectPublic(s)),
     deadline: 1_800_000_090_000,
     gameId,
     updatedAt: 0,
@@ -32,7 +35,7 @@ export function roomOf(s: GameState, gameId = GAME_ID): RoomDoc {
 }
 
 export function handOf(s: GameState, seat: number, gameId = GAME_ID): HandDoc {
-  return { _openid: s.players[seat].openid, roomId: CODE, gameId, view: projectPrivate(s, seat) };
+  return { _openid: s.players[seat].openid, roomId: CODE, gameId, view: snapshot(projectPrivate(s, seat)) };
 }
 
 export function lobbyRoom(n: number): RoomDoc {

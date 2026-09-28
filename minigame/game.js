@@ -1174,6 +1174,38 @@
     return m.priv ? m.priv.tryals.filter((t) => !t.revealed) : [];
   }
 
+  // src/model/changes.ts
+  var ANIM_MS = { cardIn: 300, play: 450, night: 600, death: 500, reveal: 500, turn: 1800, panel: 250 };
+  var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
+  function diffTables(prev, next) {
+    var _a, _b, _c;
+    if (!prev || prev.code !== next.code || prev.view.log.length > next.view.log.length) return [];
+    const out = [];
+    if (prev.priv) {
+      const before = new Set(prev.priv.hand.map((c) => c.id));
+      for (const c of (_b = (_a = next.priv) == null ? void 0 : _a.hand) != null ? _b : []) if (!before.has(c.id)) out.push({ kind: "cardIn", id: c.id });
+    }
+    next.view.log.slice(prev.view.log.length).forEach((e, k) => {
+      if (e.t === "play") out.push({ kind: "play", index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
+    });
+    const wasNight = prev.view.phase.kind === "night";
+    const isNight = next.view.phase.kind === "night";
+    if (wasNight !== isNight) out.push({ kind: "night", on: isNight });
+    next.view.players.forEach((p, i) => {
+      const q = prev.view.players[i];
+      if (!q) return;
+      if (q.alive && !p.alive) out.push({ kind: "death", seat: i });
+      if (!p.alive) return;
+      p.tryals.forEach((t, j) => {
+        if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: "reveal", seat: i, index: j });
+      });
+    });
+    const turn = dayTurn(next);
+    if (turn !== null && turn !== dayTurn(prev)) out.push({ kind: "turn", seat: turn });
+    if (next.pending && next.pending.kind !== "turn" && ((_c = prev.pending) == null ? void 0 : _c.kind) !== next.pending.kind) out.push({ kind: "panel" });
+    return out;
+  }
+
   // src/model/log.ts
   var REVEAL_CAUSE = { trial: "\u5BA1\u5224", cat: "\u9ED1\u732B", confess: "\u81EA\u9996", death: "\u6B7B\u4EA1" };
   var DEATH_CAUSE = {
@@ -1633,6 +1665,7 @@
       __publicField(this, "logBox", new ScrollBox());
       __publicField(this, "layout", null);
       __publicField(this, "choice", { key: "", picked: null, suspect: null });
+      __publicField(this, "prev", null);
     }
     build(now) {
       const ctl2 = this.ui.ctl;
@@ -1653,18 +1686,81 @@
       nodes.push(...this.panels(m, now, a));
       return nodes;
     }
-    /** 动效钩子（Task 9 覆盖为真正的动画） */
-    anim(m, _now) {
+    /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
+    anim(m, now) {
+      const A = this.ui.animator;
+      for (const c of diffTables(this.prev, m)) {
+        switch (c.kind) {
+          case "cardIn":
+            A.start(`in:${c.id}`, now, ANIM_MS.cardIn);
+            break;
+          case "play":
+            A.start(`fly:${c.index}`, now, ANIM_MS.play, c);
+            break;
+          case "night":
+            A.start("sky", now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
+            break;
+          case "death":
+            A.start(`dead:${c.seat}`, now, ANIM_MS.death);
+            break;
+          case "reveal":
+            A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
+            break;
+          case "turn":
+            A.start("turn", now, ANIM_MS.turn);
+            break;
+          case "panel":
+            A.start("panel", now, ANIM_MS.panel);
+            break;
+        }
+      }
+      this.prev = m;
+      const staticDark = m.view.phase.kind === "night" ? 1 : 0;
+      const sky = A.data("sky");
+      const darkness = sky && A.running("sky", now) ? sky.from + (sky.to - sky.from) * A.progress("sky", now) : staticDark;
+      const glow = A.running("turn", now) ? 0.45 + 0.55 * Math.abs(Math.sin(A.progress("turn", now) * Math.PI * 3)) : 0.6;
+      const overlay2 = [];
+      for (const key of A.keys()) {
+        if (!key.startsWith("fly:") || !A.running(key, now)) continue;
+        const c = A.data(key);
+        const from = this.seatRect(m, c.from);
+        const to = this.seatRect(m, c.to);
+        if (!from || !to) continue;
+        const p = A.progress(key, now);
+        const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
+        const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p;
+        const r = rect(x - 14, y - 20, 28, 40);
+        const [top, bottom] = CARD_GRADIENT[CARD_INFO[c.card].color];
+        overlay2.push({
+          rect: r,
+          draw: (ctx2) => {
+            ctx2.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+            const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+            g.addColorStop(0, top);
+            g.addColorStop(1, bottom);
+            roundRect(ctx2, r, 4);
+            ctx2.fillStyle = g;
+            ctx2.fill();
+            ctx2.strokeStyle = C.goldLine;
+            ctx2.stroke();
+            ctx2.globalAlpha = 1;
+          }
+        });
+      }
       return {
-        darkness: m.view.phase.kind === "night" ? 1 : 0,
-        glow: 0.6,
+        darkness,
+        glow,
         cell: (seat) => {
-          var _a;
-          return { alpha: ((_a = m.view.players[seat]) == null ? void 0 : _a.alive) ? 1 : 0.4, flip: null };
+          var _a, _b;
+          const alive = (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.alive) != null ? _b : true;
+          const alpha = A.running(`dead:${seat}`, now) ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
+          const f = A.data(`flip:${seat}`);
+          const flip = f && A.running(`flip:${seat}`, now) ? { index: f.index, p: A.progress(`flip:${seat}`, now) } : null;
+          return { alpha, flip };
         },
-        cardIn: () => 1,
-        overlay: [],
-        panelSlide: 1
+        cardIn: (id) => A.progress(`in:${id}`, now),
+        overlay: overlay2,
+        panelSlide: A.progress("panel", now)
       };
     }
     /** 叠在最上层的面板；需要做选择时优先显示选择面板 */

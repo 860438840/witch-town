@@ -11,11 +11,12 @@ import {
   targetOptions,
   type ClientAction,
 } from '../model/actions';
+import { ANIM_MS, diffTables } from '../model/changes';
 import { CARD_INFO } from '../model/cards';
 import { logLines } from '../model/log';
 import { buildTable, formatCountdown, phaseTitle, type TableModel } from '../model/table';
-import { drawCardFace, drawPanel, drawText } from '../theme/draw';
-import { C } from '../theme/palette';
+import { drawCardFace, drawPanel, drawText, roundRect } from '../theme/draw';
+import { C, CARD_GRADIENT } from '../theme/palette';
 import { choicePanel, type ChoiceState } from './choicePanels';
 import { detailPanel, logPanel, myTryalsPanel } from './infoPanels';
 import { tableLayout, type TableLayout } from './tableLayout';
@@ -25,7 +26,7 @@ import { button, ScrollBox, sheet, skyNode } from './widgets';
 
 const TWO_TARGET_HINT = ['先选被拿走的人', '再选接收的人'];
 
-/** 动效参数；Task 9 之前全部是静态值 */
+/** 这一帧的动效参数（由 anim() 根据前后两帧的变化算出） */
 export interface AnimState {
   darkness: number;
   glow: number;
@@ -47,6 +48,7 @@ export class TableScene implements Scene {
   protected readonly logBox = new ScrollBox();
   protected layout: TableLayout | null = null;
   protected readonly choice: ChoiceState = { key: '', picked: null, suspect: null };
+  private prev: TableModel | null = null;
 
   constructor(protected readonly ui: Ui) {}
 
@@ -70,15 +72,83 @@ export class TableScene implements Scene {
     return nodes;
   }
 
-  /** 动效钩子（Task 9 覆盖为真正的动画） */
-  protected anim(m: TableModel, _now: number): AnimState {
+  /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
+  protected anim(m: TableModel, now: number): AnimState {
+    const A = this.ui.animator;
+    for (const c of diffTables(this.prev, m)) {
+      switch (c.kind) {
+        case 'cardIn':
+          A.start(`in:${c.id}`, now, ANIM_MS.cardIn);
+          break;
+        case 'play':
+          A.start(`fly:${c.index}`, now, ANIM_MS.play, c);
+          break;
+        case 'night':
+          A.start('sky', now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
+          break;
+        case 'death':
+          A.start(`dead:${c.seat}`, now, ANIM_MS.death);
+          break;
+        case 'reveal':
+          A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
+          break;
+        case 'turn':
+          A.start('turn', now, ANIM_MS.turn);
+          break;
+        case 'panel':
+          A.start('panel', now, ANIM_MS.panel);
+          break;
+      }
+    }
+    this.prev = m;
+
+    const staticDark = m.view.phase.kind === 'night' ? 1 : 0;
+    const sky = A.data<{ from: number; to: number }>('sky');
+    const darkness = sky && A.running('sky', now) ? sky.from + (sky.to - sky.from) * A.progress('sky', now) : staticDark;
+    const glow = A.running('turn', now) ? 0.45 + 0.55 * Math.abs(Math.sin(A.progress('turn', now) * Math.PI * 3)) : 0.6;
+
+    const overlay: Node[] = [];
+    for (const key of A.keys()) {
+      if (!key.startsWith('fly:') || !A.running(key, now)) continue;
+      const c = A.data<{ from: number; to: number; card: CardKind }>(key)!;
+      const from = this.seatRect(m, c.from);
+      const to = this.seatRect(m, c.to);
+      if (!from || !to) continue;
+      const p = A.progress(key, now);
+      const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
+      const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p;
+      const r = rect(x - 14, y - 20, 28, 40);
+      const [top, bottom] = CARD_GRADIENT[CARD_INFO[c.card].color];
+      overlay.push({
+        rect: r,
+        draw: (ctx) => {
+          ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+          const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+          g.addColorStop(0, top);
+          g.addColorStop(1, bottom);
+          roundRect(ctx, r, 4);
+          ctx.fillStyle = g;
+          ctx.fill();
+          ctx.strokeStyle = C.goldLine;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        },
+      });
+    }
+
     return {
-      darkness: m.view.phase.kind === 'night' ? 1 : 0,
-      glow: 0.6,
-      cell: (seat) => ({ alpha: m.view.players[seat]?.alive ? 1 : 0.4, flip: null }),
-      cardIn: () => 1,
-      overlay: [],
-      panelSlide: 1,
+      darkness,
+      glow,
+      cell: (seat) => {
+        const alive = m.view.players[seat]?.alive ?? true;
+        const alpha = A.running(`dead:${seat}`, now) ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
+        const f = A.data<{ index: number }>(`flip:${seat}`);
+        const flip = f && A.running(`flip:${seat}`, now) ? { index: f.index, p: A.progress(`flip:${seat}`, now) } : null;
+        return { alpha, flip };
+      },
+      cardIn: (id) => A.progress(`in:${id}`, now),
+      overlay,
+      panelSlide: A.progress('panel', now),
     };
   }
 
