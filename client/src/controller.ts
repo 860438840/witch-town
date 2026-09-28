@@ -78,7 +78,11 @@ export class Controller {
 
   async leaveRoom(): Promise<void> {
     if (!this.code) return;
-    if (this.room?.status === 'lobby') await this.run({ type: 'leaveRoom', code: this.code });
+    if (!this.room || this.room.status === 'lobby') {
+      const r = await this.run({ type: 'leaveRoom', code: this.code });
+      if (r !== null) this.backHome();
+      return;
+    }
     this.backHome();
   }
 

@@ -150,4 +150,56 @@ describe('Controller', () => {
     await flush();
     expect(sessions[0].refresh).toHaveBeenCalled();
   });
+
+  it('房间信息还没到时离开会发请求，成功后回首页', async () => {
+    const { ctl, api, store, sessions, ticker } = setup((req) => (req.type === 'leaveRoom' ? { ok: true, data: {} } : entered(req)));
+    await ctl.createRoom();
+    // sessions[0].room 还是 null（房间信息尚未到达）
+    await ctl.leaveRoom();
+    expect(api.call).toHaveBeenLastCalledWith({ type: 'leaveRoom', code: '1234' });
+    expect(ctl.code).toBeNull();
+    expect(sessions[0].stop).toHaveBeenCalled();
+    expect(ticker.stop).toHaveBeenCalled();
+    expect(store.lastRoom()).toBeNull();
+  });
+
+  it('离开大厅的请求失败（网络错误）时留在房间里', async () => {
+    const { ctl, api, toast, store, sessions } = setup((req) =>
+      req.type === 'leaveRoom' ? { ok: false, error: '网络不稳定，请稍后再试' } : entered(req),
+    );
+    await ctl.createRoom();
+    sessions[0].room = lobbyRoom(2);
+    await ctl.leaveRoom();
+    expect(api.call).toHaveBeenLastCalledWith({ type: 'leaveRoom', code: '1234' });
+    expect(toast).toHaveBeenCalledWith('网络不稳定，请稍后再试');
+    expect(ctl.code).toBe('1234');
+    expect(sessions[0].stop).not.toHaveBeenCalled();
+    expect(store.lastRoom()).toBe('1234');
+  });
+
+  it('游戏进行中离开房间不发请求，直接回首页', async () => {
+    const { ctl, api, sessions, ticker } = setup(entered);
+    await ctl.createRoom();
+    sessions[0].room = roomOf(newState(5));
+    const before = api.call.mock.calls.length;
+    await ctl.leaveRoom();
+    expect(api.call).toHaveBeenCalledTimes(before);
+    expect(ctl.code).toBeNull();
+    expect(sessions[0].stop).toHaveBeenCalled();
+    expect(ticker.stop).toHaveBeenCalled();
+  });
+
+  it('addBot 发送 addBots 请求', async () => {
+    const { ctl, api } = setup(entered);
+    await ctl.createRoom();
+    await ctl.addBot();
+    expect(api.call).toHaveBeenLastCalledWith({ type: 'addBots', code: '1234', count: 1 });
+  });
+
+  it('startGame 发送 startGame 请求', async () => {
+    const { ctl, api } = setup(entered);
+    await ctl.createRoom();
+    await ctl.startGame();
+    expect(api.call).toHaveBeenLastCalledWith({ type: 'startGame', code: '1234' });
+  });
 });
