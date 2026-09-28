@@ -4,6 +4,7 @@ import type { Node } from '../core/node';
 import { C } from '../theme/palette';
 import { HomeScene } from './home';
 import { LobbyScene } from './lobby';
+import { ResultScene } from './result';
 import { TableScene } from './table';
 import type { Ui } from './ui';
 import { button, skyNode, textNode } from './widgets';
@@ -11,12 +12,14 @@ import { button, skyNode, textNode } from './widgets';
 export class RootScene implements Scene {
   private readonly home: HomeScene;
   private readonly lobby: LobbyScene;
+  private readonly result: ResultScene;
   private table: TableScene | null = null;
   private tableKey = '';
 
   constructor(private readonly ui: Ui) {
     this.home = new HomeScene(ui);
     this.lobby = new LobbyScene(ui);
+    this.result = new ResultScene(ui);
   }
 
   build(now: number): Node[] {
@@ -39,9 +42,8 @@ export class RootScene implements Scene {
     return this.table.build(now);
   }
 
-  /** Task 8 替换为结算页 */
-  private ended(_now: number): Node[] {
-    return this.message('游戏结束', 'closed-home');
+  private ended(now: number): Node[] {
+    return this.result.build(now);
   }
 
   private message(text: string, id: string): Node[] {

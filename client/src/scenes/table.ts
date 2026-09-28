@@ -16,6 +16,7 @@ import { logLines } from '../model/log';
 import { buildTable, formatCountdown, phaseTitle, type TableModel } from '../model/table';
 import { drawCardFace, drawPanel, drawText } from '../theme/draw';
 import { C } from '../theme/palette';
+import { choicePanel, type ChoiceState } from './choicePanels';
 import { detailPanel, logPanel, myTryalsPanel } from './infoPanels';
 import { tableLayout, type TableLayout } from './tableLayout';
 import { drawCell, drawMeBar, type CellOpts } from './tableParts';
@@ -45,6 +46,7 @@ export class TableScene implements Scene {
   protected logOpen = false;
   protected readonly logBox = new ScrollBox();
   protected layout: TableLayout | null = null;
+  protected readonly choice: ChoiceState = { key: '', picked: null, suspect: null };
 
   constructor(protected readonly ui: Ui) {}
 
@@ -80,8 +82,10 @@ export class TableScene implements Scene {
     };
   }
 
-  /** 叠在最上层的面板；Task 8 在这里加入选择面板 */
-  protected panels(m: TableModel, _now: number, _a: AnimState): Node[] {
+  /** 叠在最上层的面板；需要做选择时优先显示选择面板 */
+  protected panels(m: TableModel, now: number, a: AnimState): Node[] {
+    const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+    if (choice.length) return choice;
     if (this.askOption) return this.optionSheet(m);
     if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => (this.detail = null));
     if (this.mine) return myTryalsPanel(this.ui, m, () => (this.mine = false));

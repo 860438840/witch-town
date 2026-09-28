@@ -603,7 +603,8 @@
     buttonDangerFill: "rgba(192,57,77,0.25)",
     buttonFill: "rgba(0,0,0,0.25)",
     glowStrong: "rgba(232,199,116,0.9)",
-    lineDark: "#3b2d57"
+    lineDark: "#3b2d57",
+    transparent: "rgba(0,0,0,0)"
   };
   var nightShade = (alpha) => `rgba(4,2,10,${alpha})`;
   var goldGlow = (alpha) => `rgba(232,199,116,${alpha})`;
@@ -1064,6 +1065,50 @@
     }
   };
 
+  // src/scenes/result.ts
+  var ResultScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+    }
+    build(_now) {
+      var _a;
+      const { W, top, bottom } = this.ui.screen;
+      const ctl2 = this.ui.ctl;
+      const view = (_a = ctl2.room) == null ? void 0 : _a.view;
+      if (!view || view.phase.kind !== "ended") return [];
+      const village = view.phase.winner === "village";
+      const mySeat = ctl2.room.seats.findIndex((s) => s.openid === ctl2.openid);
+      const nodes = [skyNode(this.ui.screen, village ? 0 : 0.6)];
+      nodes.push({
+        rect: rect(0, top, W, 90),
+        draw: (ctx2) => {
+          drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.danger, align: "center" });
+          drawText(ctx2, village ? "\u6240\u6709\u5973\u5DEB\u5361\u90FD\u5DF2\u7FFB\u5F00" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
+        }
+      });
+      const btnY = bottom - 12 - 48;
+      const listTop = top + 100;
+      const rowH = Math.min(52, (btnY - 10 - listTop) / Math.max(1, view.players.length));
+      view.players.forEach((p, i) => {
+        const r = rect(12, listTop + i * rowH, W - 24, rowH - 4);
+        nodes.push({
+          rect: r,
+          draw: (ctx2) => {
+            drawPanel(ctx2, r, { stroke: p.witchFaction ? C.danger : C.panelLine });
+            drawBadge(ctx2, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat);
+            drawText(ctx2, `${p.name}${i === mySeat ? "\uFF08\u4F60\uFF09" : ""}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
+            drawText(ctx2, `${p.witchFaction ? "\u5973\u5DEB\u9635\u8425" : "\u6751\u6C11\u9635\u8425"} \xB7 ${p.alive ? "\u5B58\u6D3B" : "\u51FA\u5C40"}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.danger : C.textDim });
+            const cw = 12;
+            const x0 = r.x + r.w - 10 - p.tryals.length * (cw + 3);
+            p.tryals.forEach((t, j) => drawTryalChip(ctx2, rect(x0 + j * (cw + 3), r.y + r.h / 2 - 8, cw, 16), t.kind, true));
+          }
+        });
+      });
+      nodes.push(button("result-home", rect(12, btnY, W - 24, 48), "\u56DE\u5230\u9996\u9875", () => ctl2.backHome()));
+      return nodes;
+    }
+  };
+
   // ../engine/src/cards.ts
   var isRed = (k) => k === "accusation" || k === "evidence" || k === "witness";
   var isBlack = (k) => k === "night" || k === "conspiracy";
@@ -1111,6 +1156,22 @@
       return acc && evi ? { kind: "alibi" } : null;
     }
     return null;
+  }
+  function nightSteps(p) {
+    const steps = [];
+    if (p.witch) steps.push("kill");
+    if (p.constable) steps.push("protect");
+    if (steps.length === 0) steps.push("suspect");
+    return steps;
+  }
+  function nightTargets(m, step) {
+    return m.view.players.filter((p) => p.alive && (step === "kill" || p.seat !== m.mySeat)).map((p) => p.seat);
+  }
+  function dawnTargets(m) {
+    return m.view.players.filter((p) => p.alive).map((p) => p.seat);
+  }
+  function unrevealedTryals(m) {
+    return m.priv ? m.priv.tryals.filter((t) => !t.revealed) : [];
   }
 
   // src/model/log.ts
@@ -1227,6 +1288,148 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  // src/scenes/choicePanels.ts
+  function choiceKey(m) {
+    return m.pending ? `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}` : "";
+  }
+  function seatGrid(m, area, prefix, seats, selected, marks, onPick) {
+    const cols = 4;
+    const gap = 6;
+    const w = (area.w - gap * (cols - 1)) / cols;
+    const h = 36;
+    const nodes = seats.map((seat, i) => {
+      var _a, _b;
+      const r = rect(area.x + i % cols * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
+      const p = m.view.players[seat];
+      const mark = (_b = (_a = marks[seat]) == null ? void 0 : _a.join("\u3001")) != null ? _b : "";
+      return {
+        id: `${prefix}:${seat}`,
+        rect: r,
+        onTap: onPick ? () => onPick(seat) : void 0,
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
+          drawBadge(ctx2, r.x + 13, r.y + h / 2, 9, p.name, seat);
+          drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? 12 : h / 2), { size: 12, maxWidth: r.w - 30 });
+          if (mark) drawText(ctx2, mark, r.x + 26, r.y + 26, { size: 9, color: C.gold, maxWidth: r.w - 30 });
+        }
+      };
+    });
+    return { nodes, height: Math.ceil(seats.length / cols) * (h + gap) };
+  }
+  function votesToMarks(m, votes) {
+    var _a;
+    const marks = {};
+    for (const [voter, target] of Object.entries(votes != null ? votes : {})) ((_a = marks[target]) != null ? _a : marks[target] = []).push(nameOf(m, Number(voter)));
+    return marks;
+  }
+  function tryalRow(area, items, prefix, selected, onPick) {
+    const n = items.length;
+    const gap = 8;
+    const w = Math.min(52, (area.w - gap * (n - 1)) / Math.max(1, n));
+    const h = Math.round(w * 1.3);
+    const x0 = area.x + (area.w - (n * w + (n - 1) * gap)) / 2;
+    const nodes = items.map((it, i) => {
+      const r = rect(x0 + i * (w + gap), area.y, w, h);
+      const sel = selected === it.id || selected === i;
+      return {
+        id: `${prefix}:${it.id}`,
+        rect: r,
+        onTap: () => onPick(it.id, i),
+        draw: (ctx2) => {
+          drawTryalChip(ctx2, r, it.kind, it.kind !== null);
+          if (sel) drawPanel(ctx2, rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6), { fill: C.transparent, stroke: C.gold, lineWidth: 2, radius: 4 });
+          if (it.kind) drawText(ctx2, TRYAL_NAME[it.kind], r.x + w / 2, r.y + h + 11, { size: 11, align: "center" });
+        }
+      };
+    });
+    return { nodes, height: h + (items.some((x) => x.kind) ? 20 : 4) };
+  }
+  function choicePanel(ui2, m, st, now, slide = 1) {
+    var _a;
+    const p = m.pending;
+    if (!p || p.kind === "turn") return [];
+    const key = choiceKey(m);
+    if (st.key !== key) {
+      st.key = key;
+      st.picked = null;
+      st.suspect = null;
+    }
+    const cd = formatCountdown(m.deadline, now);
+    const busy = ui2.ctl.busy;
+    const act = ui2.ctl.act.bind(ui2.ctl);
+    if (p.kind === "revealTryal") {
+      const title = p.reason === "trial" ? "\u4F60\u53D7\u5230\u5BA1\u5224\uFF1A\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361" : "\u4F20\u67D3\uFF1A\u4F60\u6301\u6709\u9ED1\u732B\uFF0C\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361";
+      const { nodes, body } = sheet(ui2.screen, 320, title, null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u968F\u673A\u7FFB\u5F00`);
+      const tryals = unrevealedTryals(m);
+      const row = tryalRow(body, tryals.map((t) => ({ id: t.id, kind: t.kind })), "tryal", st.picked, (id) => st.picked = id);
+      nodes.push(...row.nodes);
+      const picked = tryals.find((t) => t.id === st.picked);
+      let y = body.y + row.height + 8;
+      if ((picked == null ? void 0 : picked.kind) === "witch") {
+        nodes.push(textNode(rect(body.x, y, body.w, 20), "\u7FFB\u5F00\u5973\u5DEB\u5361\u4F1A\u7ACB\u5373\u6B7B\u4EA1", { size: 13, color: C.danger, align: "center" }));
+      }
+      y += 28;
+      nodes.push(button("confirm-reveal", rect(body.x, y, body.w, 44), "\u786E\u8BA4\u7FFB\u5F00", picked && !busy ? () => void act({ type: "revealTryal", tryalId: picked.id }) : null));
+      return nodes;
+    }
+    if (p.kind === "conspiracyPick") {
+      const from = m.view.players[p.from];
+      const { nodes, body } = sheet(ui2.screen, 300, `\u4F20\u67D3\uFF1A\u4ECE ${from.name} \u7684\u8EAB\u4EFD\u5361\u91CC\u76F2\u62BD\u4E00\u5F20`, null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u968F\u673A\u62BD\u53D6`);
+      const items = Array.from({ length: p.count }, (_, i) => ({ id: String(i), kind: null }));
+      const row = tryalRow(body, items, "pick", st.picked, (_id, i) => st.picked = i);
+      nodes.push(...row.nodes);
+      const idx = typeof st.picked === "number" ? st.picked : null;
+      nodes.push(button("confirm-pick", rect(body.x, body.y + row.height + 16, body.w, 44), "\u62FF\u8FD9\u5F20", idx !== null && !busy ? () => void act({ type: "conspiracyPick", index: idx }) : null));
+      return nodes;
+    }
+    if (p.kind === "dawnVote") {
+      const { nodes, body } = sheet(ui2.screen, 360, "\u7B2C\u4E00\u591C\uFF1A\u548C\u540C\u4F34\u4E00\u8D77\u9009\u62E9\u9ED1\u732B\u7684\u4E3B\u4EBA", null, slide, `\u540C\u4F34\u9009\u62E9\u4E00\u81F4\u540E\u751F\u6548 \xB7 \u5269\u4F59 ${cd}`);
+      const mine = m.mySeat !== null ? (_a = p.votes[m.mySeat]) != null ? _a : null : null;
+      const grid = seatGrid(m, body, "vote", dawnTargets(m), mine, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }));
+      nodes.push(...grid.nodes);
+      return nodes;
+    }
+    return nightPanel(ui2, m, p, st, cd, slide);
+  }
+  var STEP_TITLE = {
+    kill: "\u9009\u62E9\u51FB\u6740\u76EE\u6807\uFF08\u540C\u4F34\u987B\u4E00\u81F4\uFF09",
+    protect: "\u9009\u62E9\u4FDD\u62A4\u4E00\u540D\u73A9\u5BB6\uFF08\u4E0D\u80FD\u662F\u81EA\u5DF1\uFF09",
+    suspect: "\u9009\u62E9\u4F60\u6000\u7591\u7684\u4EBA"
+  };
+  function nightPanel(ui2, m, p, st, cd, slide) {
+    var _a, _b;
+    const busy = ui2.ctl.busy;
+    const act = ui2.ctl.act.bind(ui2.ctl);
+    const { nodes, body } = sheet(ui2.screen, ui2.screen.H - ui2.screen.top, "\u591C\u665A", null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u81EA\u52A8\u5904\u7406`);
+    let y = body.y;
+    for (const step of nightSteps(p)) {
+      nodes.push(textNode(rect(body.x, y, body.w, 20), STEP_TITLE[step], { size: 13, color: C.gold }));
+      y += 24;
+      const seats = nightTargets(m, step);
+      const area = rect(body.x, y, body.w, 0);
+      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_b = (_a = p.votes) == null ? void 0 : _a[m.mySeat]) != null ? _b : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat })) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat })) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat);
+      nodes.push(...grid.nodes);
+      y += grid.height + 8;
+    }
+    if (p.confessed) {
+      nodes.push(textNode(rect(body.x, y, body.w, 24), "\u81EA\u9996\uFF1A\u5DF2\u51B3\u5B9A\u3002\u7B49\u5F85\u5176\u4ED6\u73A9\u5BB6\u2026", { size: 13, color: C.textDim }));
+      return nodes;
+    }
+    nodes.push(textNode(rect(body.x, y, body.w, 20), "\u662F\u5426\u81EA\u9996\uFF1F\u81EA\u9996\u8981\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF0C\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740", { size: 13, color: C.gold }));
+    y += 26;
+    const tryals = unrevealedTryals(m);
+    const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), "confess", st.picked, (id) => st.picked = id);
+    nodes.push(...row.nodes);
+    y += row.height + 6;
+    const half = (body.w - 10) / 2;
+    const picked = typeof st.picked === "string" ? st.picked : null;
+    nodes.push(
+      button("no-confess", rect(body.x, y, half, 42), "\u4E0D\u81EA\u9996", busy ? null : () => void act({ type: "confess", tryalId: null }), "secondary"),
+      button("confirm-confess", rect(body.x + half + 10, y, half, 42), "\u81EA\u9996", picked && !busy ? () => void act({ type: "confess", tryalId: picked }) : null, "danger")
+    );
+    return nodes;
+  }
+
   // src/scenes/infoPanels.ts
   function countNames(names) {
     var _a;
@@ -1318,7 +1521,7 @@
   }
 
   // src/scenes/tableParts.ts
-  function tryalRow(ctx2, p, cx, y, h, flip) {
+  function tryalRow2(ctx2, p, cx, y, h, flip) {
     const n = p.tryals.length;
     const cw = Math.round(h * 0.75);
     const gap = 3;
@@ -1361,7 +1564,7 @@
       drawBadge(ctx2, cx, r.y + 17, 12, p.name, p.seat);
       drawText(ctx2, p.name, cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
       redBar(ctx2, p, r.x + 6, r.y + 47, r.w - 12);
-      tryalRow(ctx2, p, cx, r.y + 55, 11, o.flip);
+      tryalRow2(ctx2, p, cx, r.y + 55, 11, o.flip);
       if (r.h >= 80) {
         drawText(ctx2, `\u624B${p.handCount}`, r.x + 6, r.y + r.h - 9, { size: 10, color: C.textDim });
         drawText(ctx2, frontMarks(p), r.x + r.w - 6, r.y + r.h - 9, { size: 10, color: C.gold, align: "right", maxWidth: r.w - 34 });
@@ -1370,7 +1573,7 @@
       drawBadge(ctx2, r.x + 13, r.y + 13, 9, p.name, p.seat);
       drawText(ctx2, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - 30 });
       redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
-      tryalRow(ctx2, p, cx, r.y + 34, 10, o.flip);
+      tryalRow2(ctx2, p, cx, r.y + 34, 10, o.flip);
     }
     if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
     if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
@@ -1411,6 +1614,7 @@
       __publicField(this, "logOpen", false);
       __publicField(this, "logBox", new ScrollBox());
       __publicField(this, "layout", null);
+      __publicField(this, "choice", { key: "", picked: null, suspect: null });
     }
     build(now) {
       const ctl2 = this.ui.ctl;
@@ -1445,8 +1649,10 @@
         panelSlide: 1
       };
     }
-    /** 叠在最上层的面板；Task 8 在这里加入选择面板 */
-    panels(m, _now, _a) {
+    /** 叠在最上层的面板；需要做选择时优先显示选择面板 */
+    panels(m, now, a) {
+      const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+      if (choice.length) return choice;
       if (this.askOption) return this.optionSheet(m);
       if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => this.detail = null);
       if (this.mine) return myTryalsPanel(this.ui, m, () => this.mine = false);
@@ -1680,10 +1886,12 @@
       __publicField(this, "ui", ui2);
       __publicField(this, "home");
       __publicField(this, "lobby");
+      __publicField(this, "result");
       __publicField(this, "table", null);
       __publicField(this, "tableKey", "");
       this.home = new HomeScene(ui2);
       this.lobby = new LobbyScene(ui2);
+      this.result = new ResultScene(ui2);
     }
     build(now) {
       const ctl2 = this.ui.ctl;
@@ -1703,9 +1911,8 @@
       }
       return this.table.build(now);
     }
-    /** Task 8 替换为结算页 */
-    ended(_now) {
-      return this.message("\u6E38\u620F\u7ED3\u675F", "closed-home");
+    ended(now) {
+      return this.result.build(now);
     }
     message(text, id) {
       const { W, H } = this.ui.screen;

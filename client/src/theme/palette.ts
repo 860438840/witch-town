@@ -30,6 +30,7 @@ export const C = {
   buttonFill: 'rgba(0,0,0,0.25)',
   glowStrong: 'rgba(232,199,116,0.9)',
   lineDark: '#3b2d57',
+  transparent: 'rgba(0,0,0,0)',
 } as const;
 
 /** 夜色叠加层：alpha 通常取 0.55 * darkness */
