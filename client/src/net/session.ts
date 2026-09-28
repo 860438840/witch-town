@@ -39,6 +39,8 @@ export class RoomSession {
   private retryTimer: unknown = null;
   private pollTimer: unknown = null;
   private stopped = false;
+  /** 每个集合收到过几次推送；refresh 读取期间有新推送时丢掉读到的（可能更旧的）数据 */
+  private pushes = { rooms: 0, hands: 0 };
 
   constructor(
     private readonly db: DbLike,
@@ -64,13 +66,14 @@ export class RoomSession {
   }
 
   async refresh(): Promise<void> {
+    const before = { ...this.pushes };
     const [room, hand] = await Promise.all([
       this.getDoc<RoomDoc>('rooms', this.code),
       this.getDoc<HandDoc>('hands', `${this.code}_${this.openid}`),
     ]);
     if (this.stopped) return;
-    if (room !== undefined) this.room = room;
-    if (hand !== undefined) this.hand = hand;
+    if (room !== undefined && this.pushes.rooms === before.rooms) this.room = room;
+    if (hand !== undefined && this.pushes.hands === before.hands) this.hand = hand;
     this.onChange();
   }
 
@@ -97,6 +100,7 @@ export class RoomSession {
         .watch({
           onChange: (snap) => {
             if (gen !== this.gen) return;
+            this.pushes.rooms++;
             this.room = (snap.docs[0] as RoomDoc | undefined) ?? null;
             this.ok();
           },
@@ -108,6 +112,7 @@ export class RoomSession {
         .watch({
           onChange: (snap) => {
             if (gen !== this.gen) return;
+            this.pushes.hands++;
             this.hand = (snap.docs[0] as HandDoc | undefined) ?? null;
             this.ok();
           },

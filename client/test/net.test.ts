@@ -112,6 +112,41 @@ describe('RoomSession', () => {
     expect(session.room?.code).toBe('1234');
   });
 
+  describe('读取返回前收到了更新的推送', () => {
+    const handDoc = (n: number) => ({ _openid: 'u0', roomId: '1234', gameId: `1234-${n}`, view: null });
+
+    it('rooms：不用读取到的旧数据覆盖推送；hands 照常更新', async () => {
+      const { db, session } = setup();
+      session.start();
+      await flush();
+      db.docs.set('hands/1234_u0', handDoc(1));
+      db.holdGets = true;
+      const p = session.refresh();
+      await flush();
+      db.push('rooms', lobbyRoom(3));
+      db.releaseGets();
+      await p;
+      expect(session.room?.seats).toHaveLength(3);
+      expect(session.hand?.gameId).toBe('1234-1');
+    });
+
+    it('hands：不用读取到的旧数据覆盖推送；rooms 照常更新', async () => {
+      const { db, session } = setup();
+      session.start();
+      await flush();
+      db.docs.set('rooms/1234', lobbyRoom(4));
+      db.docs.set('hands/1234_u0', handDoc(1));
+      db.holdGets = true;
+      const p = session.refresh();
+      await flush();
+      db.push('hands', handDoc(2));
+      db.releaseGets();
+      await p;
+      expect(session.hand?.gameId).toBe('1234-2');
+      expect(session.room?.seats).toHaveLength(4);
+    });
+  });
+
   it('stop 关闭监听并清掉计时器', async () => {
     const { db, timers, session } = setup();
     session.start();

@@ -70,6 +70,9 @@ export class FakeDb implements DbLike {
   docs = new Map<string, unknown>();
   getCalls = 0;
   failGets = false;
+  /** 为 true 时 get 在调用时取好数据，但要等 releaseGets() 才返回 */
+  holdGets = false;
+  private held: (() => void)[] = [];
   private watchers: { coll: string; opts: WatchOpts; closed: boolean }[] = [];
 
   collection(coll: string) {
@@ -79,6 +82,7 @@ export class FakeDb implements DbLike {
           this.getCalls++;
           if (this.failGets) throw new Error('network error');
           const d = this.docs.get(`${coll}/${id}`);
+          if (this.holdGets) await new Promise<void>((r) => this.held.push(r));
           if (d === undefined) throw new Error(`document.get:fail document with _id ${id} does not exist`);
           return { data: d };
         },
@@ -96,6 +100,12 @@ export class FakeDb implements DbLike {
         w.closed = true;
       },
     };
+  }
+
+  releaseGets(): void {
+    const held = this.held;
+    this.held = [];
+    for (const r of held) r();
   }
 
   live(coll: string): number {
