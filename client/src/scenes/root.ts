@@ -4,12 +4,15 @@ import type { Node } from '../core/node';
 import { C } from '../theme/palette';
 import { HomeScene } from './home';
 import { LobbyScene } from './lobby';
+import { TableScene } from './table';
 import type { Ui } from './ui';
 import { button, skyNode, textNode } from './widgets';
 
 export class RootScene implements Scene {
   private readonly home: HomeScene;
   private readonly lobby: LobbyScene;
+  private table: TableScene | null = null;
+  private tableKey = '';
 
   constructor(private readonly ui: Ui) {
     this.home = new HomeScene(ui);
@@ -26,9 +29,14 @@ export class RootScene implements Scene {
     return this.playing(now);
   }
 
-  /** Task 7 替换为游戏桌 */
-  private playing(_now: number): Node[] {
-    return this.message('游戏进行中（界面开发中）', 'loading-home');
+  private playing(now: number): Node[] {
+    const room = this.ui.ctl.room!;
+    const key = `${room.code}:${room.gameId}`;
+    if (!this.table || key !== this.tableKey) {
+      this.table = new TableScene(this.ui);
+      this.tableKey = key;
+    }
+    return this.table.build(now);
   }
 
   /** Task 8 替换为结算页 */

@@ -2,6 +2,8 @@
 "use strict";
 (() => {
   var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
@@ -17,6 +19,7 @@
       }
     return a;
   };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
   // src/core/geom.ts
@@ -599,10 +602,17 @@
     chipRevealedLine: "rgba(255,255,255,0.4)",
     buttonDangerFill: "rgba(192,57,77,0.25)",
     buttonFill: "rgba(0,0,0,0.25)",
-    glowStrong: "rgba(232,199,116,0.9)"
+    glowStrong: "rgba(232,199,116,0.9)",
+    lineDark: "#3b2d57"
   };
   var nightShade = (alpha) => `rgba(4,2,10,${alpha})`;
   var goldGlow = (alpha) => `rgba(232,199,116,${alpha})`;
+  var CARD_GRADIENT = {
+    red: ["#7a1428", "#4a0a18"],
+    blue: ["#233d6e", "#142546"],
+    green: ["#265a45", "#143528"],
+    black: ["#2b2b2b", "#0e0e0e"]
+  };
   var BADGE_COLORS = [
     "#8e3b5a",
     "#3b6e8e",
@@ -638,6 +648,8 @@
     night: { name: "\u591C\u665A", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u591C\u665A\u964D\u4E34" },
     conspiracy: { name: "\u4F20\u67D3", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u6BCF\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u5904\u76F2\u62BD\u4E00\u5F20\u8EAB\u4EFD\u5361" }
   };
+  var TRYAL_NAME = { witch: "\u5973\u5DEB", constable: "\u8B66\u957F", villager: "\u6751\u6C11" };
+  var TRYAL_SHORT = { witch: "\u5DEB", constable: "\u8B66", villager: "\u6C11" };
 
   // src/model/rules.ts
   var cardsOf = (color) => Object.values(CARD_INFO).filter((c) => c.color === color).map((c) => `${c.name}\uFF1A${c.desc}`);
@@ -795,6 +807,44 @@
     ctx2.strokeStyle = C.badgeRing;
     ctx2.stroke();
     drawText(ctx2, (_a = [...name][0]) != null ? _a : "?", cx, cy + 1, { size: Math.round(radius * 1.05), bold: true, color: C.badgeText, align: "center" });
+  }
+  function drawCardFace(ctx2, r, kind, o = {}) {
+    const info = CARD_INFO[kind];
+    const [a, b] = CARD_GRADIENT[info.color];
+    const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+    g.addColorStop(0, a);
+    g.addColorStop(1, b);
+    if (o.dim) ctx2.globalAlpha = 0.55;
+    roundRect(ctx2, r, 7);
+    if (o.selected) {
+      ctx2.shadowColor = C.glowStrong;
+      ctx2.shadowBlur = 14;
+    }
+    ctx2.fillStyle = g;
+    ctx2.fill();
+    ctx2.shadowBlur = 0;
+    ctx2.lineWidth = o.selected ? 2 : 1;
+    ctx2.strokeStyle = C.goldLine;
+    ctx2.stroke();
+    drawText(ctx2, info.name, r.x + r.w / 2, r.y + 16, { size: 14, bold: true, color: C.cardText, align: "center" });
+    ctx2.font = font(9);
+    const lines = wrapText(info.desc, r.w - 8, (s) => ctx2.measureText(s).width).slice(0, 4);
+    lines.forEach((line, i) => drawText(ctx2, line, r.x + r.w / 2, r.y + 34 + i * 12, { size: 9, color: C.cardText, align: "center" }));
+    ctx2.globalAlpha = 1;
+  }
+  function drawTryalChip(ctx2, r, kind, revealed, scaleX = 1) {
+    const w = r.w * Math.max(0.05, scaleX);
+    const x = r.x + (r.w - w) / 2;
+    const fill = !revealed || !kind ? C.tryalHidden : kind === "witch" ? C.witch : kind === "constable" ? C.constable : C.villager;
+    roundRect(ctx2, { x, y: r.y, w, h: r.h }, 2);
+    ctx2.fillStyle = fill;
+    ctx2.fill();
+    ctx2.lineWidth = 1;
+    ctx2.strokeStyle = revealed ? C.chipRevealedLine : C.goldDark;
+    ctx2.stroke();
+    if (revealed && kind && scaleX > 0.6) {
+      drawText(ctx2, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: C.badgeText, align: "center" });
+    }
   }
 
   // src/scenes/widgets.ts
@@ -1014,12 +1064,624 @@
     }
   };
 
+  // ../engine/src/cards.ts
+  var isRed = (k) => k === "accusation" || k === "evidence" || k === "witness";
+  var isBlack = (k) => k === "night" || k === "conspiracy";
+
+  // ../engine/src/play.ts
+  function targetCount(kind) {
+    return kind === "scapegoat" || kind === "robbery" ? 2 : 1;
+  }
+
+  // src/model/actions.ts
+  var ALIBI_CHOICES = [
+    { value: "accusation", label: "\u4E22\u5F03\u6700\u591A 3 \u5F20\u6307\u63A7" },
+    { value: "evidence", label: "\u4E22\u5F03 1 \u5F20\u8BC1\u636E" }
+  ];
+  function playableCardIds(m) {
+    var _a;
+    if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn" || !m.priv) return [];
+    return m.priv.hand.filter((c) => !isBlack(c.kind)).map((c) => c.id);
+  }
+  function cardKindOf(m, id) {
+    var _a, _b, _c;
+    return (_c = (_b = (_a = m.priv) == null ? void 0 : _a.hand.find((c) => c.id === id)) == null ? void 0 : _b.kind) != null ? _c : null;
+  }
+  function targetOptions(m, kind, chosen) {
+    const out = [];
+    for (const p of m.view.players) {
+      if (!p.alive || chosen.includes(p.seat)) continue;
+      if (chosen.length === 0) {
+        if (isRed(kind) && (p.seat === m.mySeat || p.blue.some((c) => c.kind === "piety"))) continue;
+        if (kind === "matchmaker" && p.blue.some((c) => c.kind === "matchmaker")) continue;
+        if (kind === "stocks" && p.green.some((c) => c.kind === "stocks")) continue;
+        if (kind === "curse" && p.blue.length === 0) continue;
+      }
+      out.push(p.seat);
+    }
+    return out;
+  }
+  function optionNeed(m, kind, target) {
+    const p = m.view.players[target];
+    if (!p) return null;
+    if (kind === "curse") return { kind: "curse", cards: p.blue };
+    if (kind === "alibi") {
+      const acc = p.red.some((c) => c.kind === "accusation");
+      const evi = p.red.some((c) => c.kind === "evidence");
+      return acc && evi ? { kind: "alibi" } : null;
+    }
+    return null;
+  }
+
+  // src/model/log.ts
+  var REVEAL_CAUSE = { trial: "\u5BA1\u5224", cat: "\u9ED1\u732B", confess: "\u81EA\u9996", death: "\u6B7B\u4EA1" };
+  var DEATH_CAUSE = {
+    night: "\u591C\u91CC\u88AB\u5973\u5DEB\u6740\u6B7B",
+    witchRevealed: "\u7FFB\u51FA\u4E86\u5973\u5DEB\u5361",
+    allRevealed: "\u8EAB\u4EFD\u5361\u5168\u90E8\u7FFB\u5F00",
+    lover: "\u60C5\u4FA3\u6B89\u60C5"
+  };
+  function describeEvent(e, name) {
+    switch (e.t) {
+      case "gameStart":
+        return `\u6E38\u620F\u5F00\u59CB\uFF0C\u5171 ${e.players} \u4EBA`;
+      case "catPlaced":
+        return `\u5973\u5DEB\u628A\u9ED1\u732B\u653E\u5728\u4E86 ${name(e.target)} \u9762\u524D`;
+      case "turn":
+        return `\u8F6E\u5230 ${name(e.seat)}`;
+      case "skipped":
+        return `${name(e.seat)} \u88AB\u62D8\u7559\uFF0C\u8DF3\u8FC7\u8FD9\u4E00\u56DE\u5408`;
+      case "draw":
+        return `${name(e.seat)} \u62BD\u4E86 1 \u5F20\u724C`;
+      case "blackDrawn":
+        return `${name(e.seat)} \u62BD\u5230\u4E86\u300C${CARD_INFO[e.kind].name}\u300D`;
+      case "play": {
+        const card = CARD_INFO[e.kind].name;
+        if (e.targets.length === 2) return `${name(e.seat)} \u6253\u51FA\u300C${card}\u300D\uFF1A${name(e.targets[0])} \u2192 ${name(e.targets[1])}`;
+        if (e.targets[0] === e.seat) return `${name(e.seat)} \u7ED9\u81EA\u5DF1\u6253\u51FA\u300C${card}\u300D`;
+        return `${name(e.seat)} \u5BF9 ${name(e.targets[0])} \u6253\u51FA\u300C${card}\u300D`;
+      }
+      case "trial":
+        return `${name(e.target)} \u53D7\u5230\u5BA1\u5224\uFF08\u53D1\u8D77\u8005\uFF1A${name(e.initiator)}\uFF09`;
+      case "reveal":
+        return `${name(e.seat)} \u56E0${REVEAL_CAUSE[e.cause]}\u7FFB\u5F00\u4E86\u300C${TRYAL_NAME[e.kind]}\u300D`;
+      case "death":
+        return `${name(e.seat)} \u6B7B\u4EA1\uFF1A${DEATH_CAUSE[e.cause]}`;
+      case "conspiracyDone":
+        return "\u4F20\u67D3\u7ED3\u675F\uFF0C\u6BCF\u4E2A\u4EBA\u90FD\u62FF\u5230\u4E86\u4E00\u5F20\u65B0\u7684\u8EAB\u4EFD\u5361";
+      case "nightResult":
+        return e.died ? `\u591C\u91CC\uFF0C${name(e.target)} \u906D\u5230\u5973\u5DEB\u88AD\u51FB\u8EAB\u4EA1` : `\u591C\u91CC\uFF0C\u5973\u5DEB\u88AD\u51FB\u4E86 ${name(e.target)}\uFF0C\u4F46 TA \u6D3B\u4E86\u4E0B\u6765`;
+      case "reshuffle":
+        return "\u5F03\u724C\u5806\u6D17\u56DE\u4E86\u724C\u5806";
+      case "gameEnd":
+        return e.winner === "village" ? "\u6751\u6C11\u80DC\u5229\uFF01" : "\u5973\u5DEB\u80DC\u5229\uFF01";
+    }
+  }
+  function visibleEvents(view) {
+    return view.log.filter((e) => !(e.t === "reveal" && e.cause === "death"));
+  }
+  function logLines(view) {
+    const name = (seat) => {
+      var _a, _b;
+      return (_b = (_a = view.players[seat]) == null ? void 0 : _a.name) != null ? _b : `\u5EA7\u4F4D ${seat + 1}`;
+    };
+    return visibleEvents(view).map((e) => describeEvent(e, name));
+  }
+
+  // src/model/table.ts
+  function currentHand(room, hand) {
+    if (!hand || !room.gameId || hand.gameId !== room.gameId || hand.roomId !== room.code) return null;
+    return hand;
+  }
+  function buildTable(room, hand, openid) {
+    var _a;
+    const view = room.view;
+    if (!view) return null;
+    const idx = room.seats.findIndex((s) => s.openid === openid);
+    const mySeat = idx >= 0 && idx < view.players.length ? idx : null;
+    const n = view.players.length;
+    const others = mySeat === null ? view.players : Array.from({ length: n - 1 }, (_, k) => view.players[(mySeat + 1 + k) % n]);
+    const h = currentHand(room, hand);
+    const priv = h && mySeat !== null && h.view.seat === mySeat ? h.view : null;
+    const me = mySeat === null ? null : view.players[mySeat];
+    return {
+      code: room.code,
+      view,
+      mySeat,
+      me,
+      priv,
+      others,
+      turnSeat: view.turn,
+      isMyTurn: view.phase.kind === "day" && view.turn === mySeat && !!(me == null ? void 0 : me.alive),
+      pending: (_a = priv == null ? void 0 : priv.pending) != null ? _a : null,
+      deadline: room.deadline,
+      winner: view.phase.kind === "ended" ? view.phase.winner : null
+    };
+  }
+  function nameOf(m, seat) {
+    var _a, _b;
+    return seat === m.mySeat ? "\u4F60" : (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.name) != null ? _b : "";
+  }
+  function phaseTitle(m) {
+    const ph = m.view.phase;
+    switch (ph.kind) {
+      case "dawn":
+        return "\u7B2C\u4E00\u591C\uFF1A\u5973\u5DEB\u653E\u7F6E\u9ED1\u732B";
+      case "day":
+        return m.isMyTurn ? "\u4F60\u7684\u56DE\u5408" : `${m.view.players[m.turnSeat].name} \u7684\u56DE\u5408`;
+      case "trialReveal":
+        return `\u5BA1\u5224\uFF1A${nameOf(m, ph.target)} \u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "catReveal":
+        return `\u4F20\u67D3\uFF1A${nameOf(m, ph.holder)} \u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "conspiracyPick":
+        return "\u4F20\u67D3\uFF1A\u5927\u5BB6\u76F2\u62BD\u8EAB\u4EFD\u5361";
+      case "night":
+        return "\u591C\u665A";
+      case "ended":
+        return ph.winner === "village" ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229";
+    }
+  }
+  function formatCountdown(deadline, now) {
+    if (deadline === null) return "";
+    const s = Math.max(0, Math.ceil((deadline - now) / 1e3));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  // src/scenes/infoPanels.ts
+  function countNames(names) {
+    var _a;
+    const counts = /* @__PURE__ */ new Map();
+    for (const n of names) counts.set(n, ((_a = counts.get(n)) != null ? _a : 0) + 1);
+    return [...counts].map(([n, k]) => k > 1 ? `${n}\xD7${k}` : n).join("\u3001");
+  }
+  function detailPanel(ui2, m, seat, close) {
+    const p = m.view.players[seat];
+    const { nodes, body } = sheet(ui2.screen, 330, `${p.name}${seat === m.mySeat ? "\uFF08\u4F60\uFF09" : ""}${p.alive ? "" : "\uFF08\u5DF2\u51FA\u5C40\uFF09"}`, close);
+    const revealed = p.tryals.filter((t) => t.revealed && t.kind).map((t) => TRYAL_NAME[t.kind]);
+    const reds = countNames(p.red.map((c) => CARD_INFO[c.kind].name));
+    const lines = [
+      ...p.character ? [`\u89D2\u8272\uFF1A${p.character}`] : [],
+      `\u6307\u63A7\uFF1A${p.redTotal} / ${p.threshold}${reds ? `\uFF08${reds}\uFF09` : ""}`,
+      `\u84DD\u5361\uFF1A${p.blue.length ? countNames(p.blue.map((c) => CARD_INFO[c.kind].name)) : "\u65E0"}`,
+      ...p.green.length ? [`\u9762\u524D\uFF1A${countNames(p.green.map((c) => CARD_INFO[c.kind].name))}`] : [],
+      `\u624B\u724C\uFF1A${p.handCount} \u5F20`,
+      `\u8EAB\u4EFD\u5361\uFF1A${p.tryals.length - revealed.length} \u5F20\u672A\u7FFB\u5F00${revealed.length ? `\uFF1B\u5DF2\u7FFB\u5F00 ${revealed.join("\u3001")}` : ""}`
+    ];
+    nodes.push({
+      id: "detail-body",
+      rect: body,
+      draw: (ctx2) => lines.forEach((t, i) => drawText(ctx2, t, body.x, body.y + 12 + i * 28, { size: 14, maxWidth: body.w }))
+    });
+    return nodes;
+  }
+  function myTryalsPanel(ui2, m, close) {
+    const { nodes, body } = sheet(ui2.screen, 320, "\u6211\u7684\u8EAB\u4EFD\u5361", close, 1, "\u53EA\u6709\u4F60\u81EA\u5DF1\u80FD\u770B\u5230");
+    const priv = m.priv;
+    if (!priv) return nodes;
+    const n = priv.tryals.length;
+    const w = Math.min(56, (body.w - 8 * (n - 1)) / Math.max(1, n));
+    const h = Math.round(w * 1.35);
+    const x0 = body.x + (body.w - (n * w + (n - 1) * 8)) / 2;
+    const partners = priv.witchPartners.map((s) => nameOf(m, s)).join("\u3001");
+    const lines = [
+      priv.witchFaction ? `\u4F60\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\u3002\u540C\u4F34\uFF1A${partners || "\u6CA1\u6709"}` : "\u4F60\u5C5E\u4E8E\u6751\u6C11\u9635\u8425\u3002",
+      ...priv.isConstable ? ["\u4F60\u6301\u6709\u8B66\u957F\u5361\uFF1A\u591C\u665A\u53EF\u4EE5\u4FDD\u62A4\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6\u3002"] : []
+    ];
+    nodes.push({
+      id: "my-tryals",
+      rect: body,
+      draw: (ctx2) => {
+        priv.tryals.forEach((t, i) => {
+          const r = rect(x0 + i * (w + 8), body.y + 6, w, h);
+          drawTryalChip(ctx2, r, t.kind, true);
+          drawText(ctx2, `${TRYAL_NAME[t.kind]}${t.revealed ? "\xB7\u5DF2\u7FFB\u5F00" : ""}`, r.x + w / 2, r.y + h + 12, { size: 11, align: "center", color: t.revealed ? C.textMuted : C.text });
+        });
+        lines.forEach((t, i) => drawText(ctx2, t, body.x, body.y + h + 44 + i * 24, { size: 13, color: C.gold, maxWidth: body.w }));
+      }
+    });
+    return nodes;
+  }
+  function logPanel(ui2, m, box, close) {
+    const { nodes, body } = sheet(ui2.screen, ui2.screen.H * 0.8, "\u4E8B\u4EF6\u8BB0\u5F55", close, 1, "\u6700\u65B0\u7684\u5728\u6700\u4E0A\u9762");
+    const lines = logLines(m.view).reverse().map((text, i) => ({ text, size: 13, color: i === 0 ? C.text : C.textDim, gap: 2 }));
+    nodes.push(box.node("log-list", body, lines));
+    return nodes;
+  }
+
+  // src/scenes/tableLayout.ts
+  var PAD = 12;
+  var COLS = 4;
+  var GAP = 6;
+  function tableLayout(screen2, others) {
+    const W = screen2.W;
+    const small = screen2.bottom - screen2.top < 560;
+    const top = rect(PAD, screen2.top, W - 2 * PAD, 32);
+    const btnH = small ? 40 : 44;
+    const buttons = rect(PAD, screen2.bottom - 10 - btnH, W - 2 * PAD, btnH);
+    const handH = small ? 76 : 96;
+    const hand = rect(PAD, buttons.y - 6 - handH, W - 2 * PAD, handH);
+    const info = rect(PAD, hand.y - 20, W - 2 * PAD, 18);
+    const meH = small ? 34 : 40;
+    const me = rect(PAD, info.y - 4 - meH, W - 2 * PAD, meH);
+    const logH = small ? 40 : 58;
+    const log = rect(PAD, me.y - 6 - logH, W - 2 * PAD, logH);
+    const gridTop = top.y + top.h + 6;
+    const rows = Math.max(1, Math.ceil(others / COLS));
+    const avail = log.y - 6 - gridTop;
+    const cellH = Math.max(48, Math.min(88, (avail - GAP * (rows - 1)) / rows));
+    const cellW = (W - 2 * PAD - GAP * (COLS - 1)) / COLS;
+    const grid = Array.from(
+      { length: others },
+      (_, i) => rect(PAD + i % COLS * (cellW + GAP), gridTop + Math.floor(i / COLS) * (cellH + GAP), cellW, cellH)
+    );
+    return { top, grid, cellH, log, me, info, hand, buttons };
+  }
+
+  // src/scenes/tableParts.ts
+  function tryalRow(ctx2, p, cx, y, h, flip) {
+    const n = p.tryals.length;
+    const cw = Math.round(h * 0.75);
+    const gap = 3;
+    const x0 = cx - (n * cw + (n - 1) * gap) / 2;
+    p.tryals.forEach((t, i) => {
+      const r = { x: x0 + i * (cw + gap), y, w: cw, h };
+      if (flip && flip.index === i && flip.p < 1) {
+        if (flip.p < 0.5) drawTryalChip(ctx2, r, null, false, 1 - flip.p * 2);
+        else drawTryalChip(ctx2, r, t.kind, true, flip.p * 2 - 1);
+      } else {
+        drawTryalChip(ctx2, r, t.kind, t.revealed);
+      }
+    });
+  }
+  function redBar(ctx2, p, x, y, w) {
+    const bar = { x, y, w, h: 4 };
+    roundRect(ctx2, bar, 2);
+    ctx2.fillStyle = C.lineDark;
+    ctx2.fill();
+    const ratio = Math.min(1, p.redTotal / Math.max(1, p.threshold));
+    if (ratio > 0) {
+      roundRect(ctx2, __spreadProps(__spreadValues({}, bar), { w: w * ratio }), 2);
+      ctx2.fillStyle = C.danger;
+      ctx2.fill();
+    }
+  }
+  function frontMarks(p) {
+    return [...p.blue, ...p.green].map((c) => CARD_INFO[c.kind].name[0]).join("");
+  }
+  function drawCell(ctx2, r, p, o) {
+    ctx2.globalAlpha = o.alpha;
+    drawPanel(ctx2, r, {
+      fill: o.targetable ? goldGlow(0.14) : C.panel,
+      stroke: o.turn || o.targetable || o.order ? C.gold : C.panelLine,
+      glow: o.turn ? o.glow : 0,
+      lineWidth: o.order ? 2 : 1
+    });
+    const cx = r.x + r.w / 2;
+    if (r.h >= 70) {
+      drawBadge(ctx2, cx, r.y + 17, 12, p.name, p.seat);
+      drawText(ctx2, p.name, cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
+      redBar(ctx2, p, r.x + 6, r.y + 47, r.w - 12);
+      tryalRow(ctx2, p, cx, r.y + 55, 11, o.flip);
+      if (r.h >= 80) {
+        drawText(ctx2, `\u624B${p.handCount}`, r.x + 6, r.y + r.h - 9, { size: 10, color: C.textDim });
+        drawText(ctx2, frontMarks(p), r.x + r.w - 6, r.y + r.h - 9, { size: 10, color: C.gold, align: "right", maxWidth: r.w - 34 });
+      }
+    } else {
+      drawBadge(ctx2, r.x + 13, r.y + 13, 9, p.name, p.seat);
+      drawText(ctx2, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - 30 });
+      redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
+      tryalRow(ctx2, p, cx, r.y + 34, 10, o.flip);
+    }
+    if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
+    if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
+    ctx2.globalAlpha = 1;
+  }
+  function drawMeBar(ctx2, r, m, o) {
+    drawPanel(ctx2, r, {
+      fill: o.targetable ? goldGlow(0.14) : C.panel,
+      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : C.panelLine,
+      glow: m.isMyTurn ? o.glow : 0,
+      lineWidth: o.order ? 2 : 1
+    });
+    const me = m.me;
+    const cy = r.y + r.h / 2;
+    if (!me) {
+      drawText(ctx2, "\u4F60\u5728\u89C2\u6218", r.x + 12, cy, { size: 13, color: C.textDim });
+      return;
+    }
+    drawBadge(ctx2, r.x + 20, cy, Math.min(13, r.h / 2 - 3), me.name, me.seat);
+    const status = me.alive ? `\u6307\u63A7 ${me.redTotal}/${me.threshold} \xB7 \u624B\u724C ${me.handCount}` : "\u4F60\u5DF2\u51FA\u5C40";
+    drawText(ctx2, `\u4F60\uFF08${me.name}\uFF09  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
+    drawText(ctx2, "\u6211\u7684\u8EAB\u4EFD\u5361 \u203A", r.x + r.w - 10, cy, { size: 12, color: C.gold, align: "right" });
+    if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 96, cy, { size: 12, bold: true, color: C.gold, align: "center" });
+  }
+
+  // src/scenes/table.ts
+  var TWO_TARGET_HINT = ["\u5148\u9009\u88AB\u62FF\u8D70\u7684\u4EBA", "\u518D\u9009\u63A5\u6536\u7684\u4EBA"];
+  var TableScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+      __publicField(this, "sel", null);
+      __publicField(this, "targets", []);
+      __publicField(this, "option");
+      __publicField(this, "askOption", false);
+      __publicField(this, "peek", null);
+      __publicField(this, "detail", null);
+      __publicField(this, "mine", false);
+      __publicField(this, "logOpen", false);
+      __publicField(this, "logBox", new ScrollBox());
+      __publicField(this, "layout", null);
+    }
+    build(now) {
+      const ctl2 = this.ui.ctl;
+      const room = ctl2.room;
+      if (!room || !ctl2.openid) return [];
+      const m = buildTable(room, ctl2.hand, ctl2.openid);
+      if (!m) return [];
+      this.sync(m);
+      const L = tableLayout(this.ui.screen, m.others.length);
+      this.layout = L;
+      const a = this.anim(m, now);
+      const nodes = [skyNode(this.ui.screen, a.darkness)];
+      nodes.push(this.topBar(m, L.top, now));
+      m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
+      nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
+      nodes.push(...this.handNodes(m, L.hand, a), ...this.buttonNodes(m, L.buttons));
+      nodes.push(...a.overlay);
+      nodes.push(...this.panels(m, now, a));
+      return nodes;
+    }
+    /** 动效钩子（Task 9 覆盖为真正的动画） */
+    anim(m, _now) {
+      return {
+        darkness: m.view.phase.kind === "night" ? 1 : 0,
+        glow: 0.6,
+        cell: (seat) => {
+          var _a;
+          return { alpha: ((_a = m.view.players[seat]) == null ? void 0 : _a.alive) ? 1 : 0.4, flip: null };
+        },
+        cardIn: () => 1,
+        overlay: [],
+        panelSlide: 1
+      };
+    }
+    /** 叠在最上层的面板；Task 8 在这里加入选择面板 */
+    panels(m, _now, _a) {
+      if (this.askOption) return this.optionSheet(m);
+      if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => this.detail = null);
+      if (this.mine) return myTryalsPanel(this.ui, m, () => this.mine = false);
+      if (this.logOpen) return logPanel(this.ui, m, this.logBox, () => this.logOpen = false);
+      return [];
+    }
+    /** 某个座位在画面上的位置（我自己是信息栏）；给出牌飞行动画用 */
+    seatRect(m, seat) {
+      const L = this.layout;
+      if (!L) return null;
+      if (seat === m.mySeat) return L.me;
+      const i = m.others.findIndex((p) => p.seat === seat);
+      return i >= 0 ? L.grid[i] : null;
+    }
+    sync(m) {
+      var _a;
+      if (this.sel && !playableCardIds(m).includes(this.sel)) this.clearSel();
+      if (this.peek && !((_a = m.priv) == null ? void 0 : _a.hand.some((c) => c.id === this.peek))) this.peek = null;
+    }
+    clearSel() {
+      this.sel = null;
+      this.targets = [];
+      this.option = void 0;
+      this.askOption = false;
+    }
+    selKind(m) {
+      return this.sel ? cardKindOf(m, this.sel) : null;
+    }
+    topBar(m, r, now) {
+      return {
+        rect: r,
+        draw: (ctx2) => {
+          const cy = r.y + r.h / 2;
+          drawText(ctx2, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
+          const cd = formatCountdown(m.deadline, now);
+          if (cd) drawText(ctx2, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: "center" });
+          drawText(ctx2, `\u724C\u5806 ${m.view.deckCount} \xB7 \u5F03 ${m.view.discardCount}`, r.x + r.w, cy, { size: 11, color: C.textDim, align: "right" });
+        }
+      };
+    }
+    cell(m, seat, r, a) {
+      const p = m.view.players[seat];
+      const kind = this.selKind(m);
+      const targetable = !!kind && targetOptions(m, kind, this.targets).includes(seat);
+      const turn = m.view.phase.kind === "day" && m.turnSeat === seat;
+      const opts = __spreadValues({ turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1 }, a.cell(seat));
+      return { id: `seat:${seat}`, rect: r, onTap: () => this.tapSeat(m, seat), draw: (ctx2) => drawCell(ctx2, r, p, opts) };
+    }
+    tapSeat(m, seat) {
+      const kind = this.selKind(m);
+      if (!kind) {
+        this.detail = seat;
+        return;
+      }
+      if (this.targets.includes(seat)) {
+        this.targets = this.targets.filter((t) => t !== seat);
+        this.option = void 0;
+        return;
+      }
+      const need = targetCount(kind);
+      if (this.targets.length >= need || !targetOptions(m, kind, this.targets).includes(seat)) return;
+      this.targets = [...this.targets, seat];
+      if (this.targets.length === need) this.resolveOption(m, kind);
+    }
+    resolveOption(m, kind) {
+      const need = optionNeed(m, kind, this.targets[0]);
+      if (!need) return;
+      if (need.kind === "curse" && need.cards.length === 1) {
+        this.option = need.cards[0].id;
+        return;
+      }
+      this.askOption = true;
+    }
+    ready(m) {
+      const kind = this.selKind(m);
+      if (!kind || this.targets.length !== targetCount(kind)) return false;
+      return !optionNeed(m, kind, this.targets[0]) || this.option !== void 0;
+    }
+    confirmPlay() {
+      if (!this.sel) return;
+      const action = __spreadValues({
+        type: "play",
+        cardId: this.sel,
+        targets: this.targets
+      }, this.option !== void 0 ? { option: this.option } : {});
+      this.clearSel();
+      void this.ui.ctl.act(action);
+    }
+    logNode(m, r) {
+      const count = r.h >= 54 ? 3 : 2;
+      const lines = logLines(m.view).slice(-count);
+      return {
+        id: "log",
+        rect: r,
+        onTap: () => {
+          this.logOpen = true;
+          this.logBox.reset();
+        },
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: C.logBg, stroke: C.lineDark });
+          const lh = (r.h - 8) / count;
+          lines.forEach(
+            (t, i) => drawText(ctx2, t, r.x + 8, r.y + 4 + lh * (i + 0.5), { size: 11, color: i === lines.length - 1 ? C.text : C.textDim, maxWidth: r.w - 16 })
+          );
+        }
+      };
+    }
+    meNode(m, r, a) {
+      const kind = this.selKind(m);
+      const me = m.mySeat;
+      const targetable = me !== null && !!kind && targetOptions(m, kind, this.targets).includes(me);
+      const order = me === null ? 0 : this.targets.indexOf(me) + 1;
+      return {
+        id: "me",
+        rect: r,
+        onTap: () => {
+          if (kind && me !== null) this.tapSeat(m, me);
+          else if (!kind && m.priv) this.mine = true;
+        },
+        draw: (ctx2) => drawMeBar(ctx2, r, m, { targetable, order, glow: a.glow })
+      };
+    }
+    infoText(m) {
+      var _a;
+      const kind = this.selKind(m);
+      if (kind) {
+        const name = CARD_INFO[kind].name;
+        const need = targetCount(kind);
+        if (this.targets.length < need) return need === 2 ? `\u300C${name}\u300D\uFF1A${TWO_TARGET_HINT[this.targets.length]}` : `\u300C${name}\u300D\uFF1A\u9009\u62E9\u76EE\u6807`;
+        return this.ready(m) ? `\u300C${name}\u300D\uFF1A\u70B9\u300C\u786E\u8BA4\u51FA\u724C\u300D` : `\u300C${name}\u300D\uFF1A\u8BF7\u9009\u62E9\u9009\u9879`;
+      }
+      if (this.peek) {
+        const k = cardKindOf(m, this.peek);
+        if (k) return `${CARD_INFO[k].name}\uFF1A${CARD_INFO[k].desc}`;
+      }
+      if (m.me && !m.me.alive) return "\u4F60\u5DF2\u51FA\u5C40\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u89C2\u770B";
+      if (((_a = m.pending) == null ? void 0 : _a.kind) === "turn") return m.pending.mode === "choose" ? "\u4F60\u7684\u56DE\u5408\uFF1A\u62BD 2 \u5F20\uFF0C\u6216\u70B9\u4E00\u5F20\u624B\u724C\u6253\u51FA" : "\u53EF\u4EE5\u7EE7\u7EED\u51FA\u724C\uFF0C\u6216\u7ED3\u675F\u56DE\u5408";
+      if (m.view.phase.kind === "day") return `\u7B49\u5F85 ${m.view.players[m.turnSeat].name} \u884C\u52A8\u2026`;
+      return phaseTitle(m);
+    }
+    infoNode(m, r) {
+      const text = this.infoText(m);
+      return { rect: r, draw: (ctx2) => drawText(ctx2, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: "center", maxWidth: r.w }) };
+    }
+    handNodes(m, r, a) {
+      var _a, _b;
+      const hand = (_b = (_a = m.priv) == null ? void 0 : _a.hand) != null ? _b : [];
+      if (!hand.length) {
+        return [{ rect: r, draw: (ctx2) => drawText(ctx2, m.priv ? "\u6CA1\u6709\u624B\u724C" : "", r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.textMuted, align: "center" }) }];
+      }
+      const playable = playableCardIds(m);
+      const ch = r.h - 12;
+      const cw = Math.round(ch * 0.69);
+      const n = hand.length;
+      const step = n > 1 ? Math.min(cw + 6, (r.w - cw) / (n - 1)) : 0;
+      const x0 = r.x + (r.w - (cw + step * (n - 1))) / 2;
+      return hand.map((c, i) => {
+        const lifted = c.id === this.sel;
+        const p = a.cardIn(c.id);
+        const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12) + (1 - p) * 40, cw, ch);
+        return {
+          id: `card:${c.id}`,
+          rect: cr,
+          onTap: () => this.tapCard(c.id, playable),
+          draw: (ctx2) => {
+            var _a2;
+            ctx2.globalAlpha = p;
+            drawCardFace(ctx2, cr, c.kind, { selected: lifted, dim: ((_a2 = m.pending) == null ? void 0 : _a2.kind) === "turn" && !playable.includes(c.id) });
+            ctx2.globalAlpha = 1;
+          }
+        };
+      });
+    }
+    tapCard(id, playable) {
+      if (playable.includes(id)) {
+        if (this.sel === id) this.clearSel();
+        else {
+          this.clearSel();
+          this.sel = id;
+          this.peek = null;
+        }
+        return;
+      }
+      this.peek = this.peek === id ? null : id;
+    }
+    buttonNodes(m, r) {
+      var _a;
+      const ctl2 = this.ui.ctl;
+      const busy = ctl2.busy;
+      const half = (r.w - 10) / 2;
+      if (this.sel) {
+        return [
+          button("cancel", rect(r.x, r.y, half, r.h), "\u53D6\u6D88", () => this.clearSel(), "secondary"),
+          button("confirm-play", rect(r.x + half + 10, r.y, half, r.h), "\u786E\u8BA4\u51FA\u724C", this.ready(m) && !busy ? () => this.confirmPlay() : null)
+        ];
+      }
+      if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn") return [];
+      if (m.pending.mode === "choose") return [button("draw", r, "\u62BD 2 \u5F20", busy ? null : () => void ctl2.act({ type: "draw" }))];
+      return [button("end-turn", r, "\u7ED3\u675F\u56DE\u5408", busy ? null : () => void ctl2.act({ type: "endTurn" }), "secondary")];
+    }
+    optionSheet(m) {
+      const kind = this.selKind(m);
+      const target = this.targets[0];
+      const need = kind && target !== void 0 ? optionNeed(m, kind, target) : null;
+      if (!need) {
+        this.askOption = false;
+        return [];
+      }
+      const close = () => {
+        this.askOption = false;
+        this.targets = this.targets.slice(0, -1);
+      };
+      const title = need.kind === "curse" ? "\u8BC5\u5492\uFF1A\u4E22\u5F03\u54EA\u5F20\u84DD\u5361\uFF1F" : "\u8FA9\u62A4\uFF1A\u4E22\u5F03\u54EA\u79CD\u7EA2\u5361\uFF1F";
+      const { nodes, body } = sheet(this.ui.screen, 280, title, close);
+      const choices = need.kind === "curse" ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name })) : ALIBI_CHOICES.map((c) => ({ value: c.value, label: c.label }));
+      choices.forEach(
+        (c, i) => nodes.push(
+          button(`option:${c.value}`, rect(body.x, body.y + i * 52, body.w, 44), c.label, () => {
+            this.option = c.value;
+            this.askOption = false;
+          }, "secondary")
+        )
+      );
+      return nodes;
+    }
+  };
+
   // src/scenes/root.ts
   var RootScene = class {
     constructor(ui2) {
       __publicField(this, "ui", ui2);
       __publicField(this, "home");
       __publicField(this, "lobby");
+      __publicField(this, "table", null);
+      __publicField(this, "tableKey", "");
       this.home = new HomeScene(ui2);
       this.lobby = new LobbyScene(ui2);
     }
@@ -1032,9 +1694,14 @@
       if (room.view.phase.kind === "ended") return this.ended(now);
       return this.playing(now);
     }
-    /** Task 7 替换为游戏桌 */
-    playing(_now) {
-      return this.message("\u6E38\u620F\u8FDB\u884C\u4E2D\uFF08\u754C\u9762\u5F00\u53D1\u4E2D\uFF09", "loading-home");
+    playing(now) {
+      const room = this.ui.ctl.room;
+      const key = `${room.code}:${room.gameId}`;
+      if (!this.table || key !== this.tableKey) {
+        this.table = new TableScene(this.ui);
+        this.tableKey = key;
+      }
+      return this.table.build(now);
     }
     /** Task 8 替换为结算页 */
     ended(_now) {
