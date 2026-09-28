@@ -290,7 +290,10 @@
           return null;
         }
         this.d.toast(res.error);
-        if (LEAVE_ERRORS.includes(res.error) && this.code) this.backHome();
+        if (LEAVE_ERRORS.includes(res.error)) {
+          this.d.store.clearLastRoom();
+          if (this.code) this.backHome();
+        }
         return null;
       } finally {
         this.busy = false;
@@ -300,7 +303,7 @@
   };
 
   // src/net/api.ts
-  var NETWORK_ERROR = "\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5";
+  var NETWORK_ERROR = "\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u6B63\u5728\u91CD\u8BD5";
   var Api = class {
     constructor(cloud) {
       __publicField(this, "cloud", cloud);
@@ -329,6 +332,15 @@
     const msg = e instanceof Error ? e.message : String((_a = e == null ? void 0 : e.errMsg) != null ? _a : e);
     return NOT_FOUND.test(msg);
   }
+  async function rejoinable(db2, code) {
+    try {
+      const r = await db2.collection("rooms").doc(code).get();
+      const room = r.data;
+      return !!room && room.status !== "ended";
+    } catch (e) {
+      return !isNotFound(e);
+    }
+  }
   var RoomSession = class {
     constructor(db2, code, openid, timers, onChange) {
       __publicField(this, "db", db2);
@@ -344,6 +356,8 @@
       __publicField(this, "retryTimer", null);
       __publicField(this, "pollTimer", null);
       __publicField(this, "stopped", false);
+      /** 每个集合收到过几次推送；refresh 读取期间有新推送时丢掉读到的（可能更旧的）数据 */
+      __publicField(this, "pushes", { rooms: 0, hands: 0 });
     }
     start() {
       void this.refresh();
@@ -359,13 +373,14 @@
       }
     }
     async refresh() {
+      const before = __spreadValues({}, this.pushes);
       const [room, hand] = await Promise.all([
         this.getDoc("rooms", this.code),
         this.getDoc("hands", `${this.code}_${this.openid}`)
       ]);
       if (this.stopped) return;
-      if (room !== void 0) this.room = room;
-      if (hand !== void 0) this.hand = hand;
+      if (room !== void 0 && this.pushes.rooms === before.rooms) this.room = room;
+      if (hand !== void 0 && this.pushes.hands === before.hands) this.hand = hand;
       this.onChange();
     }
     /** 找不到文档返回 null；网络等其他错误返回 undefined（保留原数据） */
@@ -389,6 +404,7 @@
           onChange: (snap) => {
             var _a;
             if (gen !== this.gen) return;
+            this.pushes.rooms++;
             this.room = (_a = snap.docs[0]) != null ? _a : null;
             this.ok();
           },
@@ -398,6 +414,7 @@
           onChange: (snap) => {
             var _a;
             if (gen !== this.gen) return;
+            this.pushes.hands++;
             this.hand = (_a = snap.docs[0]) != null ? _a : null;
             this.ok();
           },
@@ -863,6 +880,10 @@
       draw: (ctx2) => drawButton(ctx2, r, label, onTap ? style : "disabled")
     };
   }
+  var BUSY_LABEL = "\u5904\u7406\u4E2D";
+  function requestButton(id, r, label, onTap, busy, style = "primary") {
+    return busy ? button(id, r, BUSY_LABEL, null, style) : button(id, r, label, onTap, style);
+  }
   function textNode(r, text, o = {}) {
     var _a;
     const align = (_a = o.align) != null ? _a : "left";
@@ -981,8 +1002,8 @@
       const bx = (W - bw) / 2;
       const y = H * 0.5;
       nodes.push(
-        button("join", rect(bx, y, bw, 54), "\u8F93\u5165\u623F\u53F7\u52A0\u5165", busy ? null : () => this.ui.prompt("\u8F93\u5165\u623F\u95F4\u53F7", "4 \u4F4D\u6570\u5B57", (code) => void ctl2.joinRoom(code))),
-        button("create", rect(bx, y + 70, bw, 48), "\u521B\u5EFA\u623F\u95F4", busy ? null : () => void ctl2.createRoom(), "secondary"),
+        requestButton("join", rect(bx, y, bw, 54), "\u8F93\u5165\u623F\u53F7\u52A0\u5165", () => this.ui.prompt("\u8F93\u5165\u623F\u95F4\u53F7", "4 \u4F4D\u6570\u5B57", (code) => void ctl2.joinRoom(code)), busy),
+        requestButton("create", rect(bx, y + 70, bw, 48), "\u521B\u5EFA\u623F\u95F4", () => void ctl2.createRoom(), busy, "secondary"),
         button("rules", rect(bx, y + 132, bw, 48), "\u89C4\u5219\u901F\u67E5", () => {
           this.rules = true;
           this.box.reset();
@@ -1057,13 +1078,13 @@
       const leave = () => this.ui.confirm("\u79BB\u5F00\u623F\u95F4\uFF1F", "\u79BB\u5F00\u540E\u53EF\u4EE5\u7528\u623F\u53F7\u91CD\u65B0\u52A0\u5165", () => void ctl2.leaveRoom());
       if (isHost) {
         nodes.push(
-          button("leave", rect(12, rowY, half, 40), "\u79BB\u5F00", busy ? null : leave, "danger"),
-          button("add-bot", rect(12 + half + 10, rowY, half, 40), "\u52A0\u673A\u5668\u4EBA", busy || seats.length >= MAX ? null : () => void ctl2.addBot(), "secondary"),
-          button("start", rect(12, startY, W - 24, 48), `\u5F00\u59CB\u6E38\u620F\uFF08${seats.length}/${MAX}\uFF09`, busy || seats.length < MIN ? null : () => void ctl2.startGame())
+          requestButton("leave", rect(12, rowY, half, 40), "\u79BB\u5F00", leave, busy, "danger"),
+          requestButton("add-bot", rect(12 + half + 10, rowY, half, 40), "\u52A0\u673A\u5668\u4EBA", seats.length >= MAX ? null : () => void ctl2.addBot(), busy, "secondary"),
+          requestButton("start", rect(12, startY, W - 24, 48), `\u5F00\u59CB\u6E38\u620F\uFF08${seats.length}/${MAX}\uFF09`, seats.length < MIN ? null : () => void ctl2.startGame(), busy)
         );
       } else {
         nodes.push(
-          button("leave", rect(12, rowY, W - 24, 40), "\u79BB\u5F00", busy ? null : leave, "danger"),
+          requestButton("leave", rect(12, rowY, W - 24, 40), "\u79BB\u5F00", leave, busy, "danger"),
           textNode(rect(12, startY, W - 24, 48), `\u7B49\u5F85\u623F\u4E3B\u5F00\u59CB\u2026\uFF08${seats.length}/${MAX}\uFF09`, { size: 14, color: C.textDim, align: "center" })
         );
       }
@@ -1415,7 +1436,7 @@
         nodes.push(textNode(rect(body.x, y, body.w, 20), "\u7FFB\u5F00\u5973\u5DEB\u5361\u4F1A\u7ACB\u5373\u6B7B\u4EA1", { size: 13, color: C.danger, align: "center" }));
       }
       y += 28;
-      nodes.push(button("confirm-reveal", rect(body.x, y, body.w, 44), "\u786E\u8BA4\u7FFB\u5F00", picked && !busy ? () => void act({ type: "revealTryal", tryalId: picked.id }) : null));
+      nodes.push(requestButton("confirm-reveal", rect(body.x, y, body.w, 44), "\u786E\u8BA4\u7FFB\u5F00", picked ? () => void act({ type: "revealTryal", tryalId: picked.id }) : null, busy));
       return nodes;
     }
     if (p.kind === "conspiracyPick") {
@@ -1425,7 +1446,7 @@
       const row = tryalRow(body, items, "pick", st.picked, (_id, i) => st.picked = i);
       nodes.push(...row.nodes);
       const idx = typeof st.picked === "number" ? st.picked : null;
-      nodes.push(button("confirm-pick", rect(body.x, body.y + row.height + 16, body.w, 44), "\u62FF\u8FD9\u5F20", idx !== null && !busy ? () => void act({ type: "conspiracyPick", index: idx }) : null));
+      nodes.push(requestButton("confirm-pick", rect(body.x, body.y + row.height + 16, body.w, 44), "\u62FF\u8FD9\u5F20", idx !== null ? () => void act({ type: "conspiracyPick", index: idx }) : null, busy));
       return nodes;
     }
     if (p.kind === "dawnVote") {
@@ -1482,8 +1503,8 @@
     const half = (body.w - 10) / 2;
     const picked = typeof st.picked === "string" ? st.picked : null;
     nodes.push(
-      button("no-confess", rect(body.x, btnY, half, NIGHT_BUTTON_H), "\u4E0D\u81EA\u9996", busy ? null : () => void act({ type: "confess", tryalId: null }), "secondary"),
-      button("confirm-confess", rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), "\u81EA\u9996", picked && !busy ? () => void act({ type: "confess", tryalId: picked }) : null, "danger")
+      requestButton("no-confess", rect(body.x, btnY, half, NIGHT_BUTTON_H), "\u4E0D\u81EA\u9996", () => void act({ type: "confess", tryalId: null }), busy, "secondary"),
+      requestButton("confirm-confess", rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), "\u81EA\u9996", picked ? () => void act({ type: "confess", tryalId: picked }) : null, busy, "danger")
     );
     return nodes;
   }
@@ -1659,6 +1680,7 @@
 
   // src/scenes/table.ts
   var TWO_TARGET_HINT = ["\u5148\u9009\u88AB\u62FF\u8D70\u7684\u4EBA", "\u518D\u9009\u63A5\u6536\u7684\u4EBA"];
+  var LEAVE_W = 46;
   var TableScene = class {
     constructor(ui2) {
       __publicField(this, "ui", ui2);
@@ -1685,13 +1707,15 @@
       const L = tableLayout(this.ui.screen, m.others.length);
       this.layout = L;
       const a = this.anim(m, now);
+      const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
       const nodes = [skyNode(this.ui.screen, a.darkness)];
       nodes.push(this.topBar(m, L.top, now));
+      if (!choice.length) nodes.push(this.leaveButton(L.top));
       m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
       nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
       nodes.push(...this.handNodes(m, L.hand, a), ...this.buttonNodes(m, L.buttons));
       nodes.push(...a.overlay);
-      nodes.push(...this.panels(m, now, a));
+      nodes.push(...this.panels(m, choice));
       return nodes;
     }
     /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
@@ -1772,8 +1796,7 @@
       };
     }
     /** 叠在最上层的面板；需要做选择时优先显示选择面板 */
-    panels(m, now, a) {
-      const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+    panels(m, choice) {
       if (choice.length) return choice;
       if (this.askOption) return this.optionSheet(m);
       if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => this.detail = null);
@@ -1811,9 +1834,17 @@
           drawText(ctx2, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
           const cd = formatCountdown(m.deadline, now);
           if (cd) drawText(ctx2, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: "center" });
-          drawText(ctx2, `\u724C\u5806 ${m.view.deckCount} \xB7 \u5F03 ${m.view.discardCount}`, r.x + r.w, cy, { size: 11, color: C.textDim, align: "right" });
+          const x = r.x + r.w - LEAVE_W - 8;
+          drawText(ctx2, `\u724C\u5806 ${m.view.deckCount}`, x, cy - 7, { size: 10, color: C.textDim, align: "right" });
+          drawText(ctx2, `\u5F03\u724C ${m.view.discardCount}`, x, cy + 7, { size: 10, color: C.textDim, align: "right" });
         }
       };
+    }
+    leaveButton(r) {
+      const ui2 = this.ui;
+      const code = ui2.ctl.code;
+      const leave = () => ui2.confirm("\u79BB\u5F00\u724C\u5C40\uFF1F", `\u53EF\u4EE5\u7528\u623F\u53F7 ${code} \u56DE\u6765`, () => void ui2.ctl.leaveRoom());
+      return button("leave-game", rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), "\u79BB\u5F00", leave, "secondary");
     }
     cell(m, seat, r, a) {
       const p = m.view.players[seat];
@@ -1968,12 +1999,12 @@
       if (this.sel) {
         return [
           button("cancel", rect(r.x, r.y, half, r.h), "\u53D6\u6D88", () => this.clearSel(), "secondary"),
-          button("confirm-play", rect(r.x + half + 10, r.y, half, r.h), "\u786E\u8BA4\u51FA\u724C", this.ready(m) && !busy ? () => this.confirmPlay() : null)
+          requestButton("confirm-play", rect(r.x + half + 10, r.y, half, r.h), "\u786E\u8BA4\u51FA\u724C", this.ready(m) ? () => this.confirmPlay() : null, busy)
         ];
       }
       if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn") return [];
-      if (m.pending.mode === "choose") return [button("draw", r, "\u62BD 2 \u5F20", busy ? null : () => void ctl2.act({ type: "draw" }))];
-      return [button("end-turn", r, "\u7ED3\u675F\u56DE\u5408", busy ? null : () => void ctl2.act({ type: "endTurn" }), "secondary")];
+      if (m.pending.mode === "choose") return [requestButton("draw", r, "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy)];
+      return [requestButton("end-turn", r, "\u7ED3\u675F\u56DE\u5408", () => void ctl2.act({ type: "endTurn" }), busy, "secondary")];
     }
     optionSheet(m) {
       const kind = this.selKind(m);
@@ -2109,7 +2140,10 @@
       then();
       return;
     }
-    ui.prompt("\u7ED9\u81EA\u5DF1\u8D77\u4E2A\u6635\u79F0", "1\u201312 \u4E2A\u5B57\uFF0C\u670B\u53CB\u4F1A\u770B\u5230", (name) => ctl.setNickname(name) ? then() : ensureNickname(then), false);
+    askNickname("\u7ED9\u81EA\u5DF1\u8D77\u4E2A\u6635\u79F0", then);
+  }
+  function askNickname(title, then) {
+    ui.prompt(title, "1\u201312 \u4E2A\u5B57\uFF0C\u670B\u53CB\u4F1A\u770B\u5230", (name) => ctl.setNickname(name) ? then() : askNickname("\u6635\u79F0\u9700\u8981 1\u201312 \u4E2A\u5B57", then), false);
   }
   ensureNickname(() => {
     const fromShare = roomFrom(wx.getLaunchOptionsSync());
@@ -2118,7 +2152,12 @@
       return;
     }
     const last = store.lastRoom();
-    if (last) {
+    if (!last) return;
+    void rejoinable(db, last).then((ok) => {
+      if (!ok) {
+        store.clearLastRoom();
+        return;
+      }
       wx.showModal({
         title: "\u56DE\u5230\u623F\u95F4\uFF1F",
         content: `\u4E0A\u6B21\u4F60\u5728\u623F\u95F4 ${last}\uFF0C\u8981\u56DE\u53BB\u5417\uFF1F`,
@@ -2127,7 +2166,7 @@
           else store.clearLastRoom();
         }
       });
-    }
+    });
   });
   wx.onShow((o) => {
     ctl.onShow();
