@@ -1,0 +1,47 @@
+import { CARD_INFO, type CardColor } from './cards';
+
+const cardsOf = (color: CardColor): string[] =>
+  Object.values(CARD_INFO)
+    .filter((c) => c.color === color)
+    .map((c) => `${c.name}：${c.desc}`);
+
+export const RULES: { title: string; items: string[] }[] = [
+  {
+    title: '胜负',
+    items: ['所有女巫卡都被翻开：村民胜利。', '活着的玩家全都是女巫阵营：女巫胜利。'],
+  },
+  {
+    title: '身份卡',
+    items: [
+      '每人 5 张，只有自己知道内容。4–5 人 1 张女巫卡，6 人以上 2 张；警长 1 张，其余是村民。',
+      '翻出女巫卡，或 5 张全部翻开，立即死亡。',
+      '开局持有女巫卡的人属于女巫阵营；之后通过传染拿到女巫卡的人也加入女巫阵营，阵营不会再变。',
+    ],
+  },
+  {
+    title: '回合',
+    items: ['轮到你时二选一：抽 2 张牌，或打出任意张红 / 蓝 / 绿卡。', '红卡不能打给自己，蓝卡和绿卡可以。'],
+  },
+  {
+    title: '审判',
+    items: [
+      '面前红卡点数达到 7 点立即受审，由受审者自己翻开一张身份卡。',
+      '审判结束后，丢弃受审者面前所有红卡。',
+    ],
+  },
+  {
+    title: '夜晚',
+    items: [
+      '女巫阵营一起选一名玩家击杀；警长保护一名其他玩家；所有人都可以自首（翻开一张自己的身份卡），自首的人当晚不会被杀。',
+      '被选中的人没有被保护、没有避难、也没有自首时死亡。',
+    ],
+  },
+  {
+    title: '传染',
+    items: ['黑猫持有者先翻开一张身份卡；然后每个活着的人从左边玩家的未翻开身份卡里盲抽一张。'],
+  },
+  { title: '红卡', items: cardsOf('red') },
+  { title: '蓝卡（留在面前持续生效）', items: cardsOf('blue') },
+  { title: '绿卡（一次性）', items: cardsOf('green') },
+  { title: '黑卡（抽到立即结算）', items: cardsOf('black') },
+];
