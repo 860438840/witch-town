@@ -163,6 +163,20 @@ function render() {
   ctx.textBaseline = 'middle';
 }
 
+// 分享试验：打开转发菜单，卡片带上房号；从卡片进入时读出房号
+wx.showShareMenu({ menus: ['shareAppMessage'] });
+wx.onShareAppMessage(() => ({ title: `女巫镇 · 房间 ${state.code || '（无）'}`, query: `room=${state.code}` }));
+function readShareQuery(label, opts) {
+  const room = opts && opts.query && opts.query.room;
+  print(label, { scene: opts && opts.scene, query: opts && opts.query });
+  if (room) {
+    state.code = room;
+    print('分享', `从分享进入，房号 ${room}`);
+  }
+}
+readShareQuery('启动参数', wx.getLaunchOptionsSync());
+wx.onShow((opts) => readShareQuery('回到前台参数', opts));
+
 wx.onTouchStart((e) => {
   const t = e.touches[0];
   const hit = buttons.find((b) => t.clientX >= b.x && t.clientX <= b.x + b.w && t.clientY >= b.y && t.clientY <= b.y + b.h);
