@@ -3,7 +3,7 @@ import { HomeScene } from '../src/scenes/home';
 import { LobbyScene } from '../src/scenes/lobby';
 import { RootScene } from '../src/scenes/root';
 import { lobbyRoom, newState, roomOf } from './fixtures';
-import { canTap, drawAll, fakeCtl, fakeUi, has, tap } from './sceneKit';
+import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, tap } from './sceneKit';
 
 describe('首页', () => {
   it('输入房号加入', () => {
@@ -21,6 +21,8 @@ describe('首页', () => {
     const busy = new HomeScene(fakeUi(fakeCtl({ code: null, busy: true }))).build(0);
     expect(canTap(busy, 'join')).toBe(false);
     expect(canTap(busy, 'create')).toBe(false);
+    expect(labelOf(busy, 'join')).toBe('处理中');
+    expect(labelOf(busy, 'create')).toBe('处理中');
   });
 
   it('规则速查可以打开和关闭', () => {
@@ -87,6 +89,14 @@ describe('大厅', () => {
     expect(has(nodes, 'seat-up:1')).toBe(false);
     tap(nodes, 'leave');
     expect(ctl.leaveRoom).toHaveBeenCalled();
+  });
+
+  it('请求进行中房间按钮显示「处理中」', () => {
+    const nodes = new LobbyScene(fakeUi(fakeCtl({ room: lobbyRoom(5), openid: 'u0', busy: true }))).build(0);
+    for (const id of ['leave', 'add-bot', 'start']) {
+      expect(canTap(nodes, id)).toBe(false);
+      expect(labelOf(nodes, id)).toBe('处理中');
+    }
   });
 });
 

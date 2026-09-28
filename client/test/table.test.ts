@@ -3,7 +3,7 @@ import type { Screen } from '../src/core/app';
 import { TableScene } from '../src/scenes/table';
 import { tableLayout } from '../src/scenes/tableLayout';
 import { giveCard, handOf, newState, roomOf, setDay } from './fixtures';
-import { canTap, drawAll, fakeCtl, fakeUi, has, tap } from './sceneKit';
+import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, tap } from './sceneKit';
 import type { GameState } from '../../engine/src/index';
 
 function scene(s: GameState, seat = 0, over: Record<string, unknown> = {}) {
@@ -58,10 +58,22 @@ describe('游戏桌', () => {
     expect(drawAll(nodes).join('')).toContain('等待 P1 行动');
   });
 
-  it('请求进行中按钮不可点', () => {
+  it('请求进行中按钮不可点，显示「处理中」', () => {
     const s = newState(5);
     setDay(s, 0);
-    expect(canTap(scene(s, 0, { busy: true }).scene.build(0), 'draw')).toBe(false);
+    giveCard(s, 0, 'accusation', 'acc-1');
+    const { scene: t } = scene(s, 0, { busy: true });
+    const nodes = t.build(0);
+    expect(canTap(nodes, 'draw')).toBe(false);
+    expect(labelOf(nodes, 'draw')).toBe('处理中');
+    tap(nodes, 'card:acc-1');
+    tap(t.build(0), 'seat:2');
+    const ready = t.build(0);
+    expect(canTap(ready, 'confirm-play')).toBe(false);
+    expect(labelOf(ready, 'confirm-play')).toBe('处理中');
+    expect(labelOf(ready, 'cancel')).toBe('取消');
+    setDay(s, 0, 'playing');
+    expect(labelOf(scene(s, 0, { busy: true }).scene.build(0), 'end-turn')).toBe('处理中');
   });
 
   it('出指控：选牌 → 选目标 → 确认', () => {

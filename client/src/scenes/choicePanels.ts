@@ -6,7 +6,7 @@ import { formatCountdown, nameOf, type TableModel } from '../model/table';
 import { drawBadge, drawPanel, drawText, drawTryalChip } from '../theme/draw';
 import { C, goldGlow } from '../theme/palette';
 import type { Ui } from './ui';
-import { button, sheet, textNode } from './widgets';
+import { button, requestButton, sheet, textNode } from './widgets';
 
 export interface ChoiceState {
   key: string;
@@ -130,7 +130,7 @@ export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number,
       nodes.push(textNode(rect(body.x, y, body.w, 20), '翻开女巫卡会立即死亡', { size: 13, color: C.danger, align: 'center' }));
     }
     y += 28;
-    nodes.push(button('confirm-reveal', rect(body.x, y, body.w, 44), '确认翻开', picked && !busy ? () => void act({ type: 'revealTryal', tryalId: picked.id }) : null));
+    nodes.push(requestButton('confirm-reveal', rect(body.x, y, body.w, 44), '确认翻开', picked ? () => void act({ type: 'revealTryal', tryalId: picked.id }) : null, busy));
     return nodes;
   }
 
@@ -141,7 +141,7 @@ export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number,
     const row = tryalRow(body, items, 'pick', st.picked, (_id, i) => (st.picked = i));
     nodes.push(...row.nodes);
     const idx = typeof st.picked === 'number' ? st.picked : null;
-    nodes.push(button('confirm-pick', rect(body.x, body.y + row.height + 16, body.w, 44), '拿这张', idx !== null && !busy ? () => void act({ type: 'conspiracyPick', index: idx }) : null));
+    nodes.push(requestButton('confirm-pick', rect(body.x, body.y + row.height + 16, body.w, 44), '拿这张', idx !== null ? () => void act({ type: 'conspiracyPick', index: idx }) : null, busy));
     return nodes;
   }
 
@@ -212,8 +212,8 @@ function nightPanel(ui: Ui, m: TableModel, p: NightPending, st: ChoiceState, cd:
   const half = (body.w - 10) / 2;
   const picked = typeof st.picked === 'string' ? st.picked : null;
   nodes.push(
-    button('no-confess', rect(body.x, btnY, half, NIGHT_BUTTON_H), '不自首', busy ? null : () => void act({ type: 'confess', tryalId: null }), 'secondary'),
-    button('confirm-confess', rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), '自首', picked && !busy ? () => void act({ type: 'confess', tryalId: picked }) : null, 'danger'),
+    requestButton('no-confess', rect(body.x, btnY, half, NIGHT_BUTTON_H), '不自首', () => void act({ type: 'confess', tryalId: null }), busy, 'secondary'),
+    requestButton('confirm-confess', rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), '自首', picked ? () => void act({ type: 'confess', tryalId: picked }) : null, busy, 'danger'),
   );
   return nodes;
 }

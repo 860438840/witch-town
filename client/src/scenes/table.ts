@@ -22,7 +22,7 @@ import { detailPanel, logPanel, myTryalsPanel } from './infoPanels';
 import { tableLayout, type TableLayout } from './tableLayout';
 import { drawCell, drawMeBar, type CellOpts } from './tableParts';
 import type { Ui } from './ui';
-import { button, ScrollBox, sheet, skyNode } from './widgets';
+import { button, requestButton, ScrollBox, sheet, skyNode } from './widgets';
 
 const TWO_TARGET_HINT = ['先选被拿走的人', '再选接收的人'];
 const LEAVE_W = 46;
@@ -375,12 +375,12 @@ export class TableScene implements Scene {
     if (this.sel) {
       return [
         button('cancel', rect(r.x, r.y, half, r.h), '取消', () => this.clearSel(), 'secondary'),
-        button('confirm-play', rect(r.x + half + 10, r.y, half, r.h), '确认出牌', this.ready(m) && !busy ? () => this.confirmPlay() : null),
+        requestButton('confirm-play', rect(r.x + half + 10, r.y, half, r.h), '确认出牌', this.ready(m) ? () => this.confirmPlay() : null, busy),
       ];
     }
     if (m.pending?.kind !== 'turn') return [];
-    if (m.pending.mode === 'choose') return [button('draw', r, '抽 2 张', busy ? null : () => void ctl.act({ type: 'draw' }))];
-    return [button('end-turn', r, '结束回合', busy ? null : () => void ctl.act({ type: 'endTurn' }), 'secondary')];
+    if (m.pending.mode === 'choose') return [requestButton('draw', r, '抽 2 张', () => void ctl.act({ type: 'draw' }), busy)];
+    return [requestButton('end-turn', r, '结束回合', () => void ctl.act({ type: 'endTurn' }), busy, 'secondary')];
   }
 
   private optionSheet(m: TableModel): Node[] {

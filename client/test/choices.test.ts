@@ -5,10 +5,10 @@ import { TableScene } from '../src/scenes/table';
 import { handOf, newState, roomOf } from './fixtures';
 import type { Screen } from '../src/core/app';
 import { findNode, type Node } from '../src/core/node';
-import { canTap, drawAll, fakeCtl, fakeUi, has, SCREEN, tap } from './sceneKit';
+import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, SCREEN, tap } from './sceneKit';
 
-function table(s: GameState, seat: number, screen: Screen = SCREEN) {
-  const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, seat), openid: `u${seat}` });
+function table(s: GameState, seat: number, screen: Screen = SCREEN, busy = false) {
+  const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, seat), openid: `u${seat}`, busy });
   return { ctl, t: new TableScene(fakeUi(ctl, screen)) };
 }
 const SMALL: Screen = { W: 320, H: 568, top: 64, bottom: 568 };
@@ -138,6 +138,20 @@ describe('选择面板', () => {
     s.night = { witchVotes: {}, protect: null, confessions: {} };
     const plain = s.players.find((p) => !p.witchFaction)!.seat;
     expectNightFits(table(s, plain).t.build(0), SCREEN);
+  });
+
+  it('请求进行中确认按钮显示「处理中」', () => {
+    const s = newState(5);
+    s.phase = { kind: 'trialReveal', target: 2, initiator: 0 };
+    expect(labelOf(table(s, 2, SCREEN, true).t.build(0), 'confirm-reveal')).toBe('处理中');
+    s.phase = { kind: 'conspiracyPick' };
+    expect(labelOf(table(s, 0, SCREEN, true).t.build(0), 'confirm-pick')).toBe('处理中');
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    const plain = s.players.find((p) => !p.witchFaction)!.seat;
+    const nodes = table(s, plain, SCREEN, true).t.build(0);
+    expect(labelOf(nodes, 'no-confess')).toBe('处理中');
+    expect(labelOf(nodes, 'confirm-confess')).toBe('处理中');
   });
 
   it('已经自首后不再显示自首按钮', () => {

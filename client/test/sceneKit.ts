@@ -53,6 +53,13 @@ export function tap(nodes: Node[], id: string): void {
 export const has = (nodes: Node[], id: string): boolean => findNode(nodes, id) !== null;
 export const canTap = (nodes: Node[], id: string): boolean => !!findNode(nodes, id)?.onTap;
 
+/** 某个节点画出的文字（按钮就是它的文字） */
+export function labelOf(nodes: Node[], id: string): string {
+  const n = findNode(nodes, id);
+  if (!n) throw new Error(`没有节点：${id}`);
+  return drawAll([n]).join('');
+}
+
 /** 把节点画到假画布上，返回画出的所有文字（同时检查绘制不报错） */
 export function drawAll(nodes: Node[]): string[] {
   const { ctx, texts } = fakeCtx();

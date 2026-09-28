@@ -5,7 +5,7 @@ import { RULES } from '../model/rules';
 import { drawText } from '../theme/draw';
 import { C } from '../theme/palette';
 import type { Ui } from './ui';
-import { button, ScrollBox, sheet, skyNode, type Line } from './widgets';
+import { button, requestButton, ScrollBox, sheet, skyNode, type Line } from './widgets';
 
 const RULE_LINES: Line[] = RULES.flatMap((s) => [
   { text: s.title, size: 15, bold: true, color: C.gold, gap: 2 },
@@ -42,8 +42,8 @@ export class HomeScene implements Scene {
     const bx = (W - bw) / 2;
     const y = H * 0.5;
     nodes.push(
-      button('join', rect(bx, y, bw, 54), '输入房号加入', busy ? null : () => this.ui.prompt('输入房间号', '4 位数字', (code) => void ctl.joinRoom(code))),
-      button('create', rect(bx, y + 70, bw, 48), '创建房间', busy ? null : () => void ctl.createRoom(), 'secondary'),
+      requestButton('join', rect(bx, y, bw, 54), '输入房号加入', () => this.ui.prompt('输入房间号', '4 位数字', (code) => void ctl.joinRoom(code)), busy),
+      requestButton('create', rect(bx, y + 70, bw, 48), '创建房间', () => void ctl.createRoom(), busy, 'secondary'),
       button('rules', rect(bx, y + 132, bw, 48), '规则速查', () => {
         this.rules = true;
         this.box.reset();

@@ -4,7 +4,7 @@ import type { Node } from '../core/node';
 import { drawBadge, drawPanel, drawText } from '../theme/draw';
 import { C } from '../theme/palette';
 import type { Ui } from './ui';
-import { button, skyNode, textNode } from './widgets';
+import { button, requestButton, skyNode, textNode } from './widgets';
 
 const MAX = 12;
 const MIN = 4;
@@ -67,13 +67,13 @@ export class LobbyScene implements Scene {
     const leave = () => this.ui.confirm('离开房间？', '离开后可以用房号重新加入', () => void ctl.leaveRoom());
     if (isHost) {
       nodes.push(
-        button('leave', rect(12, rowY, half, 40), '离开', busy ? null : leave, 'danger'),
-        button('add-bot', rect(12 + half + 10, rowY, half, 40), '加机器人', busy || seats.length >= MAX ? null : () => void ctl.addBot(), 'secondary'),
-        button('start', rect(12, startY, W - 24, 48), `开始游戏（${seats.length}/${MAX}）`, busy || seats.length < MIN ? null : () => void ctl.startGame()),
+        requestButton('leave', rect(12, rowY, half, 40), '离开', leave, busy, 'danger'),
+        requestButton('add-bot', rect(12 + half + 10, rowY, half, 40), '加机器人', seats.length >= MAX ? null : () => void ctl.addBot(), busy, 'secondary'),
+        requestButton('start', rect(12, startY, W - 24, 48), `开始游戏（${seats.length}/${MAX}）`, seats.length < MIN ? null : () => void ctl.startGame(), busy),
       );
     } else {
       nodes.push(
-        button('leave', rect(12, rowY, W - 24, 40), '离开', busy ? null : leave, 'danger'),
+        requestButton('leave', rect(12, rowY, W - 24, 40), '离开', leave, busy, 'danger'),
         textNode(rect(12, startY, W - 24, 48), `等待房主开始…（${seats.length}/${MAX}）`, { size: 14, color: C.textDim, align: 'center' }),
       );
     }

@@ -17,6 +17,20 @@ export function button(id: string, r: Rect, label: string, onTap: (() => void) |
   };
 }
 
+export const BUSY_LABEL = '处理中';
+
+/** 会发请求的按钮：请求进行中（busy）时禁用并显示「处理中」 */
+export function requestButton(
+  id: string,
+  r: Rect,
+  label: string,
+  onTap: (() => void) | null,
+  busy: boolean,
+  style: WidgetButtonStyle = 'primary',
+): Node {
+  return busy ? button(id, r, BUSY_LABEL, null, style) : button(id, r, label, onTap, style);
+}
+
 export function textNode(r: Rect, text: string, o: TextOpts = {}): Node {
   const align = o.align ?? 'left';
   const x = align === 'center' ? r.x + r.w / 2 : align === 'right' ? r.x + r.w : r.x;
