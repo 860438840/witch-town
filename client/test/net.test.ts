@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Api, NETWORK_ERROR } from '../src/net/api';
-import { RoomSession } from '../src/net/session';
+import { rejoinable, RoomSession } from '../src/net/session';
 import { LocalStore } from '../src/net/storage';
 import { Ticker } from '../src/net/ticker';
 import { FakeDb, flush, ManualTimers } from './fakes';
@@ -155,6 +155,19 @@ describe('RoomSession', () => {
     session.stop();
     expect(db.live('rooms')).toBe(0);
     expect(timers.pending).toBe(0);
+  });
+});
+
+describe('rejoinable', () => {
+  it('房间还在且没结束时才提示回去；读取出网络错误时也提示（让加入请求来判断）', async () => {
+    const db = new FakeDb();
+    expect(await rejoinable(db, '1234')).toBe(false);
+    db.docs.set('rooms/1234', lobbyRoom(2));
+    expect(await rejoinable(db, '1234')).toBe(true);
+    db.docs.set('rooms/1234', { ...lobbyRoom(2), status: 'ended' });
+    expect(await rejoinable(db, '1234')).toBe(false);
+    db.failGets = true;
+    expect(await rejoinable(db, '1234')).toBe(true);
   });
 });
 

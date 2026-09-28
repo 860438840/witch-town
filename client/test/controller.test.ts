@@ -104,6 +104,20 @@ describe('Controller', () => {
     expect(store.lastRoom()).toBeNull();
   });
 
+  it('在首页加入失败（房间不存在）时忘掉上次的房间；网络错误时保留', async () => {
+    const gone = setup(() => ({ ok: false, error: '房间不存在' }));
+    gone.store.setLastRoom('1234');
+    await gone.ctl.joinRoom('1234');
+    expect(gone.toast).toHaveBeenCalledWith('房间不存在');
+    expect(gone.ctl.code).toBeNull();
+    expect(gone.store.lastRoom()).toBeNull();
+
+    const offline = setup(() => ({ ok: false, error: '网络不稳定，正在重试', network: true }));
+    offline.store.setLastRoom('1234');
+    await offline.ctl.joinRoom('1234');
+    expect(offline.store.lastRoom()).toBe('1234');
+  });
+
   it('调换座位发送新的顺序', async () => {
     const { ctl, api, sessions } = setup(entered);
     await ctl.createRoom();

@@ -1,7 +1,7 @@
 import { App } from './core/app';
 import { Controller } from './controller';
 import { Api } from './net/api';
-import { RoomSession, type DbLike } from './net/session';
+import { rejoinable, RoomSession, type DbLike } from './net/session';
 import { LocalStore } from './net/storage';
 import { Ticker } from './net/ticker';
 import { realTimers } from './net/timers';
@@ -76,7 +76,12 @@ function ensureNickname(then: () => void): void {
     then();
     return;
   }
-  ui.prompt('给自己起个昵称', '1–12 个字，朋友会看到', (name) => (ctl.setNickname(name) ? then() : ensureNickname(then)), false);
+  askNickname('给自己起个昵称', then);
+}
+
+/** 昵称不合法时换成说明原因的标题再问一次（提示框会被输入框挡住） */
+function askNickname(title: string, then: () => void): void {
+  ui.prompt(title, '1–12 个字，朋友会看到', (name) => (ctl.setNickname(name) ? then() : askNickname('昵称需要 1–12 个字', then)), false);
 }
 
 ensureNickname(() => {
@@ -86,7 +91,12 @@ ensureNickname(() => {
     return;
   }
   const last = store.lastRoom();
-  if (last) {
+  if (!last) return;
+  void rejoinable(db, last).then((ok) => {
+    if (!ok) {
+      store.clearLastRoom();
+      return;
+    }
     wx.showModal({
       title: '回到房间？',
       content: `上次你在房间 ${last}，要回去吗？`,
@@ -95,7 +105,7 @@ ensureNickname(() => {
         else store.clearLastRoom();
       },
     });
-  }
+  });
 });
 
 wx.onShow((o) => {

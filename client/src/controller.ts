@@ -162,7 +162,11 @@ export class Controller {
         return null;
       }
       this.d.toast(res.error);
-      if (LEAVE_ERRORS.includes(res.error) && this.code) this.backHome();
+      if (LEAVE_ERRORS.includes(res.error)) {
+        // 在首页加入失败时 code 还是 null：只需忘掉上次的房间
+        this.d.store.clearLastRoom();
+        if (this.code) this.backHome();
+      }
       return null;
     } finally {
       this.busy = false;

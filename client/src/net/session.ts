@@ -26,6 +26,17 @@ function isNotFound(e: unknown): boolean {
   return NOT_FOUND.test(msg);
 }
 
+/** 上次的房间还值得提示回去吗：房间还在且没结束。读取出网络错误时返回 true，交给加入请求判断。 */
+export async function rejoinable(db: DbLike, code: string): Promise<boolean> {
+  try {
+    const r = await db.collection('rooms').doc(code).get();
+    const room = r.data as RoomDoc | null;
+    return !!room && room.status !== 'ended';
+  } catch (e) {
+    return !isNotFound(e);
+  }
+}
+
 /**
  * 一个房间的实时数据：rooms/{code} 和我的 hands 文档。
  * 监听出错后按 1s、2s、4s… 最多 30s 退避重连；连续失败 3 次后改为每 3 秒读取一次，直到监听恢复。
