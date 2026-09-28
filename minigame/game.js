@@ -165,7 +165,11 @@ function render() {
 
 // 分享试验：打开转发菜单，卡片带上房号；从卡片进入时读出房号
 wx.showShareMenu({ menus: ['shareAppMessage'] });
-wx.onShareAppMessage(() => ({ title: `女巫镇 · 房间 ${state.code || '（无）'}`, query: `room=${state.code}` }));
+wx.onShareAppMessage(() => {
+  const card = { title: `女巫镇 · 房间 ${state.code || '（无）'}`, query: `room=${state.code}` };
+  print('分享回调被调用', card);
+  return card;
+});
 function readShareQuery(label, opts) {
   const room = opts && opts.query && opts.query.room;
   print(label, { scene: opts && opts.scene, query: opts && opts.query });
