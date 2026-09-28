@@ -3,11 +3,31 @@ import type { GameState } from '../../engine/src/index';
 import { ResultScene } from '../src/scenes/result';
 import { TableScene } from '../src/scenes/table';
 import { handOf, newState, roomOf } from './fixtures';
-import { canTap, drawAll, fakeCtl, fakeUi, has, tap } from './sceneKit';
+import type { Screen } from '../src/core/app';
+import { findNode, type Node } from '../src/core/node';
+import { canTap, drawAll, fakeCtl, fakeUi, has, SCREEN, tap } from './sceneKit';
 
-function table(s: GameState, seat: number) {
+function table(s: GameState, seat: number, screen: Screen = SCREEN) {
   const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, seat), openid: `u${seat}` });
-  return { ctl, t: new TableScene(fakeUi(ctl)) };
+  return { ctl, t: new TableScene(fakeUi(ctl, screen)) };
+}
+const SMALL: Screen = { W: 320, H: 568, top: 64, bottom: 568 };
+const rectOf = (nodes: Node[], id: string) => findNode(nodes, id)!.rect;
+const bottomOf = (nodes: Node[], re: RegExp) =>
+  Math.max(...nodes.filter((n) => n.id && re.test(n.id)).map((n) => n.rect.y + n.rect.h));
+
+/** 夜晚面板：自首按钮在屏幕内，且不压住座位格和身份卡 */
+function expectNightFits(nodes: Node[], screen: Screen) {
+  const no = rectOf(nodes, 'no-confess');
+  const yes = rectOf(nodes, 'confirm-confess');
+  for (const r of [no, yes]) expect(r.y + r.h).toBeLessThanOrEqual(screen.bottom);
+  const gridBottom = bottomOf(nodes, /^(kill|protect|suspect):/);
+  const chips = nodes.filter((n) => n.id?.startsWith('confess:'));
+  expect(chips.length).toBeGreaterThan(0);
+  const chipTop = Math.min(...chips.map((n) => n.rect.y));
+  expect(gridBottom).toBeLessThanOrEqual(chipTop);
+  expect(bottomOf(nodes, /^confess:/) + 20).toBeLessThanOrEqual(Math.min(no.y, yes.y));
+  expect(gridBottom).toBeLessThanOrEqual(Math.min(no.y, yes.y));
 }
 const witches = (s: GameState) => s.players.filter((p) => p.witchFaction).map((p) => p.seat);
 const constable = (s: GameState) => s.players.find((p) => p.tryals.some((t) => t.kind === 'constable' && !t.revealed))!.seat;
@@ -91,6 +111,33 @@ describe('选择面板', () => {
     tap(b.t.build(0), `confess:${id}`);
     tap(b.t.build(0), 'confirm-confess');
     expect(b.ctl.act).toHaveBeenCalledWith({ type: 'confess', tryalId: id });
+  });
+
+  it('小屏 12 人：同时是女巫和警长，自首按钮仍在屏幕内且不重叠', () => {
+    const s = newState(12);
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    const c = constable(s);
+    const me = s.players[c];
+    me.witchFaction = true;
+    const other = me.tryals.find((t) => t.kind !== 'constable');
+    if (other) other.kind = 'witch';
+    const { ctl, t } = table(s, c, SMALL);
+    const nodes = t.build(0);
+    drawAll(nodes);
+    expect(has(nodes, 'kill:0')).toBe(true);
+    expect(has(nodes, `protect:${(c + 1) % 12}`)).toBe(true);
+    expectNightFits(nodes, SMALL);
+    tap(nodes, 'no-confess');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'confess', tryalId: null });
+  });
+
+  it('普通屏幕单一角色：自首按钮在屏幕内且不重叠', () => {
+    const s = newState(5);
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    const plain = s.players.find((p) => !p.witchFaction)!.seat;
+    expectNightFits(table(s, plain).t.build(0), SCREEN);
   });
 
   it('已经自首后不再显示自首按钮', () => {

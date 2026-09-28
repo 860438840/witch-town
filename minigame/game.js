@@ -1292,11 +1292,14 @@
   function choiceKey(m) {
     return m.pending ? `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}` : "";
   }
-  function seatGrid(m, area, prefix, seats, selected, marks, onPick) {
-    const cols = 4;
-    const gap = 6;
+  var SEAT_NORMAL = { h: 36, gap: 6 };
+  var SEAT_COMPACT = { h: 28, gap: 4 };
+  var SEAT_COLS = 4;
+  var seatGridHeight = (count, size) => Math.ceil(count / SEAT_COLS) * (size.h + size.gap);
+  function seatGrid(m, area, prefix, seats, selected, marks, onPick, size = SEAT_NORMAL) {
+    const cols = SEAT_COLS;
+    const { h, gap } = size;
     const w = (area.w - gap * (cols - 1)) / cols;
-    const h = 36;
     const nodes = seats.map((seat, i) => {
       var _a, _b;
       const r = rect(area.x + i % cols * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
@@ -1309,12 +1312,12 @@
         draw: (ctx2) => {
           drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
           drawBadge(ctx2, r.x + 13, r.y + h / 2, 9, p.name, seat);
-          drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? 12 : h / 2), { size: 12, maxWidth: r.w - 30 });
-          if (mark) drawText(ctx2, mark, r.x + 26, r.y + 26, { size: 9, color: C.gold, maxWidth: r.w - 30 });
+          drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
+          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: C.gold, maxWidth: r.w - 30 });
         }
       };
     });
-    return { nodes, height: Math.ceil(seats.length / cols) * (h + gap) };
+    return { nodes, height: seatGridHeight(seats.length, size) };
   }
   function votesToMarks(m, votes) {
     var _a;
@@ -1322,10 +1325,13 @@
     for (const [voter, target] of Object.entries(votes != null ? votes : {})) ((_a = marks[target]) != null ? _a : marks[target] = []).push(nameOf(m, Number(voter)));
     return marks;
   }
-  function tryalRow(area, items, prefix, selected, onPick) {
+  var CHIP_GAP = 8;
+  var chipWidth = (areaW, n, maxW) => Math.min(maxW, (areaW - CHIP_GAP * (n - 1)) / Math.max(1, n));
+  var tryalRowHeight = (areaW, n, labels, maxW) => Math.round(chipWidth(areaW, n, maxW) * 1.3) + (labels ? 20 : 4);
+  function tryalRow(area, items, prefix, selected, onPick, maxW = 52) {
     const n = items.length;
-    const gap = 8;
-    const w = Math.min(52, (area.w - gap * (n - 1)) / Math.max(1, n));
+    const gap = CHIP_GAP;
+    const w = chipWidth(area.w, n, maxW);
     const h = Math.round(w * 1.3);
     const x0 = area.x + (area.w - (n * w + (n - 1) * gap)) / 2;
     const nodes = items.map((it, i) => {
@@ -1342,7 +1348,7 @@
         }
       };
     });
-    return { nodes, height: h + (items.some((x) => x.kind) ? 20 : 4) };
+    return { nodes, height: tryalRowHeight(area.w, n, items.some((x) => x.kind), maxW) };
   }
   function choicePanel(ui2, m, st, now, slide = 1) {
     var _a;
@@ -1396,18 +1402,32 @@
     protect: "\u9009\u62E9\u4FDD\u62A4\u4E00\u540D\u73A9\u5BB6\uFF08\u4E0D\u80FD\u662F\u81EA\u5DF1\uFF09",
     suspect: "\u9009\u62E9\u4F60\u6000\u7591\u7684\u4EBA"
   };
+  var NIGHT_LEVELS = [
+    { seat: SEAT_NORMAL, chip: 52 },
+    { seat: SEAT_COMPACT, chip: 52 },
+    { seat: SEAT_COMPACT, chip: 40 },
+    { seat: SEAT_COMPACT, chip: 30 }
+  ];
+  var NIGHT_BUTTON_H = 42;
   function nightPanel(ui2, m, p, st, cd, slide) {
-    var _a, _b;
+    var _a, _b, _c;
     const busy = ui2.ctl.busy;
     const act = ui2.ctl.act.bind(ui2.ctl);
-    const { nodes, body } = sheet(ui2.screen, ui2.screen.H - ui2.screen.top, "\u591C\u665A", null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u81EA\u52A8\u5904\u7406`);
+    const sheetH = ui2.screen.H - ui2.screen.top;
+    const { nodes, body } = sheet(ui2.screen, sheetH, "\u591C\u665A", null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u81EA\u52A8\u5904\u7406`);
+    const bodyH = body.h + sheetH * (1 - slide);
+    const steps = nightSteps(p).map((step) => ({ step, seats: nightTargets(m, step) }));
+    const tryals = p.confessed ? [] : unrevealedTryals(m);
+    const btnY = body.y + bodyH - NIGHT_BUTTON_H;
+    const avail = p.confessed ? bodyH - 24 : btnY - body.y;
+    const need = (lv2) => steps.reduce((sum, x) => sum + 24 + seatGridHeight(x.seats.length, lv2.seat) + 8, 0) + (p.confessed ? 0 : 26 + tryalRowHeight(body.w, tryals.length, tryals.length > 0, lv2.chip) + 6);
+    const lv = (_a = NIGHT_LEVELS.find((l) => need(l) <= avail)) != null ? _a : NIGHT_LEVELS[NIGHT_LEVELS.length - 1];
     let y = body.y;
-    for (const step of nightSteps(p)) {
+    for (const { step, seats } of steps) {
       nodes.push(textNode(rect(body.x, y, body.w, 20), STEP_TITLE[step], { size: 13, color: C.gold }));
       y += 24;
-      const seats = nightTargets(m, step);
       const area = rect(body.x, y, body.w, 0);
-      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_b = (_a = p.votes) == null ? void 0 : _a[m.mySeat]) != null ? _b : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat })) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat })) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat);
+      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_c = (_b = p.votes) == null ? void 0 : _b[m.mySeat]) != null ? _c : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }), lv.seat) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat }), lv.seat) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat, lv.seat);
       nodes.push(...grid.nodes);
       y += grid.height + 8;
     }
@@ -1417,15 +1437,13 @@
     }
     nodes.push(textNode(rect(body.x, y, body.w, 20), "\u662F\u5426\u81EA\u9996\uFF1F\u81EA\u9996\u8981\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF0C\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740", { size: 13, color: C.gold }));
     y += 26;
-    const tryals = unrevealedTryals(m);
-    const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), "confess", st.picked, (id) => st.picked = id);
+    const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), "confess", st.picked, (id) => st.picked = id, lv.chip);
     nodes.push(...row.nodes);
-    y += row.height + 6;
     const half = (body.w - 10) / 2;
     const picked = typeof st.picked === "string" ? st.picked : null;
     nodes.push(
-      button("no-confess", rect(body.x, y, half, 42), "\u4E0D\u81EA\u9996", busy ? null : () => void act({ type: "confess", tryalId: null }), "secondary"),
-      button("confirm-confess", rect(body.x + half + 10, y, half, 42), "\u81EA\u9996", picked && !busy ? () => void act({ type: "confess", tryalId: picked }) : null, "danger")
+      button("no-confess", rect(body.x, btnY, half, NIGHT_BUTTON_H), "\u4E0D\u81EA\u9996", busy ? null : () => void act({ type: "confess", tryalId: null }), "secondary"),
+      button("confirm-confess", rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), "\u81EA\u9996", picked && !busy ? () => void act({ type: "confess", tryalId: picked }) : null, "danger")
     );
     return nodes;
   }

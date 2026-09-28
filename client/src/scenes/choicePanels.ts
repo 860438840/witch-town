@@ -20,6 +20,16 @@ export function choiceKey(m: TableModel): string {
   return m.pending ? `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}` : '';
 }
 
+interface SeatSize {
+  h: number;
+  gap: number;
+}
+const SEAT_NORMAL: SeatSize = { h: 36, gap: 6 };
+const SEAT_COMPACT: SeatSize = { h: 28, gap: 4 };
+const SEAT_COLS = 4;
+
+const seatGridHeight = (count: number, size: SeatSize): number => Math.ceil(count / SEAT_COLS) * (size.h + size.gap);
+
 /** 一排玩家按钮（每行 4 个）。返回节点和占用的高度。 */
 function seatGrid(
   m: TableModel,
@@ -29,11 +39,11 @@ function seatGrid(
   selected: number | null,
   marks: Record<number, string[]>,
   onPick: ((seat: number) => void) | null,
+  size: SeatSize = SEAT_NORMAL,
 ): { nodes: Node[]; height: number } {
-  const cols = 4;
-  const gap = 6;
+  const cols = SEAT_COLS;
+  const { h, gap } = size;
   const w = (area.w - gap * (cols - 1)) / cols;
-  const h = 36;
   const nodes = seats.map((seat, i) => {
     const r = rect(area.x + (i % cols) * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
     const p = m.view.players[seat];
@@ -45,12 +55,12 @@ function seatGrid(
       draw: (ctx: CanvasRenderingContext2D) => {
         drawPanel(ctx, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
         drawBadge(ctx, r.x + 13, r.y + h / 2, 9, p.name, seat);
-        drawText(ctx, nameOf(m, seat), r.x + 26, r.y + (mark ? 12 : h / 2), { size: 12, maxWidth: r.w - 30 });
-        if (mark) drawText(ctx, mark, r.x + 26, r.y + 26, { size: 9, color: C.gold, maxWidth: r.w - 30 });
+        drawText(ctx, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
+        if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: C.gold, maxWidth: r.w - 30 });
       },
     } satisfies Node;
   });
-  return { nodes, height: Math.ceil(seats.length / cols) * (h + gap) };
+  return { nodes, height: seatGridHeight(seats.length, size) };
 }
 
 function votesToMarks(m: TableModel, votes: Record<number, number> | null): Record<number, string[]> {
@@ -59,11 +69,23 @@ function votesToMarks(m: TableModel, votes: Record<number, number> | null): Reco
   return marks;
 }
 
-/** 一排身份卡（faceUp 为 false 时画背面） */
-function tryalRow(area: Rect, items: { id: string; kind: 'witch' | 'constable' | 'villager' | null }[], prefix: string, selected: string | number | null, onPick: (key: string, i: number) => void): { nodes: Node[]; height: number } {
+const CHIP_GAP = 8;
+const chipWidth = (areaW: number, n: number, maxW: number): number => Math.min(maxW, (areaW - CHIP_GAP * (n - 1)) / Math.max(1, n));
+const tryalRowHeight = (areaW: number, n: number, labels: boolean, maxW: number): number =>
+  Math.round(chipWidth(areaW, n, maxW) * 1.3) + (labels ? 20 : 4);
+
+/** 一排身份卡（kind 为 null 时画背面） */
+function tryalRow(
+  area: Rect,
+  items: { id: string; kind: 'witch' | 'constable' | 'villager' | null }[],
+  prefix: string,
+  selected: string | number | null,
+  onPick: (key: string, i: number) => void,
+  maxW = 52,
+): { nodes: Node[]; height: number } {
   const n = items.length;
-  const gap = 8;
-  const w = Math.min(52, (area.w - gap * (n - 1)) / Math.max(1, n));
+  const gap = CHIP_GAP;
+  const w = chipWidth(area.w, n, maxW);
   const h = Math.round(w * 1.3);
   const x0 = area.x + (area.w - (n * w + (n - 1) * gap)) / 2;
   const nodes = items.map((it, i) => {
@@ -80,7 +102,7 @@ function tryalRow(area: Rect, items: { id: string; kind: 'witch' | 'constable' |
       },
     } satisfies Node;
   });
-  return { nodes, height: h + (items.some((x) => x.kind) ? 20 : 4) };
+  return { nodes, height: tryalRowHeight(area.w, n, items.some((x) => x.kind), maxW) };
 }
 
 export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number, slide = 1): Node[] {
@@ -140,22 +162,42 @@ const STEP_TITLE: Record<NightStep, string> = {
   suspect: '选择你怀疑的人',
 };
 
+/** 夜晚面板的排版档位：内容放不下时依次缩小座位按钮和自首身份卡 */
+const NIGHT_LEVELS: { seat: SeatSize; chip: number }[] = [
+  { seat: SEAT_NORMAL, chip: 52 },
+  { seat: SEAT_COMPACT, chip: 52 },
+  { seat: SEAT_COMPACT, chip: 40 },
+  { seat: SEAT_COMPACT, chip: 30 },
+];
+const NIGHT_BUTTON_H = 42;
+
 function nightPanel(ui: Ui, m: TableModel, p: NightPending, st: ChoiceState, cd: string, slide: number): Node[] {
   const busy = ui.ctl.busy;
   const act = ui.ctl.act.bind(ui.ctl);
-  const { nodes, body } = sheet(ui.screen, ui.screen.H - ui.screen.top, '夜晚', null, slide, `剩余 ${cd} · 超时将自动处理`);
+  const sheetH = ui.screen.H - ui.screen.top;
+  const { nodes, body } = sheet(ui.screen, sheetH, '夜晚', null, slide, `剩余 ${cd} · 超时将自动处理`);
+  // 面板滑入时整体平移：按停稳后的高度排版
+  const bodyH = body.h + sheetH * (1 - slide);
+  const steps = nightSteps(p).map((step) => ({ step, seats: nightTargets(m, step) }));
+  const tryals = p.confessed ? [] : unrevealedTryals(m);
+  const btnY = body.y + bodyH - NIGHT_BUTTON_H;
+  const avail = p.confessed ? bodyH - 24 : btnY - body.y;
+  const need = (lv: (typeof NIGHT_LEVELS)[number]): number =>
+    steps.reduce((sum, x) => sum + 24 + seatGridHeight(x.seats.length, lv.seat) + 8, 0) +
+    (p.confessed ? 0 : 26 + tryalRowHeight(body.w, tryals.length, tryals.length > 0, lv.chip) + 6);
+  const lv = NIGHT_LEVELS.find((l) => need(l) <= avail) ?? NIGHT_LEVELS[NIGHT_LEVELS.length - 1];
+
   let y = body.y;
-  for (const step of nightSteps(p)) {
+  for (const { step, seats } of steps) {
     nodes.push(textNode(rect(body.x, y, body.w, 20), STEP_TITLE[step], { size: 13, color: C.gold }));
     y += 24;
-    const seats = nightTargets(m, step);
     const area = rect(body.x, y, body.w, 0);
     const grid =
       step === 'kill'
-        ? seatGrid(m, area, 'kill', seats, m.mySeat !== null ? (p.votes?.[m.mySeat] ?? null) : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: 'witchVote', target: seat }))
+        ? seatGrid(m, area, 'kill', seats, m.mySeat !== null ? (p.votes?.[m.mySeat] ?? null) : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: 'witchVote', target: seat }), lv.seat)
         : step === 'protect'
-          ? seatGrid(m, area, 'protect', seats, p.protect, {}, busy ? null : (seat) => void act({ type: 'protect', target: seat }))
-          : seatGrid(m, area, 'suspect', seats, st.suspect, {}, (seat) => (st.suspect = seat));
+          ? seatGrid(m, area, 'protect', seats, p.protect, {}, busy ? null : (seat) => void act({ type: 'protect', target: seat }), lv.seat)
+          : seatGrid(m, area, 'suspect', seats, st.suspect, {}, (seat) => (st.suspect = seat), lv.seat);
     nodes.push(...grid.nodes);
     y += grid.height + 8;
   }
@@ -165,15 +207,13 @@ function nightPanel(ui: Ui, m: TableModel, p: NightPending, st: ChoiceState, cd:
   }
   nodes.push(textNode(rect(body.x, y, body.w, 20), '是否自首？自首要翻开一张身份卡，当晚不会被杀', { size: 13, color: C.gold }));
   y += 26;
-  const tryals = unrevealedTryals(m);
-  const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), 'confess', st.picked, (id) => (st.picked = id));
+  const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), 'confess', st.picked, (id) => (st.picked = id), lv.chip);
   nodes.push(...row.nodes);
-  y += row.height + 6;
   const half = (body.w - 10) / 2;
   const picked = typeof st.picked === 'string' ? st.picked : null;
   nodes.push(
-    button('no-confess', rect(body.x, y, half, 42), '不自首', busy ? null : () => void act({ type: 'confess', tryalId: null }), 'secondary'),
-    button('confirm-confess', rect(body.x + half + 10, y, half, 42), '自首', picked && !busy ? () => void act({ type: 'confess', tryalId: picked }) : null, 'danger'),
+    button('no-confess', rect(body.x, btnY, half, NIGHT_BUTTON_H), '不自首', busy ? null : () => void act({ type: 'confess', tryalId: null }), 'secondary'),
+    button('confirm-confess', rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), '自首', picked && !busy ? () => void act({ type: 'confess', tryalId: picked }) : null, 'danger'),
   );
   return nodes;
 }
