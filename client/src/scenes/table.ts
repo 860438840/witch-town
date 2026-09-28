@@ -211,7 +211,9 @@ export class TableScene implements Scene {
     const ui = this.ui;
     const code = ui.ctl.code;
     const leave = () => ui.confirm('离开牌局？', `可以用房号 ${code} 回来`, () => void ui.ctl.leaveRoom());
-    return button('leave-game', rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), '离开', leave, 'secondary');
+    const node = button('leave-game', rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), '离开', leave, 'secondary');
+    // 画出来的按钮只有 46×24；点击区域向左、右（页边距内）各放 4、向下放到顶栏下 4px（座位格从顶栏下 6px 开始）
+    return { ...node, rect: rect(r.x + r.w - LEAVE_W - 4, r.y, LEAVE_W + 8, r.h + 4) };
   }
 
   private cell(m: TableModel, seat: number, r: Rect, a: AnimState): Node {

@@ -4,6 +4,7 @@ import type { ApiResult } from './net/api';
 import type { KeyStore } from './net/storage';
 
 export const STALE_ERROR = '状态已变化，请重试';
+export const OUTDATED_ERROR = '云函数版本过旧，请在开发者工具里重新部署 game';
 export const LEAVE_ERRORS = ['房间不存在', '房间已结束', '你不在这个房间里'];
 
 export interface SessionLike {
@@ -63,8 +64,8 @@ export class Controller {
   }
 
   async createRoom(): Promise<void> {
-    const r = await this.run<{ code: string; openid: string }>({ type: 'createRoom', profile: this.profile() });
-    if (r) this.enter(r.code, r.openid);
+    const r = await this.run<{ code: string; openid?: unknown }>({ type: 'createRoom', profile: this.profile() });
+    if (r) this.enterFrom(r);
   }
 
   async joinRoom(code: string): Promise<void> {
@@ -72,8 +73,8 @@ export class Controller {
       this.d.toast('请输入 4 位房间号');
       return;
     }
-    const r = await this.run<{ code: string; openid: string }>({ type: 'joinRoom', code, profile: this.profile() });
-    if (r) this.enter(r.code, r.openid);
+    const r = await this.run<{ code: string; openid?: unknown }>({ type: 'joinRoom', code, profile: this.profile() });
+    if (r) this.enterFrom(r);
   }
 
   async leaveRoom(): Promise<void> {
@@ -124,6 +125,15 @@ export class Controller {
 
   private profile(): { name: string; avatar: string } {
     return { name: this.nickname ?? '', avatar: '' };
+  }
+
+  /** 旧版云函数只返回 { code }：没有 openid 就认不出自己的座位，不能进房间 */
+  private enterFrom(r: { code: string; openid?: unknown }): void {
+    if (typeof r.openid !== 'string' || r.openid === '') {
+      this.d.toast(OUTDATED_ERROR);
+      return;
+    }
+    this.enter(r.code, r.openid);
   }
 
   private enter(code: string, openid: string): void {

@@ -162,6 +162,7 @@
 
   // src/controller.ts
   var STALE_ERROR = "\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5";
+  var OUTDATED_ERROR = "\u4E91\u51FD\u6570\u7248\u672C\u8FC7\u65E7\uFF0C\u8BF7\u5728\u5F00\u53D1\u8005\u5DE5\u5177\u91CC\u91CD\u65B0\u90E8\u7F72 game";
   var LEAVE_ERRORS = ["\u623F\u95F4\u4E0D\u5B58\u5728", "\u623F\u95F4\u5DF2\u7ED3\u675F", "\u4F60\u4E0D\u5728\u8FD9\u4E2A\u623F\u95F4\u91CC"];
   var Controller = class {
     constructor(d) {
@@ -196,7 +197,7 @@
     }
     async createRoom() {
       const r = await this.run({ type: "createRoom", profile: this.profile() });
-      if (r) this.enter(r.code, r.openid);
+      if (r) this.enterFrom(r);
     }
     async joinRoom(code) {
       if (!/^\d{4}$/.test(code)) {
@@ -204,7 +205,7 @@
         return;
       }
       const r = await this.run({ type: "joinRoom", code, profile: this.profile() });
-      if (r) this.enter(r.code, r.openid);
+      if (r) this.enterFrom(r);
     }
     async leaveRoom() {
       if (!this.code) return;
@@ -252,6 +253,14 @@
     profile() {
       var _a;
       return { name: (_a = this.nickname) != null ? _a : "", avatar: "" };
+    }
+    /** 旧版云函数只返回 { code }：没有 openid 就认不出自己的座位，不能进房间 */
+    enterFrom(r) {
+      if (typeof r.openid !== "string" || r.openid === "") {
+        this.d.toast(OUTDATED_ERROR);
+        return;
+      }
+      this.enter(r.code, r.openid);
     }
     enter(code, openid) {
       var _a, _b;
@@ -1844,7 +1853,8 @@
       const ui2 = this.ui;
       const code = ui2.ctl.code;
       const leave = () => ui2.confirm("\u79BB\u5F00\u724C\u5C40\uFF1F", `\u53EF\u4EE5\u7528\u623F\u53F7 ${code} \u56DE\u6765`, () => void ui2.ctl.leaveRoom());
-      return button("leave-game", rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), "\u79BB\u5F00", leave, "secondary");
+      const node = button("leave-game", rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), "\u79BB\u5F00", leave, "secondary");
+      return __spreadProps(__spreadValues({}, node), { rect: rect(r.x + r.w - LEAVE_W - 4, r.y, LEAVE_W + 8, r.h + 4) });
     }
     cell(m, seat, r, a) {
       const p = m.view.players[seat];
@@ -2153,7 +2163,9 @@
     }
     const last = store.lastRoom();
     if (!last) return;
+    const stale = () => ctl.code !== null || store.lastRoom() !== last;
     void rejoinable(db, last).then((ok) => {
+      if (stale()) return;
       if (!ok) {
         store.clearLastRoom();
         return;
@@ -2162,6 +2174,7 @@
         title: "\u56DE\u5230\u623F\u95F4\uFF1F",
         content: `\u4E0A\u6B21\u4F60\u5728\u623F\u95F4 ${last}\uFF0C\u8981\u56DE\u53BB\u5417\uFF1F`,
         success: (r) => {
+          if (stale()) return;
           if (r.confirm) void ctl.joinRoom(last);
           else store.clearLastRoom();
         }

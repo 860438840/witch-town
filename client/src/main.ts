@@ -92,7 +92,10 @@ ensureNickname(() => {
   }
   const last = store.lastRoom();
   if (!last) return;
+  // 查询期间用户可能已经进了别的房间（或上次的房间已变）：那时这个提示已过时，什么都不做
+  const stale = (): boolean => ctl.code !== null || store.lastRoom() !== last;
   void rejoinable(db, last).then((ok) => {
+    if (stale()) return;
     if (!ok) {
       store.clearLastRoom();
       return;
@@ -101,6 +104,7 @@ ensureNickname(() => {
       title: '回到房间？',
       content: `上次你在房间 ${last}，要回去吗？`,
       success: (r) => {
+        if (stale()) return;
         if (r.confirm) void ctl.joinRoom(last);
         else store.clearLastRoom();
       },

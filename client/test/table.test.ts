@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Screen } from '../src/core/app';
+import { findNode, hitTest } from '../src/core/node';
 import { TableScene } from '../src/scenes/table';
 import { tableLayout } from '../src/scenes/tableLayout';
 import { giveCard, handOf, newState, roomOf, setDay } from './fixtures';
@@ -187,6 +188,23 @@ describe('游戏桌', () => {
     tap(nodes, 'leave-game');
     expect(ui.confirm).toHaveBeenCalledWith('离开牌局？', '可以用房号 1234 回来', expect.any(Function));
     expect(ctl.leaveRoom).toHaveBeenCalled();
+  });
+
+  it('「离开」按钮的点击区域够大（≥44×36），且不盖住座位格', () => {
+    const s = newState(12);
+    setDay(s, 1);
+    const nodes = scene(s).scene.build(0);
+    const leave = findNode(nodes, 'leave-game')!;
+    expect(leave.rect.w).toBeGreaterThanOrEqual(44);
+    expect(leave.rect.h).toBeGreaterThanOrEqual(36);
+    // 按钮画框下方、点击区域之内的一点仍然点中「离开」
+    const r = leave.rect;
+    expect(hitTest(nodes, r.x + r.w / 2, r.y + r.h - 1, 'onTap')?.id).toBe('leave-game');
+    for (let seat = 1; seat < 12; seat++) {
+      const c = findNode(nodes, `seat:${seat}`)!.rect;
+      const overlaps = r.x < c.x + c.w && c.x < r.x + r.w && r.y < c.y + c.h && c.y < r.y + r.h;
+      expect(overlaps).toBe(false);
+    }
   });
 
   it('选择面板打开时不显示「离开」按钮', () => {

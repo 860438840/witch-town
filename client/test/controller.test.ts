@@ -118,6 +118,20 @@ describe('Controller', () => {
     expect(offline.store.lastRoom()).toBe('1234');
   });
 
+  it('云函数没返回 openid（旧版本部署）时不进房间，提示重新部署', async () => {
+    for (const data of [{ code: '1234' }, { code: '1234', openid: '' }, { code: '1234', openid: 42 }]) {
+      const { ctl, toast, sessions, store } = setup(() => ({ ok: true, data }));
+      await ctl.createRoom();
+      await ctl.joinRoom('1234');
+      expect(toast).toHaveBeenCalledTimes(2);
+      expect(toast).toHaveBeenCalledWith('云函数版本过旧，请在开发者工具里重新部署 game');
+      expect(ctl.code).toBeNull();
+      expect(ctl.openid).toBeNull();
+      expect(sessions).toHaveLength(0);
+      expect(store.lastRoom()).toBeNull();
+    }
+  });
+
   it('调换座位发送新的顺序', async () => {
     const { ctl, api, sessions } = setup(entered);
     await ctl.createRoom();
