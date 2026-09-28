@@ -179,13 +179,13 @@ describe('Controller', () => {
 
   it('离开大厅的请求失败（网络错误）时留在房间里', async () => {
     const { ctl, api, toast, store, sessions } = setup((req) =>
-      req.type === 'leaveRoom' ? { ok: false, error: '网络不稳定，请稍后再试' } : entered(req),
+      req.type === 'leaveRoom' ? { ok: false, error: '网络不稳定，正在重试' } : entered(req),
     );
     await ctl.createRoom();
     sessions[0].room = lobbyRoom(2);
     await ctl.leaveRoom();
     expect(api.call).toHaveBeenLastCalledWith({ type: 'leaveRoom', code: '1234' });
-    expect(toast).toHaveBeenCalledWith('网络不稳定，请稍后再试');
+    expect(toast).toHaveBeenCalledWith('网络不稳定，正在重试');
     expect(ctl.code).toBe('1234');
     expect(sessions[0].stop).not.toHaveBeenCalled();
     expect(store.lastRoom()).toBe('1234');

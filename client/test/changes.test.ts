@@ -5,10 +5,15 @@ import { RootScene } from '../src/scenes/root';
 import { TableScene } from '../src/scenes/table';
 import { handOf, newState, roomOf, setDay } from './fixtures';
 import { fakeCtl, fakeUi } from './sceneKit';
+import { MAX_PLAYERS } from '../../server/src/types';
 
 const model = (s: ReturnType<typeof newState>, seat = 0) => buildTable(roomOf(s), handOf(s, seat), `u${seat}`)!;
 
 describe('diffTables', () => {
+  it('MAX_VERSION_STEP 跟着最大人数走（夜晚 tick：保护 1 + 每人认罪 + 每人投票）', () => {
+    expect(MAX_VERSION_STEP).toBe(1 + 2 * MAX_PLAYERS);
+  });
+
   it('第一次或换了一局时没有变化', () => {
     const s = newState(5);
     expect(diffTables(null, model(s))).toEqual([]);

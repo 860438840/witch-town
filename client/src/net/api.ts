@@ -4,7 +4,7 @@ export interface CloudLike {
   callFunction(o: { name: string; data: unknown }): Promise<{ result?: unknown }>;
 }
 
-export const NETWORK_ERROR = '网络不稳定，请稍后再试';
+export const NETWORK_ERROR = '网络不稳定，正在重试';
 
 export class Api {
   constructor(private readonly cloud: CloudLike) {}

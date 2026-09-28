@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Api, NETWORK_ERROR } from '../src/net/api';
+import { Api } from '../src/net/api';
 import { rejoinable, RoomSession } from '../src/net/session';
 import { LocalStore } from '../src/net/storage';
 import { Ticker } from '../src/net/ticker';
@@ -13,7 +13,7 @@ describe('Api', () => {
   });
   it('调用失败返回网络错误', async () => {
     const api = new Api({ callFunction: async () => { throw new Error('timeout'); } });
-    expect(await api.call({ type: 'tick' })).toEqual({ ok: false, error: NETWORK_ERROR, network: true });
+    expect(await api.call({ type: 'tick' })).toEqual({ ok: false, error: '网络不稳定，正在重试', network: true });
   });
   it('结果格式不对时返回错误', async () => {
     const api = new Api({ callFunction: async () => ({ result: undefined }) });
