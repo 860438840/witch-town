@@ -21,6 +21,13 @@ export class Animator {
     return t >= 1 ? 1 : easeOutCubic(Math.max(0, t));
   }
 
+  /** 未缓动的线性进度 0→1；没有这个动画或已结束时返回 1 */
+  linear(key: string, now: number): number {
+    const it = this.items.get(key);
+    if (!it) return 1;
+    return Math.min(1, Math.max(0, (now - it.start) / it.dur));
+  }
+
   data<T>(key: string): T | undefined {
     return this.items.get(key)?.data as T | undefined;
   }

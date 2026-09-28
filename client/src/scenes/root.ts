@@ -24,7 +24,12 @@ export class RootScene implements Scene {
 
   build(now: number): Node[] {
     const ctl = this.ui.ctl;
-    if (!ctl.code) return this.home.build(now);
+    if (!ctl.code) {
+      // 回到首页就丢掉游戏桌；再进同一局时从新画面开始，不会把离开期间的变化当动效重放
+      this.table = null;
+      this.tableKey = '';
+      return this.home.build(now);
+    }
     const room = ctl.room;
     if (!room) return this.message(`正在进入房间 ${ctl.code}…`, 'loading-home');
     if (!room.view) return room.status === 'lobby' ? this.lobby.build(now) : this.message('房间已关闭', 'closed-home');

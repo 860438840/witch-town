@@ -70,6 +70,12 @@
       const t = (now - it.start) / it.dur;
       return t >= 1 ? 1 : easeOutCubic(Math.max(0, t));
     }
+    /** 未缓动的线性进度 0→1；没有这个动画或已结束时返回 1 */
+    linear(key, now) {
+      const it = this.items.get(key);
+      if (!it) return 1;
+      return Math.min(1, Math.max(0, (now - it.start) / it.dur));
+    }
     data(key) {
       var _a;
       return (_a = this.items.get(key)) == null ? void 0 : _a.data;
@@ -1176,10 +1182,12 @@
 
   // src/model/changes.ts
   var ANIM_MS = { cardIn: 300, play: 450, night: 600, death: 500, reveal: 500, turn: 1800, panel: 250 };
+  var MAX_VERSION_STEP = 1 + 2 * 12;
   var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
   function diffTables(prev, next) {
     var _a, _b, _c;
     if (!prev || prev.code !== next.code || prev.view.log.length > next.view.log.length) return [];
+    if (next.view.version - prev.view.version > MAX_VERSION_STEP) return [];
     const out = [];
     if (prev.priv) {
       const before = new Set(prev.priv.hand.map((c) => c.id));
@@ -1718,7 +1726,7 @@
       const staticDark = m.view.phase.kind === "night" ? 1 : 0;
       const sky = A.data("sky");
       const darkness = sky && A.running("sky", now) ? sky.from + (sky.to - sky.from) * A.progress("sky", now) : staticDark;
-      const glow = A.running("turn", now) ? 0.45 + 0.55 * Math.abs(Math.sin(A.progress("turn", now) * Math.PI * 3)) : 0.6;
+      const glow = A.running("turn", now) ? 0.6 + 0.4 * Math.abs(Math.sin(A.linear("turn", now) * Math.PI * 3)) : 0.6;
       const overlay2 = [];
       for (const key of A.keys()) {
         if (!key.startsWith("fly:") || !A.running(key, now)) continue;
@@ -2009,7 +2017,11 @@
     }
     build(now) {
       const ctl2 = this.ui.ctl;
-      if (!ctl2.code) return this.home.build(now);
+      if (!ctl2.code) {
+        this.table = null;
+        this.tableKey = "";
+        return this.home.build(now);
+      }
       const room = ctl2.room;
       if (!room) return this.message(`\u6B63\u5728\u8FDB\u5165\u623F\u95F4 ${ctl2.code}\u2026`, "loading-home");
       if (!room.view) return room.status === "lobby" ? this.lobby.build(now) : this.message("\u623F\u95F4\u5DF2\u5173\u95ED", "closed-home");

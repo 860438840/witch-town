@@ -105,7 +105,8 @@ export class TableScene implements Scene {
     const staticDark = m.view.phase.kind === 'night' ? 1 : 0;
     const sky = A.data<{ from: number; to: number }>('sky');
     const darkness = sky && A.running('sky', now) ? sky.from + (sky.to - sky.from) * A.progress('sky', now) : staticDark;
-    const glow = A.running('turn', now) ? 0.45 + 0.55 * Math.abs(Math.sin(A.progress('turn', now) * Math.PI * 3)) : 0.6;
+    // 按线性时间均匀闪 3 下，起止都落在常亮值 0.6 上
+    const glow = A.running('turn', now) ? 0.6 + 0.4 * Math.abs(Math.sin(A.linear('turn', now) * Math.PI * 3)) : 0.6;
 
     const overlay: Node[] = [];
     for (const key of A.keys()) {
