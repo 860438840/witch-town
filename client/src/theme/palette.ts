@@ -21,7 +21,21 @@ export const C = {
   witch: '#b3263a',
   constable: '#c9a24a',
   villager: '#6b6384',
+  star: '#ffffff',
+  badgeText: '#fff',
+  cardText: '#f3d9a0',
+  badgeRing: 'rgba(232,199,116,0.7)',
+  chipRevealedLine: 'rgba(255,255,255,0.4)',
+  buttonDangerFill: 'rgba(192,57,77,0.25)',
+  buttonFill: 'rgba(0,0,0,0.25)',
+  glowStrong: 'rgba(232,199,116,0.9)',
 } as const;
+
+/** 夜色叠加层：alpha 通常取 0.55 * darkness */
+export const nightShade = (alpha: number): string => `rgba(4,2,10,${alpha})`;
+
+/** 金色发光：面板 glow 等需要可变透明度的金色场景 */
+export const goldGlow = (alpha: number): string => `rgba(232,199,116,${alpha})`;
 
 export const CARD_GRADIENT: Record<CardColor, [string, string]> = {
   red: ['#7a1428', '#4a0a18'],

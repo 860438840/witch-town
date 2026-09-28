@@ -3,7 +3,7 @@ import type { Rect } from '../core/geom';
 import type { Ctx } from '../core/node';
 import { ellipsize, wrapText } from '../core/text';
 import { CARD_INFO, TRYAL_SHORT } from '../model/cards';
-import { badgeColor, C, CARD_GRADIENT, font } from './palette';
+import { badgeColor, C, CARD_GRADIENT, font, goldGlow, nightShade } from './palette';
 
 export function roundRect(ctx: Ctx, r: Rect, radius: number): void {
   const rr = Math.max(0, Math.min(radius, r.w / 2, r.h / 2));
@@ -42,7 +42,7 @@ export function drawSky(ctx: Ctx, W: number, H: number, darkness: number): void 
   g.addColorStop(1, C.skyBottom);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = C.star;
   for (let i = 0; i < 40; i++) {
     ctx.globalAlpha = 0.25 + (i % 5) * 0.1;
     ctx.fillRect((i * 97 + 13) % W, (i * 57 + 7) % (H * 0.5), 1.5, 1.5);
@@ -58,7 +58,7 @@ export function drawSky(ctx: Ctx, W: number, H: number, darkness: number): void 
   ctx.arc(W - 51, H * 0.16 - 7, 20, 0, Math.PI * 2);
   ctx.fill();
   if (darkness > 0) {
-    ctx.fillStyle = `rgba(4,2,10,${0.55 * darkness})`;
+    ctx.fillStyle = nightShade(0.55 * darkness);
     ctx.fillRect(0, 0, W, H);
   }
 }
@@ -74,7 +74,7 @@ export interface PanelOpts {
 export function drawPanel(ctx: Ctx, r: Rect, o: PanelOpts = {}): void {
   roundRect(ctx, r, o.radius ?? 8);
   if (o.glow) {
-    ctx.shadowColor = `rgba(232,199,116,${o.glow})`;
+    ctx.shadowColor = goldGlow(o.glow);
     ctx.shadowBlur = 12;
   }
   ctx.fillStyle = o.fill ?? C.panel;
@@ -98,7 +98,7 @@ export function drawButton(ctx: Ctx, r: Rect, label: string, style: ButtonStyle)
   } else {
     drawPanel(ctx, r, {
       radius: 10,
-      fill: style === 'danger' ? 'rgba(192,57,77,0.25)' : 'rgba(0,0,0,0.25)',
+      fill: style === 'danger' ? C.buttonDangerFill : C.buttonFill,
       stroke: style === 'disabled' ? C.panelLine : style === 'danger' ? C.danger : C.gold,
     });
   }
@@ -113,9 +113,9 @@ export function drawBadge(ctx: Ctx, cx: number, cy: number, radius: number, name
   ctx.fillStyle = badgeColor(seat);
   ctx.fill();
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = 'rgba(232,199,116,0.7)';
+  ctx.strokeStyle = C.badgeRing;
   ctx.stroke();
-  drawText(ctx, [...name][0] ?? '?', cx, cy + 1, { size: Math.round(radius * 1.05), bold: true, color: '#fff', align: 'center' });
+  drawText(ctx, [...name][0] ?? '?', cx, cy + 1, { size: Math.round(radius * 1.05), bold: true, color: C.badgeText, align: 'center' });
 }
 
 export interface CardOpts {
@@ -132,7 +132,7 @@ export function drawCardFace(ctx: Ctx, r: Rect, kind: CardKind, o: CardOpts = {}
   if (o.dim) ctx.globalAlpha = 0.55;
   roundRect(ctx, r, 7);
   if (o.selected) {
-    ctx.shadowColor = 'rgba(232,199,116,0.9)';
+    ctx.shadowColor = C.glowStrong;
     ctx.shadowBlur = 14;
   }
   ctx.fillStyle = g;
@@ -141,10 +141,10 @@ export function drawCardFace(ctx: Ctx, r: Rect, kind: CardKind, o: CardOpts = {}
   ctx.lineWidth = o.selected ? 2 : 1;
   ctx.strokeStyle = C.goldLine;
   ctx.stroke();
-  drawText(ctx, info.name, r.x + r.w / 2, r.y + 16, { size: 14, bold: true, color: '#f3d9a0', align: 'center' });
+  drawText(ctx, info.name, r.x + r.w / 2, r.y + 16, { size: 14, bold: true, color: C.cardText, align: 'center' });
   ctx.font = font(9);
   const lines = wrapText(info.desc, r.w - 8, (s) => ctx.measureText(s).width).slice(0, 4);
-  lines.forEach((line, i) => drawText(ctx, line, r.x + r.w / 2, r.y + 34 + i * 12, { size: 9, color: '#f3d9a0', align: 'center' }));
+  lines.forEach((line, i) => drawText(ctx, line, r.x + r.w / 2, r.y + 34 + i * 12, { size: 9, color: C.cardText, align: 'center' }));
   ctx.globalAlpha = 1;
 }
 
@@ -157,9 +157,9 @@ export function drawTryalChip(ctx: Ctx, r: Rect, kind: TryalKind | null, reveale
   ctx.fillStyle = fill;
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = revealed ? 'rgba(255,255,255,0.4)' : C.goldDark;
+  ctx.strokeStyle = revealed ? C.chipRevealedLine : C.goldDark;
   ctx.stroke();
   if (revealed && kind && scaleX > 0.6) {
-    drawText(ctx, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: '#fff', align: 'center' });
+    drawText(ctx, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: C.badgeText, align: 'center' });
   }
 }
