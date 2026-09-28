@@ -25,6 +25,7 @@ import type { Ui } from './ui';
 import { button, ScrollBox, sheet, skyNode } from './widgets';
 
 const TWO_TARGET_HINT = ['先选被拿走的人', '再选接收的人'];
+const LEAVE_W = 46;
 
 /** 这一帧的动效参数（由 anim() 根据前后两帧的变化算出） */
 export interface AnimState {
@@ -62,13 +63,15 @@ export class TableScene implements Scene {
     const L = tableLayout(this.ui.screen, m.others.length);
     this.layout = L;
     const a = this.anim(m, now);
+    const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
     const nodes: Node[] = [skyNode(this.ui.screen, a.darkness)];
     nodes.push(this.topBar(m, L.top, now));
+    if (!choice.length) nodes.push(this.leaveButton(L.top));
     m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
     nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
     nodes.push(...this.handNodes(m, L.hand, a), ...this.buttonNodes(m, L.buttons));
     nodes.push(...a.overlay);
-    nodes.push(...this.panels(m, now, a));
+    nodes.push(...this.panels(m, choice));
     return nodes;
   }
 
@@ -154,8 +157,7 @@ export class TableScene implements Scene {
   }
 
   /** 叠在最上层的面板；需要做选择时优先显示选择面板 */
-  protected panels(m: TableModel, now: number, a: AnimState): Node[] {
-    const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+  protected panels(m: TableModel, choice: Node[]): Node[] {
     if (choice.length) return choice;
     if (this.askOption) return this.optionSheet(m);
     if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => (this.detail = null));
@@ -197,9 +199,19 @@ export class TableScene implements Scene {
         drawText(ctx, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
         const cd = formatCountdown(m.deadline, now);
         if (cd) drawText(ctx, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: 'center' });
-        drawText(ctx, `牌堆 ${m.view.deckCount} · 弃 ${m.view.discardCount}`, r.x + r.w, cy, { size: 11, color: C.textDim, align: 'right' });
+        // 右边留给「离开」按钮，牌堆数分两行放在它左边
+        const x = r.x + r.w - LEAVE_W - 8;
+        drawText(ctx, `牌堆 ${m.view.deckCount}`, x, cy - 7, { size: 10, color: C.textDim, align: 'right' });
+        drawText(ctx, `弃牌 ${m.view.discardCount}`, x, cy + 7, { size: 10, color: C.textDim, align: 'right' });
       },
     };
+  }
+
+  private leaveButton(r: Rect): Node {
+    const ui = this.ui;
+    const code = ui.ctl.code;
+    const leave = () => ui.confirm('离开牌局？', `可以用房号 ${code} 回来`, () => void ui.ctl.leaveRoom());
+    return button('leave-game', rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), '离开', leave, 'secondary');
   }
 
   private cell(m: TableModel, seat: number, r: Rect, a: AnimState): Node {

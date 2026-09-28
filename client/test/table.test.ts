@@ -166,6 +166,25 @@ describe('游戏桌', () => {
     expect(has(t.build(0), 'log-list')).toBe(true);
   });
 
+  it('顶栏有「离开」按钮：确认后离开牌局', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { ctl, ui, scene: t } = scene(s);
+    const nodes = t.build(0);
+    expect(drawAll(nodes).join('')).toContain('离开');
+    tap(nodes, 'leave-game');
+    expect(ui.confirm).toHaveBeenCalledWith('离开牌局？', '可以用房号 1234 回来', expect.any(Function));
+    expect(ctl.leaveRoom).toHaveBeenCalled();
+  });
+
+  it('选择面板打开时不显示「离开」按钮', () => {
+    const s = newState(5);
+    s.phase = { kind: 'trialReveal', target: 2, initiator: 0 };
+    const nodes = scene(s, 2).scene.build(0);
+    expect(has(nodes, 'confirm-reveal')).toBe(true);
+    expect(has(nodes, 'leave-game')).toBe(false);
+  });
+
   it('我已出局时显示提示', () => {
     const s = newState(5);
     setDay(s, 1);
