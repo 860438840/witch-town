@@ -224,9 +224,8 @@ function killPlayer(s, seat, cause) {
 }
 function checkWin(s) {
   if (s.phase.kind === "ended") return;
-  const witchCards = s.players.flatMap((p) => p.tryals).filter((t) => t.kind === "witch");
   let winner = null;
-  if (witchCards.every((t) => t.revealed)) winner = "village";
+  if (witchSeats(s).length === 0) winner = "village";
   else if (s.players.filter((p) => p.alive).every((p) => p.witchFaction)) winner = "witch";
   if (winner) {
     s.phase = { kind: "ended", winner };

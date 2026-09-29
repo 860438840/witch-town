@@ -3,7 +3,7 @@ import type { Screen } from '../src/core/app';
 import { findNode, hitTest } from '../src/core/node';
 import { TableScene } from '../src/scenes/table';
 import { tableLayout } from '../src/scenes/tableLayout';
-import { giveCard, handOf, newState, roomOf, setDay } from './fixtures';
+import { giveCard, handOf, infect, newState, roomOf, setDay } from './fixtures';
 import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, tap } from './sceneKit';
 import type { GameState } from '../../engine/src/index';
 
@@ -213,6 +213,17 @@ describe('游戏桌', () => {
     const nodes = scene(s, 2).scene.build(0);
     expect(has(nodes, 'confirm-reveal')).toBe(true);
     expect(has(nodes, 'leave-game')).toBe(false);
+  });
+
+  it('女巫阵营在桌面格子上能看到同伴（包括传染后的原女巫），村民看不到', () => {
+    const s = newState(6, 2); // 1、2 号是女巫
+    setDay(s, 0);
+    infect(s, 2, 3);
+    const nodes = scene(s, 3).scene.build(0);
+    expect(labelOf(nodes, 'seat:1')).toContain('同伴');
+    expect(labelOf(nodes, 'seat:2')).toContain('同伴');
+    expect(labelOf(nodes, 'seat:4')).not.toContain('同伴');
+    expect(drawAll(scene(s, 0).scene.build(0)).join('')).not.toContain('同伴');
   });
 
   it('我已出局时显示提示', () => {

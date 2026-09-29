@@ -2,7 +2,7 @@ import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
 import { dawnTargets, nightSteps, nightTargets, unrevealedTryals, type NightPending, type NightStep } from '../model/actions';
 import { TRYAL_NAME } from '../model/cards';
-import { formatCountdown, nameOf, type TableModel } from '../model/table';
+import { formatCountdown, isPartner, nameOf, type TableModel } from '../model/table';
 import { drawBadge, drawPanel, drawText, drawTryalChip } from '../theme/draw';
 import { C, goldGlow } from '../theme/palette';
 import type { Ui } from './ui';
@@ -47,16 +47,17 @@ function seatGrid(
   const nodes = seats.map((seat, i) => {
     const r = rect(area.x + (i % cols) * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
     const p = m.view.players[seat];
-    const mark = marks[seat]?.join('、') ?? '';
+    const partner = isPartner(m, seat);
+    const mark = [...(partner ? ['同伴'] : []), ...(marks[seat] ?? [])].join('、');
     return {
       id: `${prefix}:${seat}`,
       rect: r,
       onTap: onPick ? () => onPick(seat) : undefined,
       draw: (ctx: CanvasRenderingContext2D) => {
-        drawPanel(ctx, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
+        drawPanel(ctx, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : partner ? C.danger : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
         drawBadge(ctx, r.x + 13, r.y + h / 2, 9, p.name, seat);
         drawText(ctx, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
-        if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: C.gold, maxWidth: r.w - 30 });
+        if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
       },
     } satisfies Node;
   });

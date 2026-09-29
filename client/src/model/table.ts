@@ -50,6 +50,11 @@ export function buildTable(room: RoomDoc, hand: HandDoc | null, openid: string):
   };
 }
 
+/** 这个座位是不是我的女巫同伴（只有女巫阵营能看到；包括传染时交出女巫卡的原女巫） */
+export function isPartner(m: TableModel, seat: number): boolean {
+  return m.priv?.witchPartners.includes(seat) ?? false;
+}
+
 export function nameOf(m: TableModel, seat: number): string {
   return seat === m.mySeat ? '你' : (m.view.players[seat]?.name ?? '');
 }

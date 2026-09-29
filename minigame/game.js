@@ -689,14 +689,14 @@
   var RULES = [
     {
       title: "\u80DC\u8D1F",
-      items: ["\u6240\u6709\u5973\u5DEB\u5361\u90FD\u88AB\u7FFB\u5F00\uFF1A\u6751\u6C11\u80DC\u5229\u3002", "\u6D3B\u7740\u7684\u73A9\u5BB6\u5168\u90FD\u662F\u5973\u5DEB\u9635\u8425\uFF1A\u5973\u5DEB\u80DC\u5229\u3002"]
+      items: ["\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u5168\u90E8\u51FA\u5C40\uFF08\u5305\u62EC\u4F20\u67D3\u65F6\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u539F\u5973\u5DEB\uFF09\uFF1A\u6751\u6C11\u80DC\u5229\u3002", "\u6D3B\u7740\u7684\u73A9\u5BB6\u5168\u90FD\u662F\u5973\u5DEB\u9635\u8425\uFF1A\u5973\u5DEB\u80DC\u5229\u3002"]
     },
     {
       title: "\u8EAB\u4EFD\u5361",
       items: [
         "\u6BCF\u4EBA 5 \u5F20\uFF0C\u53EA\u6709\u81EA\u5DF1\u77E5\u9053\u5185\u5BB9\u30024\u20135 \u4EBA 1 \u5F20\u5973\u5DEB\u5361\uFF0C6 \u4EBA\u4EE5\u4E0A 2 \u5F20\uFF1B\u8B66\u957F 1 \u5F20\uFF0C\u5176\u4F59\u662F\u6751\u6C11\u3002",
         "\u7FFB\u51FA\u5973\u5DEB\u5361\uFF0C\u6216 5 \u5F20\u5168\u90E8\u7FFB\u5F00\uFF0C\u7ACB\u5373\u6B7B\u4EA1\u3002",
-        "\u5F00\u5C40\u6301\u6709\u5973\u5DEB\u5361\u7684\u4EBA\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\uFF1B\u4E4B\u540E\u901A\u8FC7\u4F20\u67D3\u62FF\u5230\u5973\u5DEB\u5361\u7684\u4EBA\u4E5F\u52A0\u5165\u5973\u5DEB\u9635\u8425\uFF0C\u9635\u8425\u4E0D\u4F1A\u518D\u53D8\u3002"
+        "\u5F00\u5C40\u6301\u6709\u5973\u5DEB\u5361\u7684\u4EBA\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\uFF1B\u4E4B\u540E\u901A\u8FC7\u4F20\u67D3\u62FF\u5230\u5973\u5DEB\u5361\u7684\u4EBA\u4E5F\u52A0\u5165\u5973\u5DEB\u9635\u8425\uFF0C\u9635\u8425\u4E0D\u4F1A\u518D\u53D8\uFF08\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u4EBA\u4ECD\u662F\u5973\u5DEB\uFF09\u3002\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u80FD\u770B\u5230\u5F7C\u6B64\u3002"
       ]
     },
     {
@@ -1119,7 +1119,7 @@
         rect: rect(0, top, W, 90),
         draw: (ctx2) => {
           drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.danger, align: "center" });
-          drawText(ctx2, village ? "\u6240\u6709\u5973\u5DEB\u5361\u90FD\u5DF2\u7FFB\u5F00" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
+          drawText(ctx2, village ? "\u5973\u5DEB\u9635\u8425\u5168\u90E8\u51FA\u5C40" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
         }
       });
       const btnY = bottom - 12 - 48;
@@ -1329,6 +1329,10 @@
       winner: view.phase.kind === "ended" ? view.phase.winner : null
     };
   }
+  function isPartner(m, seat) {
+    var _a, _b;
+    return (_b = (_a = m.priv) == null ? void 0 : _a.witchPartners.includes(seat)) != null ? _b : false;
+  }
   function nameOf(m, seat) {
     var _a, _b;
     return seat === m.mySeat ? "\u4F60" : (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.name) != null ? _b : "";
@@ -1371,19 +1375,20 @@
     const { h, gap } = size;
     const w = (area.w - gap * (cols - 1)) / cols;
     const nodes = seats.map((seat, i) => {
-      var _a, _b;
+      var _a;
       const r = rect(area.x + i % cols * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
       const p = m.view.players[seat];
-      const mark = (_b = (_a = marks[seat]) == null ? void 0 : _a.join("\u3001")) != null ? _b : "";
+      const partner = isPartner(m, seat);
+      const mark = [...partner ? ["\u540C\u4F34"] : [], ...(_a = marks[seat]) != null ? _a : []].join("\u3001");
       return {
         id: `${prefix}:${seat}`,
         rect: r,
         onTap: onPick ? () => onPick(seat) : void 0,
         draw: (ctx2) => {
-          drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
+          drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : partner ? C.danger : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
           drawBadge(ctx2, r.x + 13, r.y + h / 2, 9, p.name, seat);
           drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
-          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: C.gold, maxWidth: r.w - 30 });
+          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
         }
       };
     });
@@ -1643,11 +1648,12 @@
     ctx2.globalAlpha = o.alpha;
     drawPanel(ctx2, r, {
       fill: o.targetable ? goldGlow(0.14) : C.panel,
-      stroke: o.turn || o.targetable || o.order ? C.gold : C.panelLine,
+      stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : C.panelLine,
       glow: o.turn ? o.glow : 0,
       lineWidth: o.order ? 2 : 1
     });
     const cx = r.x + r.w / 2;
+    const tag = o.partner && !o.order;
     if (r.h >= 70) {
       drawBadge(ctx2, cx, r.y + 17, 12, p.name, p.seat);
       drawText(ctx2, p.name, cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
@@ -1659,12 +1665,13 @@
       }
     } else {
       drawBadge(ctx2, r.x + 13, r.y + 13, 9, p.name, p.seat);
-      drawText(ctx2, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - 30 });
+      drawText(ctx2, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
       redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
       tryalRow2(ctx2, p, cx, r.y + 34, 10, o.flip);
     }
     if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
     if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
+    else if (tag) drawText(ctx2, "\u540C\u4F34", r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.danger, align: "right" });
     ctx2.globalAlpha = 1;
   }
   function drawMeBar(ctx2, r, m, o) {
@@ -1861,7 +1868,7 @@
       const kind = this.selKind(m);
       const targetable = !!kind && targetOptions(m, kind, this.targets).includes(seat);
       const turn = m.view.phase.kind === "day" && m.turnSeat === seat;
-      const opts = __spreadValues({ turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1 }, a.cell(seat));
+      const opts = __spreadValues({ turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1, partner: isPartner(m, seat) }, a.cell(seat));
       return { id: `seat:${seat}`, rect: r, onTap: () => this.tapSeat(m, seat), draw: (ctx2) => drawCell(ctx2, r, p, opts) };
     }
     tapSeat(m, seat) {

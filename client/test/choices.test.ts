@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameState } from '../../engine/src/index';
 import { ResultScene } from '../src/scenes/result';
 import { TableScene } from '../src/scenes/table';
-import { handOf, newState, roomOf } from './fixtures';
+import { handOf, infect, newState, roomOf } from './fixtures';
 import type { Screen } from '../src/core/app';
 import { findNode, type Node } from '../src/core/node';
 import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, SCREEN, tap } from './sceneKit';
@@ -95,6 +95,19 @@ describe('选择面板', () => {
     tap(d.t.build(0), `suspect:${(plain + 1) % 6}`);
     expect(d.ctl.act).not.toHaveBeenCalled();
     expect(has(d.t.build(0), 'no-confess')).toBe(true);
+  });
+
+  it('夜晚：传染后女巫在击杀格子里能认出同伴，包括交出女巫卡的原女巫；村民看不到', () => {
+    const s = newState(6, 2); // 1、2 号是女巫，4 号是警长
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    infect(s, 2, 3);
+    const nodes = table(s, 3).t.build(0);
+    expect(labelOf(nodes, 'kill:1')).toContain('同伴');
+    expect(labelOf(nodes, 'kill:2')).toContain('同伴');
+    expect(labelOf(nodes, 'kill:0')).not.toContain('同伴');
+    expect(labelOf(table(s, 2).t.build(0), 'kill:3')).toContain('同伴');
+    expect(drawAll(table(s, 0).t.build(0)).join('')).not.toContain('同伴');
   });
 
   it('夜晚：自首或不自首', () => {

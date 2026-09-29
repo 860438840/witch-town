@@ -14,7 +14,7 @@ import {
 import { ANIM_MS, diffTables } from '../model/changes';
 import { CARD_INFO } from '../model/cards';
 import { logLines } from '../model/log';
-import { buildTable, formatCountdown, phaseTitle, type TableModel } from '../model/table';
+import { buildTable, formatCountdown, isPartner, phaseTitle, type TableModel } from '../model/table';
 import { drawCardFace, drawPanel, drawText, roundRect } from '../theme/draw';
 import { C, CARD_GRADIENT } from '../theme/palette';
 import { choicePanel, type ChoiceState } from './choicePanels';
@@ -221,7 +221,7 @@ export class TableScene implements Scene {
     const kind = this.selKind(m);
     const targetable = !!kind && targetOptions(m, kind, this.targets).includes(seat);
     const turn = m.view.phase.kind === 'day' && m.turnSeat === seat;
-    const opts: CellOpts = { turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1, ...a.cell(seat) };
+    const opts: CellOpts = { turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1, partner: isPartner(m, seat), ...a.cell(seat) };
     return { id: `seat:${seat}`, rect: r, onTap: () => this.tapSeat(m, seat), draw: (ctx) => drawCell(ctx, r, p, opts) };
   }
 

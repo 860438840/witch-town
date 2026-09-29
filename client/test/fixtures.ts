@@ -60,3 +60,11 @@ export function giveCard(s: GameState, seat: number, kind: CardKind, id = `${kin
   s.players[seat].hand.push({ id, kind });
   return id;
 }
+
+/** 模拟传染：把 from 的女巫卡换给 to 的一张村民卡。to 加入女巫阵营，from 仍属女巫阵营 */
+export function infect(s: GameState, from: number, to: number): void {
+  const w = s.players[from].tryals.findIndex((t) => t.kind === 'witch');
+  const v = s.players[to].tryals.findIndex((t) => t.kind === 'villager');
+  [s.players[from].tryals[w], s.players[to].tryals[v]] = [s.players[to].tryals[v], s.players[from].tryals[w]];
+  s.players[to].witchFaction = true;
+}

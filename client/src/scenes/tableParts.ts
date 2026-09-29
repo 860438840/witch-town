@@ -19,6 +19,8 @@ export interface CellOpts {
   alpha: number;
   /** 身份卡翻转动画：第 index 张，进度 p（0→1） */
   flip: { index: number; p: number } | null;
+  /** 是我的女巫同伴（只有女巫阵营的人会看到） */
+  partner: boolean;
 }
 
 function tryalRow(ctx: Ctx, p: PublicPlayer, cx: number, y: number, h: number, flip: CellOpts['flip']): void {
@@ -59,11 +61,13 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
   ctx.globalAlpha = o.alpha;
   drawPanel(ctx, r, {
     fill: o.targetable ? goldGlow(0.14) : C.panel,
-    stroke: o.turn || o.targetable || o.order ? C.gold : C.panelLine,
+    stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : C.panelLine,
     glow: o.turn ? o.glow : 0,
     lineWidth: o.order ? 2 : 1,
   });
   const cx = r.x + r.w / 2;
+  // 同伴标记放在右上角；出牌选目标时那里显示①②
+  const tag = o.partner && !o.order;
   if (r.h >= 70) {
     drawBadge(ctx, cx, r.y + 17, 12, p.name, p.seat);
     drawText(ctx, p.name, cx, r.y + 38, { size: 11, align: 'center', maxWidth: r.w - 6 });
@@ -75,12 +79,13 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
     }
   } else {
     drawBadge(ctx, r.x + 13, r.y + 13, 9, p.name, p.seat);
-    drawText(ctx, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - 30 });
+    drawText(ctx, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
     redBar(ctx, p, r.x + 5, r.y + 27, r.w - 10);
     tryalRow(ctx, p, cx, r.y + 34, 10, o.flip);
   }
   if (!p.alive) drawText(ctx, '出局', cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: 'center' });
   if (o.order) drawText(ctx, o.order === 1 ? '①' : '②', r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: 'center' });
+  else if (tag) drawText(ctx, '同伴', r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.danger, align: 'right' });
   ctx.globalAlpha = 1;
 }
 

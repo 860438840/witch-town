@@ -21,7 +21,7 @@ export class ResultScene implements Scene {
       rect: rect(0, top, W, 90),
       draw: (ctx) => {
         drawText(ctx, village ? '村民胜利' : '女巫胜利', W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.danger, align: 'center' });
-        drawText(ctx, village ? '所有女巫卡都已翻开' : '活着的人全部属于女巫阵营', W / 2, top + 68, { size: 13, color: C.textDim, align: 'center' });
+        drawText(ctx, village ? '女巫阵营全部出局' : '活着的人全部属于女巫阵营', W / 2, top + 68, { size: 13, color: C.textDim, align: 'center' });
       },
     });
     const btnY = bottom - 12 - 48;

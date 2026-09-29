@@ -1,5 +1,5 @@
 import { RuleError } from './errors';
-import { getPlayer, toCard, unrevealed } from './state';
+import { getPlayer, toCard, unrevealed, witchSeats } from './state';
 import type { DeathCause, GameState, RevealCause, Winner } from './types';
 
 export function revealTryal(s: GameState, seat: number, tryalId: string, cause: RevealCause): void {
@@ -39,9 +39,9 @@ export function killPlayer(s: GameState, seat: number, cause: DeathCause): void 
 
 export function checkWin(s: GameState): void {
   if (s.phase.kind === 'ended') return;
-  const witchCards = s.players.flatMap((p) => p.tryals).filter((t) => t.kind === 'witch');
   let winner: Winner | null = null;
-  if (witchCards.every((t) => t.revealed)) winner = 'village';
+  // 女巫阵营的人全部出局才算村民胜利：传染时交出女巫卡的原女巫仍属女巫阵营
+  if (witchSeats(s).length === 0) winner = 'village';
   else if (s.players.filter((p) => p.alive).every((p) => p.witchFaction)) winner = 'witch';
   if (winner) {
     s.phase = { kind: 'ended', winner };
