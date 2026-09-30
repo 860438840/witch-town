@@ -102,6 +102,19 @@ export type GameEvent =
   | { t: 'ability'; seat: number; ability: CharacterId; kind?: CardKind; from?: number; count?: number }
   | { t: 'gameEnd'; winner: Winner };
 
+/** 被打断后要继续的流程（见 flow.ts） */
+export type Step =
+  /** 回合外摸一张牌（家庭主妇、少女） */
+  | { kind: 'draw'; seat: number }
+  /** 开始审判（被审判者已死亡则取消） */
+  | { kind: 'trial'; target: number; initiator: number }
+  /** 审判收尾：丢弃被审判者的红卡，回到出牌模式 */
+  | { kind: 'finishTrial'; target: number; initiator: number }
+  /** 传染：黑猫翻牌之后开始盲抽 */
+  | { kind: 'picks' }
+  /** 传染结算完后，当前玩家继续正常抽牌 */
+  | { kind: 'drawing' };
+
 export interface GameState {
   players: Player[];
   deck: Card[];
@@ -116,6 +129,10 @@ export interface GameState {
   conspiracyPicks: Record<number, number>;
   /** 选角色阶段每人的 2 个候选；选完后清空 */
   characterOffers: Record<number, CharacterId[]>;
+  /** 待继续的流程，最后一个先执行；回到白天等待操作时一定为空 */
+  steps: Step[];
+  /** 这次打断中出现过夜晚：流程全部走完后结束当前回合 */
+  endTurnAfter: boolean;
   log: GameEvent[];
   version: number;
 }

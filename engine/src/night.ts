@@ -1,8 +1,9 @@
 import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
+import { proceed } from './flow';
 import { shuffle, type Rng } from './rng';
 import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, unrevealed, witchSeats } from './state';
-import { endTurn, startTurn } from './turn';
+import { startTurn } from './turn';
 import type { GameState } from './types';
 
 /** 所有活着的女巫阵营都投了同一个目标时返回该目标，否则返回 null */
@@ -98,5 +99,7 @@ function tryResolveNight(s: GameState, rng: Rng): void {
   s.deck = shuffle([...s.deck, ...s.discard], rng);
   s.discard = [];
   s.log.push({ t: 'reshuffle' });
-  endTurn(s);
+  // 夜晚总是结束当前回合：先走完被夜晚打断的流程（如果有），再结束
+  s.endTurnAfter = true;
+  proceed(s, rng);
 }

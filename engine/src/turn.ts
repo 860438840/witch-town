@@ -1,8 +1,9 @@
 import { startConspiracy } from './conspiracy';
 import { RuleError } from './errors';
+import type { StepResult } from './flow';
 import { startNight } from './night';
 import { shuffle, type Rng } from './rng';
-import { setPhase } from './state';
+import { isEnded, setPhase } from './state';
 import type { Card, GameState } from './types';
 
 /** 从 fromSeat 开始（含）找到下一个可以行动的玩家；被拘留的玩家跳过一次并移除拘留 */
@@ -51,10 +52,9 @@ export function startDrawing(s: GameState, rng: Rng): void {
   continueDrawing(s, rng);
 }
 
-/** 抽到 2 张非黑卡为止；抽到夜晚则回合结束，抽到传染则先结算传染 */
-export function continueDrawing(s: GameState, rng: Rng): void {
+/** 抽到 2 张非黑卡为止；抽到夜晚进入夜晚（夜晚后回合结束），抽到传染先结算传染再继续抽 */
+export function continueDrawing(s: GameState, rng: Rng): StepResult {
   while (s.drawsLeft > 0) {
-    if (s.phase.kind !== 'day' || s.phase.mode !== 'drawing') return;
     const card = drawOne(s, rng);
     if (!card) {
       s.drawsLeft = 0;
@@ -65,28 +65,31 @@ export function continueDrawing(s: GameState, rng: Rng): void {
       s.discard.push(card);
       s.drawsLeft = 0;
       startNight(s);
-      return;
+      return 'paused';
     }
     if (card.kind === 'conspiracy') {
       s.log.push({ t: 'blackDrawn', seat: s.turn, kind: 'conspiracy' });
-      startConspiracy(s, card, rng);
-      return;
+      s.steps.push({ kind: 'drawing' });
+      if (startConspiracy(s, card) === 'paused') return 'paused';
+      s.steps.pop();
+      return resumeDrawing(s, rng);
     }
     s.players[s.turn].hand.push(card);
     s.drawsLeft--;
     s.log.push({ t: 'draw', seat: s.turn });
   }
-  if (s.phase.kind === 'day' && s.phase.mode === 'drawing') endTurn(s);
+  endTurn(s);
+  return 'done';
 }
 
-/** 传染结算完后回到抽牌；当前玩家已经死亡则直接结束回合 */
-export function resumeDrawing(s: GameState, rng: Rng): void {
-  if (s.phase.kind === 'ended') return;
+/** 传染结算完后回到抽牌；当前玩家已经死亡、或这次打断中出现过夜晚时不再继续抽 */
+export function resumeDrawing(s: GameState, rng: Rng): StepResult {
+  if (isEnded(s) || s.endTurnAfter) return 'done';
   setPhase(s, { kind: 'day', mode: 'drawing' });
   if (!s.players[s.turn].alive) {
     s.drawsLeft = 0;
     endTurn(s);
-    return;
+    return 'done';
   }
-  continueDrawing(s, rng);
+  return continueDrawing(s, rng);
 }

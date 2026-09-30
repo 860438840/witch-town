@@ -1,3 +1,5 @@
+import { apply } from '../src/apply';
+import { RuleError } from '../src/errors';
 import { seededRng } from '../src/rng';
 import { createGame } from '../src/setup';
 import type { Card, CardKind, CharacterId, GameState, TryalKind } from '../src/types';
@@ -74,4 +76,29 @@ export function placeBlue(s: GameState, seat: number, kind: CardKind): Card {
 export function stackDeck(s: GameState, kinds: CardKind[]): void {
   const top = kinds.map((k) => takeFromAnywhere(s, k));
   s.deck.unshift(...top);
+}
+
+/** 平静的夜晚（fixedGame 专用）：0 号女巫和 1 号警长都选 4 号，所有人不自首，没有人死亡 */
+export function quietNight(s: GameState): GameState {
+  const rng = seededRng(7);
+  s = apply(s, { type: 'witchVote', seat: 0, target: 4 }, rng);
+  s = apply(s, { type: 'protect', seat: 1, target: 4 }, rng);
+  for (const p of s.players) {
+    if (p.alive && s.phase.kind === 'night') s = apply(s, { type: 'confess', seat: p.seat, tryalId: null }, rng);
+  }
+  return s;
+}
+
+/** 传染：所有需要拿牌的人都拿左边的第 index 张 */
+export function allPick(s: GameState, index = 0): GameState {
+  const rng = seededRng(7);
+  for (const p of s.players) {
+    if (!p.alive || s.phase.kind !== 'conspiracyPick') continue;
+    try {
+      s = apply(s, { type: 'conspiracyPick', seat: p.seat, index }, rng);
+    } catch (e) {
+      if (!(e instanceof RuleError)) throw e;
+    }
+  }
+  return s;
 }

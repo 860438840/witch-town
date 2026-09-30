@@ -1,5 +1,6 @@
 import { isBlack, isRed, RED_POINTS } from './cards';
 import { RuleError } from './errors';
+import type { Rng } from './rng';
 import { getPlayer, setPhase, toCard } from './state';
 import { checkTrial } from './trial';
 import type { Card, CardKind, GameState, RedKind } from './types';
@@ -14,7 +15,7 @@ export function targetCount(kind: CardKind): number {
   return kind === 'scapegoat' || kind === 'robbery' ? 2 : 1;
 }
 
-export function playCard(s: GameState, seat: number, cardId: string, targets: number[], option?: string): void {
+export function playCard(s: GameState, seat: number, cardId: string, targets: number[], option: string | undefined, rng: Rng): void {
   if (s.phase.kind !== 'day' || s.phase.mode === 'drawing' || s.turn !== seat) {
     throw new RuleError('现在不能出牌');
   }
@@ -57,7 +58,7 @@ export function playCard(s: GameState, seat: number, cardId: string, targets: nu
     case 'evidence':
     case 'witness':
       target.red.push({ id: card.id, kind: card.kind, points: accusationValue(s, card.kind, seat, target.seat) });
-      checkTrial(s, target.seat, seat);
+      checkTrial(s, target.seat, seat, rng);
       return;
     case 'matchmaker':
     case 'asylum':
@@ -113,7 +114,7 @@ export function playCard(s: GameState, seat: number, cardId: string, targets: nu
       target.blue = [];
       target.green = [];
       s.discard.push(card);
-      checkTrial(s, to.seat, seat);
+      checkTrial(s, to.seat, seat, rng);
       return;
     }
     case 'curse': {

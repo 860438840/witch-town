@@ -56,6 +56,9 @@ function checkInvariants(s: GameState, n: number, seed: number): void {
   if (countCards(s) !== TOTAL_GAME_CARDS) throw new Error(`第 ${seed} 局：卡牌总数变为 ${countCards(s)}`);
   const tryals = s.players.reduce((k, p) => k + p.tryals.length, 0);
   if (tryals !== n * TRYALS_PER_PLAYER) throw new Error(`第 ${seed} 局：身份卡总数变为 ${tryals}`);
+  if (s.phase.kind === 'day' && s.phase.mode !== 'drawing' && (s.steps.length > 0 || s.endTurnAfter)) {
+    throw new Error(`第 ${seed} 局：回到白天时还有没走完的流程`);
+  }
   if (s.phase.kind === 'ended') return;
   const view = projectPublic(s);
   for (const p of s.players) {
