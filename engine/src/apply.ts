@@ -2,7 +2,7 @@ import { pickCharacter } from './characters';
 import { catReveal, conspiracyPick } from './conspiracy';
 import { revealTryal } from './death';
 import { RuleError } from './errors';
-import { proceed } from './flow';
+import { proceed, pushHousewifeDraws } from './flow';
 import { confess, protect, witchVote } from './night';
 import { playCard } from './play';
 import type { Rng } from './rng';
@@ -62,6 +62,7 @@ function handleReveal(s: GameState, seat: number, tryalId: string, rng: Rng): vo
   if (ph.kind === 'trialReveal' && ph.target === seat) {
     revealTryal(s, seat, tryalId, 'trial');
     s.steps.push({ kind: 'finishTrial', target: seat, initiator: ph.initiator });
+    pushHousewifeDraws(s, seat);
     proceed(s, rng);
     return;
   }

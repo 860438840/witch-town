@@ -61,6 +61,7 @@ export function createGame(newPlayers: NewPlayer[], rng: Rng): GameState {
     characterOffers: {},
     steps: [],
     endTurnAfter: false,
+    drawn: [],
     log: [{ t: 'gameStart', players: players.length }],
     version: 0,
   };

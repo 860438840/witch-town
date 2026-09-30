@@ -16,12 +16,16 @@ export function trialThreshold(s: GameState, target: number, initiator: number |
   return DEFAULT_TRIAL_THRESHOLD;
 }
 
-/** 红卡累计达到审判线时开始审判（经过流程栈，Task 4 的少女会在审判前插入摸牌） */
+/** 红卡累计达到审判线时开始审判；发起者是少女时，审判前她先摸 2 张 */
 export function checkTrial(s: GameState, target: number, initiator: number, rng: Rng): void {
   const p = getPlayer(s, target);
   if (!p.alive || isEnded(s)) return;
   if (redTotal(p) < trialThreshold(s, target, initiator)) return;
   s.steps.push({ kind: 'trial', target, initiator });
+  if (hasAbility(s, initiator, 'maiden')) {
+    s.log.push({ t: 'ability', seat: initiator, ability: 'maiden' });
+    s.steps.push({ kind: 'draw', seat: initiator }, { kind: 'draw', seat: initiator });
+  }
   proceed(s, rng);
 }
 

@@ -133,6 +133,8 @@ export interface GameState {
   steps: Step[];
   /** 这次打断中出现过夜晚：流程全部走完后结束当前回合 */
   endTurnAfter: boolean;
+  /** 本次正常抽牌抽到的非黑卡（地主用） */
+  drawn: CardKind[];
   log: GameEvent[];
   version: number;
 }

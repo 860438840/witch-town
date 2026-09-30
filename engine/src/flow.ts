@@ -1,3 +1,4 @@
+import { hasAbility } from './characters';
 import { beginPicks, startConspiracy } from './conspiracy';
 import { startNight } from './night';
 import type { Rng } from './rng';
@@ -72,4 +73,13 @@ export function takeCard(s: GameState, seat: number, card: Card, rng: Rng): Step
 export function backToPlaying(s: GameState): void {
   setPhase(s, { kind: 'day', mode: 'playing' });
   if (!s.players[s.turn].alive) s.endTurnAfter = true;
+}
+
+/** 有人的身份卡因审判或黑猫翻开后：每个拥有家庭主妇技能的其他活人各摸一张（按座位顺序） */
+export function pushHousewifeDraws(s: GameState, revealed: number): void {
+  const seats = s.players
+    .filter((p) => p.alive && p.seat !== revealed && hasAbility(s, p.seat, 'housewife'))
+    .map((p) => p.seat);
+  for (const seat of seats) s.log.push({ t: 'ability', seat, ability: 'housewife' });
+  for (const seat of [...seats].reverse()) s.steps.push({ kind: 'draw', seat });
 }

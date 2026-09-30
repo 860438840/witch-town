@@ -1,6 +1,6 @@
 import { checkWin, revealTryal } from './death';
 import { RuleError } from './errors';
-import { proceed, type StepResult } from './flow';
+import { proceed, pushHousewifeDraws, type StepResult } from './flow';
 import type { Rng } from './rng';
 import { aliveSeats, catHolder, getPlayer, leftOf, setPhase, unrevealed } from './state';
 import type { Card, GameState } from './types';
@@ -20,6 +20,7 @@ export function startConspiracy(s: GameState, card: Card): StepResult {
 export function catReveal(s: GameState, seat: number, tryalId: string, rng: Rng): void {
   if (s.phase.kind !== 'catReveal' || s.phase.holder !== seat) throw new RuleError('现在不能翻开身份卡');
   revealTryal(s, seat, tryalId, 'cat');
+  pushHousewifeDraws(s, seat);
   proceed(s, rng);
 }
 

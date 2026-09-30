@@ -1,3 +1,4 @@
+import { hasAbility } from './characters';
 import { startConspiracy } from './conspiracy';
 import { RuleError } from './errors';
 import type { StepResult } from './flow';
@@ -48,6 +49,7 @@ export function drawOne(s: GameState, rng: Rng): Card | null {
 
 export function startDrawing(s: GameState, rng: Rng): void {
   s.drawsLeft = 2;
+  s.drawn = [];
   setPhase(s, { kind: 'day', mode: 'drawing' });
   continueDrawing(s, rng);
 }
@@ -75,8 +77,10 @@ export function continueDrawing(s: GameState, rng: Rng): StepResult {
       return resumeDrawing(s, rng);
     }
     s.players[s.turn].hand.push(card);
+    s.drawn.push(card.kind);
     s.drawsLeft--;
     s.log.push({ t: 'draw', seat: s.turn });
+    if (s.drawsLeft === 0 && landlordBonus(s)) s.drawsLeft = 1;
   }
   endTurn(s);
   return 'done';
@@ -92,4 +96,12 @@ export function resumeDrawing(s: GameState, rng: Rng): StepResult {
     return 'done';
   }
   return continueDrawing(s, rng);
+}
+
+/** 地主：正常抽牌的 2 张都是指控时，展示并再抽 1 张（再抽的那张不再触发） */
+function landlordBonus(s: GameState): boolean {
+  if (s.drawn.length !== 2 || !s.drawn.every((k) => k === 'accusation')) return false;
+  if (!hasAbility(s, s.turn, 'landlord')) return false;
+  s.log.push({ t: 'ability', seat: s.turn, ability: 'landlord' });
+  return true;
 }
