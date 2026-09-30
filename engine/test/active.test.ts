@@ -142,3 +142,17 @@ describe('官员', () => {
     expect(() => act(decided, { type: 'confess', seat: 3, tryalId: null, silent: true })).toThrow(RuleError);
   });
 });
+
+describe('牧师与地主（裁定 C2）', () => {
+  it('牧师从弃牌堆拿指控不触发地主奖励', () => {
+    let s = fixedGame();
+    setCharacter(s, 2, 'priest');
+    const a = placeDiscard(s, 'accusation');
+    const b = placeDiscard(s, 'accusation');
+    const before = s.players[2].hand.length;
+    s = act(s, { type: 'priestDraw', seat: 2, cardIds: [a.id, b.id] });
+    expect(s.players[2].hand).toHaveLength(before + 2);
+    expect(s.log.some((e) => e.t === 'ability' && e.ability === 'landlord')).toBe(false);
+    expect(countCards(s)).toBe(60);
+  });
+});

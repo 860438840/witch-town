@@ -19,6 +19,9 @@ export function deadlineKey(s: GameState): string {
       const arranged = s.log.filter((e) => e.t === 'ability' && e.ability === 'storyteller').length;
       return `day:${s.turn}:${turnCount}:${arranged}`;
     }
+    case 'night':
+      // 流程栈里一次 apply 可能连续进入两个夜晚，按已结算的夜晚数区分，避免复用上一夜已过期的截止时间
+      return `night:${s.log.filter((e) => e.t === 'nightResult').length}`;
     case 'trialReveal':
       return `trial:${ph.target}`;
     case 'catReveal':

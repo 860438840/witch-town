@@ -77,6 +77,7 @@ export function backToPlaying(s: GameState): void {
 
 /** 有人的身份卡因审判或黑猫翻开后：每个拥有家庭主妇技能的其他活人各摸一张（按座位顺序） */
 export function pushHousewifeDraws(s: GameState, revealed: number): void {
+  if (isEnded(s)) return;
   const seats = s.players
     .filter((p) => p.alive && p.seat !== revealed && hasAbility(s, p.seat, 'housewife'))
     .map((p) => p.seat);

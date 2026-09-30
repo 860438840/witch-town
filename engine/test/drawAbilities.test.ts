@@ -195,3 +195,16 @@ describe('回合外摸到黑卡：立即结算，结算完回到原流程（C4�
     expect(s.steps).toEqual([]);
   });
 });
+
+describe('游戏结束后不再产生能力日志（F4）', () => {
+  it('审判翻牌使游戏结束时，家庭主妇不摸牌也没有日志', () => {
+    let s = fixedGame();
+    setCharacter(s, 4, 'housewife');
+    const w = giveCard(s, 2, 'witness');
+    s = play(s, 2, w.id, [0]);
+    s = reveal(s, 0);
+    expect(s.phase.kind).toBe('ended');
+    expect(s.log.some((e) => e.t === 'ability' && e.ability === 'housewife')).toBe(false);
+    expect(s.steps.some((st) => st.kind === 'draw')).toBe(false);
+  });
+});

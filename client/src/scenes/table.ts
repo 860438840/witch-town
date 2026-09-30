@@ -459,7 +459,7 @@ export class TableScene implements Scene {
     const choices =
       need.kind === 'curse'
         ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name }))
-        : [...(need.doctor ? [DOCTOR_CHOICE] : []), ...ALIBI_CHOICES].map((c) => ({ value: c.value as string, label: c.label as string }));
+        : [...(need.doctor ? [DOCTOR_CHOICE] : []), ...ALIBI_CHOICES.filter((c) => need.kinds.includes(c.value))].map((c) => ({ value: c.value as string, label: c.label as string }));
     choices.forEach((c, i) =>
       nodes.push(
         button(`option:${c.value}`, rect(body.x, body.y + i * 52, body.w, 44), c.label, () => {

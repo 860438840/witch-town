@@ -275,3 +275,18 @@ describe('说书人', () => {
     expect(game(store, code).state.deck.map((c) => c.id)).toEqual(order);
   });
 });
+
+describe('机器人选角色（F5）', () => {
+  it('开局时机器人立刻选好角色，真人选完后进入黎明', async () => {
+    const { store, code } = await lobbyWith(1);
+    await run(store, (tx) => addBots(tx, code, 'u0', 4, NOW));
+    await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+    const s = game(store, code).state;
+    expect(s.phase.kind).toBe('characterPick');
+    for (const p of s.players) expect(p.character !== null).toBe(p.openid.startsWith('bot-'));
+    const me = s.players.findIndex((p) => p.openid === 'u0');
+    await run(store, (tx) => act(tx, code, 'u0', { type: 'pickCharacter', index: 0 }, undefined, NOW + 1, rng()));
+    expect(game(store, code).state.phase.kind).toBe('dawn');
+    expect(game(store, code).state.players[me].character).not.toBeNull();
+  });
+});

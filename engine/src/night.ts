@@ -91,7 +91,7 @@ function tryResolveNight(s: GameState, rng: Rng): void {
       confessed.add(seat);
     }
   }
-  for (const seat of night.silent ?? []) {
+  for (const seat of isEnded(s) ? [] : night.silent ?? []) {
     if (!getPlayer(s, seat).alive) continue;
     confessed.add(seat);
     s.log.push({ t: 'ability', seat, ability: 'official' });

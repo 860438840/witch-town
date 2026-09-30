@@ -141,7 +141,7 @@ describe('可做的操作', () => {
     const curse = optionNeed(m, 'curse', 1);
     expect(curse?.kind).toBe('curse');
     expect(curse && curse.kind === 'curse' ? curse.cards.map((c) => c.id) : []).toEqual(['asylum-1', 'piety-1']);
-    expect(optionNeed(m, 'alibi', 2)).toEqual({ kind: 'alibi', doctor: false });
+    expect(optionNeed(m, 'alibi', 2)).toEqual({ kind: 'alibi', doctor: false, kinds: ['accusation', 'evidence'] });
     expect(optionNeed(m, 'alibi', 3)).toBeNull();
     expect(optionNeed(m, 'accusation', 2)).toBeNull();
   });

@@ -215,3 +215,24 @@ describe('农民', () => {
     expect(countCards(s)).toBe(60);
   });
 });
+
+describe('最终复审补充', () => {
+  it('法官通过嫁祸转移红卡：接收方到 6 点即审判', () => {
+    let s = fixedGame();
+    setCharacter(s, 2, 'judge');
+    placeRed(s, 4, 'evidence');
+    placeRed(s, 4, 'evidence');
+    expect(redTotal(s.players[4])).toBe(6);
+    const sg = giveCard(s, 2, 'scapegoat');
+    s = play(s, 2, sg.id, [4, 3]);
+    expect(s.phase).toEqual({ kind: 'trialReveal', target: 3, initiator: 2 });
+  });
+
+  it('医生的「当作目击」不能用在有信徒的人身上', () => {
+    const s = fixedGame();
+    setCharacter(s, 2, 'doctor');
+    placeBlue(s, 3, 'piety');
+    const c = giveCard(s, 2, 'alibi');
+    expect(() => play(s, 2, c.id, [3], 'witness')).toThrow(RuleError);
+  });
+});

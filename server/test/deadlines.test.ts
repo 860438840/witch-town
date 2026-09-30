@@ -48,6 +48,14 @@ describe('deadlineKey', () => {
     expect(key1).not.toBe(key2);
   });
 
+  it('连续两个夜晚的 key 不同（按已结算的夜晚数）', () => {
+    const s = game();
+    s.phase = { kind: 'night' };
+    const first = deadlineKey(s);
+    s.log.push({ t: 'nightResult', target: 2, died: false });
+    expect(deadlineKey(s)).not.toBe(first);
+  });
+
   it('其他阶段', () => {
     const s = game();
     expect(deadlineKey(s)).toBe('characterPick');
@@ -58,7 +66,7 @@ describe('deadlineKey', () => {
     s.phase = { kind: 'catReveal', holder: 1 };
     expect(deadlineKey(s)).toBe('cat:1');
     s.phase = { kind: 'night' };
-    expect(deadlineKey(s)).toBe('night');
+    expect(deadlineKey(s)).toBe('night:0');
     s.phase = { kind: 'conspiracyPick' };
     expect(deadlineKey(s)).toBe('conspiracyPick');
   });

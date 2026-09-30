@@ -28,7 +28,7 @@ export type ClientAction =
 
 export type NightPending = Extract<PendingChoice, { kind: 'night' }>;
 export type NightStep = 'kill' | 'protect' | 'suspect';
-export type OptionNeed = { kind: 'curse'; cards: Card[] } | { kind: 'alibi'; doctor: boolean } | null;
+export type OptionNeed = { kind: 'curse'; cards: Card[] } | { kind: 'alibi'; doctor: boolean; kinds: ('accusation' | 'evidence')[] } | null;
 
 export const ALIBI_CHOICES = [
   { value: 'accusation', label: '丢弃最多 3 张指控' },
@@ -71,10 +71,11 @@ export function optionNeed(m: TableModel, kind: CardKind, target: number): Optio
   if (kind === 'alibi') {
     // 医生对别人（没有信徒）打辩护时，总要问一下是否当作目击
     const doctor = m.me?.ability === 'doctor' && target !== m.mySeat && !p.blue.some((c) => c.kind === 'piety');
-    if (doctor) return { kind: 'alibi', doctor: true };
-    const acc = p.red.some((c) => c.kind === 'accusation');
-    const evi = p.red.some((c) => c.kind === 'evidence');
-    return acc && evi ? { kind: 'alibi', doctor: false } : null;
+    const kinds: ('accusation' | 'evidence')[] = [];
+    if (p.red.some((c) => c.kind === 'accusation')) kinds.push('accusation');
+    if (p.red.some((c) => c.kind === 'evidence')) kinds.push('evidence');
+    if (doctor) return { kind: 'alibi', doctor: true, kinds };
+    return kinds.length === 2 ? { kind: 'alibi', doctor: false, kinds } : null;
   }
   return null;
 }

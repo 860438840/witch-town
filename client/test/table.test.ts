@@ -325,3 +325,20 @@ describe('游戏桌', () => {
     expect(drawAll(scene(s).scene.build(0)).join('')).toContain('你已出局');
   });
 });
+
+describe('医生的辩护选项只列目标拥有的红卡种类', () => {
+  it('目标只有证据：只有「当作目击」和「丢弃证据」', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'doctor';
+    s.players[2].red.push({ id: 'ev-1', kind: 'evidence', points: 2 });
+    const id = giveCard(s, 0, 'alibi');
+    const { scene: t } = scene(s);
+    tap(t.build(0), `card:${id}`);
+    tap(t.build(0), 'seat:2');
+    const nodes = t.build(0);
+    expect(has(nodes, 'option:witness')).toBe(true);
+    expect(has(nodes, 'option:evidence')).toBe(true);
+    expect(has(nodes, 'option:accusation')).toBe(false);
+  });
+});

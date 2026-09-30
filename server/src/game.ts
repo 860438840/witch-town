@@ -53,10 +53,15 @@ export async function startGame(tx: Tx, code: string, openid: string, now: numbe
   if (room.host !== openid) throw new RuleError('只有房主可以开始游戏');
   if (room.status !== 'lobby') throw new RuleError('游戏已经开始');
   if (room.seats.length < MIN_PLAYERS) throw new RuleError(`至少需要 ${MIN_PLAYERS} 名玩家`);
-  const state = createGame(
+  let state = createGame(
     room.seats.map((s) => ({ openid: s.openid, name: s.name })),
     rng,
   );
+  if (state.phase.kind === 'characterPick') {
+    for (const p of state.players) {
+      if (isBot(p.openid)) state = apply(state, { type: 'pickCharacter', seat: p.seat, index: rng.next() < 0.5 ? 0 : 1 }, rng);
+    }
+  }
   await persist(tx, { ...room, gameId: `${code}-${now}` }, state, null, now);
   return { version: state.version };
 }
