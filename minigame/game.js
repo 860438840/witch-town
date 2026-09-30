@@ -110,6 +110,7 @@
       __publicField(this, "nodes", []);
       __publicField(this, "scheduled", false);
       __publicField(this, "touch", null);
+      __publicField(this, "drag", null);
     }
     setScene(scene) {
       this.scene = scene;
@@ -125,20 +126,36 @@
       });
     }
     draw() {
+      var _a, _b;
       if (!this.scene) return;
       const now = this.clock();
+      (_b = (_a = this.drag) == null ? void 0 : _a.frame) == null ? void 0 : _b.call(_a);
       this.nodes = this.scene.build(now);
       this.ctx.clearRect(0, 0, this.screen.W, this.screen.H);
       drawNodes(this.ctx, this.nodes);
-      if (this.animator.active(now)) this.render();
+      if (this.animator.active(now) || this.drag) this.render();
     }
     get current() {
       return this.nodes;
     }
     touchStart(x, y) {
+      var _a;
+      const press = hitTest(this.nodes, x, y, "onPress");
+      if (press) {
+        this.touch = null;
+        (_a = this.drag) == null ? void 0 : _a.end();
+        this.drag = press.onPress(x, y);
+        this.render();
+        return;
+      }
       this.touch = { x0: x, y0: y, lastY: y, moved: false, scroll: hitTest(this.nodes, x, y, "onScroll") };
     }
     touchMove(x, y) {
+      if (this.drag) {
+        this.drag.move(x, y);
+        this.render();
+        return;
+      }
       const t = this.touch;
       if (!t) return;
       if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) t.moved = true;
@@ -148,7 +165,24 @@
       }
       t.lastY = y;
     }
+    /** 系统打断触摸（来电、弹窗等）：结束拖动，丢弃未完成的点击和滚动 */
+    touchCancel() {
+      this.touch = null;
+      if (this.drag) {
+        const d = this.drag;
+        this.drag = null;
+        d.end();
+        this.render();
+      }
+    }
     touchEnd(x, y) {
+      if (this.drag) {
+        const d = this.drag;
+        this.drag = null;
+        d.end();
+        this.render();
+        return;
+      }
       const t = this.touch;
       this.touch = null;
       if (!t || t.moved) return;
@@ -603,6 +637,7 @@
       const t = e.changedTouches[0];
       if (t) app2.touchEnd(t.clientX, t.clientY);
     });
+    wx.onTouchCancel(() => app2.touchCancel());
   }
 
   // src/theme/palette.ts
@@ -662,6 +697,30 @@
   ];
   var badgeColor = (seat) => BADGE_COLORS[(seat % 12 + 12) % 12];
   var font = (size, bold = false) => `${bold ? "bold " : ""}${size}px sans-serif`;
+
+  // src/model/characters.ts
+  var CHAR_INFO = {
+    doctor: { name: "\u533B\u751F", short: "\u533B\u751F", desc: "\u53EF\u4EE5\u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\uFF087 \u70B9\uFF09\u6253\u51FA" },
+    beggar: { name: "\u4E5E\u4E10", short: "\u4E5E\u4E10", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u62A2\u52AB\u300D\u300C\u7EB5\u706B\u300D\u65E0\u6548\uFF0C\u5E76\u7ACB\u523B\u4E22\u5F03" },
+    landlord: { name: "\u5730\u4E3B", short: "\u5730\u4E3B", desc: "\u62BD\u724C\u65F6\u5982\u679C\u62BD\u51FA 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u8FD9 2 \u5F20\uFF0C\u518D\u62BD\u4E00\u5F20" },
+    judge: { name: "\u6CD5\u5B98", short: "\u6CD5\u5B98", desc: "\u4F60\u6253\u51FA\u7684\u7EA2\u5361\u4F7F\u76EE\u6807\u7D2F\u8BA1\u8FBE\u5230 6 \u70B9\uFF0C\u5373\u53EF\u5BA1\u5224\u8BE5\u73A9\u5BB6" },
+    priest: { name: "\u7267\u5E08", short: "\u7267\u5E08", desc: "\u6E38\u620F\u4E2D\u4E24\u6B21\uFF1A\u62BD\u724C\u65F6\u53EF\u4EE5\u6539\u4E3A\u4ECE\u5F03\u724C\u5806\u9009\u6700\u591A 2 \u5F20\u975E\u9ED1\u5361\u52A0\u5165\u624B\u724C" },
+    storyteller: { name: "\u8BF4\u4E66\u4EBA", short: "\u8BF4\u4E66", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u7684\u56DE\u5408\u62BD\u724C\u524D\uFF0C\u53EF\u4EE5\u4EFB\u610F\u8C03\u6574\u724C\u5806\u987A\u5E8F\uFF0C\u9650\u65F6 2 \u5206\u949F" },
+    tailor: { name: "\u88C1\u7F1D", short: "\u88C1\u7F1D", desc: "\u6280\u80FD\u4E0E\u53F3\u624B\u8FB9\u7B2C\u4E00\u540D\u6D3B\u7740\u7684\u73A9\u5BB6\u4E00\u81F4" },
+    housewife: { name: "\u5BB6\u5EAD\u4E3B\u5987", short: "\u4E3B\u5987", desc: "\u5176\u4ED6\u73A9\u5BB6\u7684\u8EAB\u4EFD\u5361\u56E0\u5BA1\u5224\u6216\u9ED1\u732B\u88AB\u7FFB\u5F00\u65F6\uFF0C\u4F60\u4ECE\u724C\u5806\u62BD\u4E00\u5F20\u724C" },
+    farmer: { name: "\u519C\u6C11", short: "\u519C\u6C11", desc: "\u6709\u73A9\u5BB6\u6B7B\u4EA1\u65F6\uFF0C\u4F60\u83B7\u5F97\u4ED6\u7684\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u84DD\u5361" },
+    child: { name: "\u5C0F\u5B69", short: "\u5C0F\u5B69", desc: "\u4F60\u53D1\u8D77\u7684\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u4F60\u81EA\u5DF1\u9762\u524D\u6240\u6709\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D" },
+    minister: { name: "\u90E8\u957F", short: "\u90E8\u957F", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9" },
+    official: { name: "\u5B98\u5458", short: "\u5B98\u5458", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u81EA\u9996\u65F6\u65E0\u9700\u7FFB\u5F00\u8EAB\u4EFD\u5361" },
+    strongman: { name: "\u5927\u529B\u58EB", short: "\u529B\u58EB", desc: "\u5BF9\u4F60\u7684\u5BA1\u5224\u7EBF\u4E3A 8 \u70B9" },
+    maid: { name: "\u5973\u4EC6", short: "\u5973\u4EC6", desc: "\u300C\u9ED1\u732B\u300D\u548C\u300C\u60C5\u4FA3\u300D\u5BF9\u4F60\u65E0\u6548" },
+    maiden: { name: "\u5C11\u5973", short: "\u5C11\u5973", desc: "\u4F60\u53D1\u8D77\u5BA1\u5224\u65F6\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C\uFF0C\u672C\u56DE\u5408\u53EF\u4EE5\u7ACB\u5373\u4F7F\u7528" }
+  };
+  function charLabel(p) {
+    if (!p.character) return "";
+    if (p.character === "tailor") return p.ability ? `\u88C1\u7F1D\u2192${CHAR_INFO[p.ability].short}` : "\u88C1\u7F1D";
+    return CHAR_INFO[p.character].short;
+  }
 
   // src/model/cards.ts
   var CARD_INFO = {
@@ -724,7 +783,14 @@
     { title: "\u7EA2\u5361", items: cardsOf("red") },
     { title: "\u84DD\u5361\uFF08\u7559\u5728\u9762\u524D\u6301\u7EED\u751F\u6548\uFF09", items: cardsOf("blue") },
     { title: "\u7EFF\u5361\uFF08\u4E00\u6B21\u6027\uFF09", items: cardsOf("green") },
-    { title: "\u9ED1\u5361\uFF08\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF09", items: cardsOf("black") }
+    { title: "\u9ED1\u5361\uFF08\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF09", items: cardsOf("black") },
+    {
+      title: "\u89D2\u8272\uFF08\u516C\u5F00\uFF09",
+      items: [
+        "\u5C11\u4E8E 7 \u4EBA\u65F6\u6BCF\u4EBA\u4ECE 2 \u4E2A\u968F\u673A\u89D2\u8272\u4E2D\u9009 1 \u4E2A\uFF1B7 \u4EBA\u53CA\u4EE5\u4E0A\u76F4\u63A5\u968F\u673A\u53D1\u3002\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00\u3002",
+        ...Object.values(CHAR_INFO).map((c) => `${c.name}\uFF1A${c.desc}`)
+      ]
+    }
   ];
 
   // src/core/text.ts
@@ -1159,6 +1225,7 @@
     { value: "accusation", label: "\u4E22\u5F03\u6700\u591A 3 \u5F20\u6307\u63A7" },
     { value: "evidence", label: "\u4E22\u5F03 1 \u5F20\u8BC1\u636E" }
   ];
+  var DOCTOR_CHOICE = { value: "witness", label: "\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\u6253\u51FA\uFF087 \u70B9\uFF09" };
   function playableCardIds(m) {
     var _a;
     if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn" || !m.priv) return [];
@@ -1183,13 +1250,17 @@
     return out;
   }
   function optionNeed(m, kind, target) {
+    var _a;
     const p = m.view.players[target];
     if (!p) return null;
     if (kind === "curse") return { kind: "curse", cards: p.blue };
     if (kind === "alibi") {
-      const acc = p.red.some((c) => c.kind === "accusation");
-      const evi = p.red.some((c) => c.kind === "evidence");
-      return acc && evi ? { kind: "alibi" } : null;
+      const doctor = ((_a = m.me) == null ? void 0 : _a.ability) === "doctor" && target !== m.mySeat && !p.blue.some((c) => c.kind === "piety");
+      const kinds = [];
+      if (p.red.some((c) => c.kind === "accusation")) kinds.push("accusation");
+      if (p.red.some((c) => c.kind === "evidence")) kinds.push("evidence");
+      if (doctor) return { kind: "alibi", doctor: true, kinds };
+      return kinds.length === 2 ? { kind: "alibi", doctor: false, kinds } : null;
     }
     return null;
   }
@@ -1204,7 +1275,7 @@
     return m.view.players.filter((p) => p.alive && (step === "kill" || p.seat !== m.mySeat)).map((p) => p.seat);
   }
   function dawnTargets(m) {
-    return m.view.players.filter((p) => p.alive).map((p) => p.seat);
+    return m.view.players.filter((p) => p.alive && p.ability !== "maid").map((p) => p.seat);
   }
   function unrevealedTryals(m) {
     return m.priv ? m.priv.tryals.filter((t) => !t.revealed) : [];
@@ -1252,6 +1323,38 @@
     allRevealed: "\u8EAB\u4EFD\u5361\u5168\u90E8\u7FFB\u5F00",
     lover: "\u60C5\u4FA3\u6B89\u60C5"
   };
+  function abilityLine(e, name) {
+    var _a;
+    const who = `${name(e.seat)}\uFF08${CHAR_INFO[e.ability].name}\uFF09`;
+    const card = e.kind ? CARD_INFO[e.kind].name : "";
+    switch (e.ability) {
+      case "doctor":
+        return `${who} \u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\u6253\u51FA`;
+      case "beggar":
+      case "maid":
+        return `${who}\uFF1A\u300C${card}\u300D\u5BF9 TA \u65E0\u6548\uFF0C\u76F4\u63A5\u4E22\u5F03`;
+      case "landlord":
+        return `${who} \u62BD\u5230 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u540E\u518D\u62BD\u4E00\u5F20`;
+      case "priest":
+        return `${who} \u4ECE\u5F03\u724C\u5806\u62FF\u4E86 ${(_a = e.count) != null ? _a : 0} \u5F20\u724C`;
+      case "storyteller":
+        return `${who} \u8C03\u6574\u4E86\u724C\u5806\u987A\u5E8F`;
+      case "housewife":
+        return `${who}\uFF1A\u6709\u4EBA\u7684\u8EAB\u4EFD\u5361\u88AB\u7FFB\u5F00\uFF0C\u62BD\u4E00\u5F20\u724C`;
+      case "farmer":
+        return `${who} \u83B7\u5F97\u4E86 ${e.from === void 0 ? "\u6B7B\u8005" : name(e.from)} \u7684\u624B\u724C\u548C\u84DD\u5361`;
+      case "child":
+        return `${who} \u4E22\u5F03\u4E86\u81EA\u5DF1\u9762\u524D\u7684\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D`;
+      case "minister":
+        return `${who}\uFF1A\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9`;
+      case "official":
+        return `${who} \u81EA\u9996\uFF0C\u6CA1\u6709\u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "maiden":
+        return `${who} \u53D1\u8D77\u5BA1\u5224\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C`;
+      default:
+        return `${who} \u53D1\u52A8\u4E86\u6280\u80FD`;
+    }
+  }
   function describeEvent(e, name) {
     switch (e.t) {
       case "gameStart":
@@ -1284,6 +1387,10 @@
         return e.died ? `\u591C\u91CC\uFF0C${name(e.target)} \u906D\u5230\u5973\u5DEB\u88AD\u51FB\u8EAB\u4EA1` : `\u591C\u91CC\uFF0C\u5973\u5DEB\u88AD\u51FB\u4E86 ${name(e.target)}\uFF0C\u4F46 TA \u6D3B\u4E86\u4E0B\u6765`;
       case "reshuffle":
         return "\u5F03\u724C\u5806\u6D17\u56DE\u4E86\u724C\u5806";
+      case "character":
+        return `${name(e.seat)} \u7684\u89D2\u8272\u662F\u300C${CHAR_INFO[e.character].name}\u300D`;
+      case "ability":
+        return abilityLine(e, name);
       case "gameEnd":
         return e.winner === "village" ? "\u6751\u6C11\u80DC\u5229\uFF01" : "\u5973\u5DEB\u80DC\u5229\uFF01";
     }
@@ -1340,6 +1447,10 @@
   function phaseTitle(m) {
     const ph = m.view.phase;
     switch (ph.kind) {
+      case "characterPick":
+        return "\u9009\u62E9\u89D2\u8272";
+      case "storytelling":
+        return ph.seat === m.mySeat ? "\u8C03\u6574\u724C\u5806" : `${m.view.players[ph.seat].name} \u6B63\u5728\u8C03\u6574\u724C\u5806`;
       case "dawn":
         return "\u7B2C\u4E00\u591C\uFF1A\u5973\u5DEB\u653E\u7F6E\u9ED1\u732B";
       case "day":
@@ -1364,7 +1475,9 @@
 
   // src/scenes/choicePanels.ts
   function choiceKey(m) {
-    return m.pending ? `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}` : "";
+    if (!m.pending) return "";
+    if (m.pending.kind === "characterPick") return `characterPick:${m.view.phase.kind}`;
+    return `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}`;
   }
   var SEAT_NORMAL = { h: 36, gap: 6 };
   var SEAT_COMPACT = { h: 28, gap: 4 };
@@ -1438,6 +1551,8 @@
     const cd = formatCountdown(m.deadline, now);
     const busy = ui2.ctl.busy;
     const act = ui2.ctl.act.bind(ui2.ctl);
+    if (p.kind === "storytelling") return [];
+    if (p.kind === "characterPick") return characterPanel(ui2, m, p, st, cd, slide);
     if (p.kind === "revealTryal") {
       const title = p.reason === "trial" ? "\u4F60\u53D7\u5230\u5BA1\u5224\uFF1A\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361" : "\u4F20\u67D3\uFF1A\u4F60\u6301\u6709\u9ED1\u732B\uFF0C\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361";
       const { nodes, body } = sheet(ui2.screen, 320, title, null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u968F\u673A\u7FFB\u5F00`);
@@ -1485,7 +1600,7 @@
   ];
   var NIGHT_BUTTON_H = 42;
   function nightPanel(ui2, m, p, st, cd, slide) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const busy = ui2.ctl.busy;
     const act = ui2.ctl.act.bind(ui2.ctl);
     const sheetH = ui2.screen.H - ui2.screen.top;
@@ -1493,16 +1608,18 @@
     const bodyH = body.h + sheetH * (1 - slide);
     const steps = nightSteps(p).map((step) => ({ step, seats: nightTargets(m, step) }));
     const tryals = p.confessed ? [] : unrevealedTryals(m);
+    const silentLeft = !p.confessed && ((_a = m.me) == null ? void 0 : _a.ability) === "official" ? (_b = m.me.usesLeft) != null ? _b : 0 : 0;
     const btnY = body.y + bodyH - NIGHT_BUTTON_H;
-    const avail = p.confessed ? bodyH - 24 : btnY - body.y;
+    const silentY = btnY - NIGHT_BUTTON_H - 8;
+    const avail = p.confessed ? bodyH - 24 : (silentLeft > 0 ? silentY : btnY) - body.y;
     const need = (lv2) => steps.reduce((sum, x) => sum + 24 + seatGridHeight(x.seats.length, lv2.seat) + 8, 0) + (p.confessed ? 0 : 26 + tryalRowHeight(body.w, tryals.length, tryals.length > 0, lv2.chip) + 6);
-    const lv = (_a = NIGHT_LEVELS.find((l) => need(l) <= avail)) != null ? _a : NIGHT_LEVELS[NIGHT_LEVELS.length - 1];
+    const lv = (_c = NIGHT_LEVELS.find((l) => need(l) <= avail)) != null ? _c : NIGHT_LEVELS[NIGHT_LEVELS.length - 1];
     let y = body.y;
     for (const { step, seats } of steps) {
       nodes.push(textNode(rect(body.x, y, body.w, 20), STEP_TITLE[step], { size: 13, color: C.gold }));
       y += 24;
       const area = rect(body.x, y, body.w, 0);
-      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_c = (_b = p.votes) == null ? void 0 : _b[m.mySeat]) != null ? _c : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }), lv.seat) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat }), lv.seat) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat, lv.seat);
+      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_e = (_d = p.votes) == null ? void 0 : _d[m.mySeat]) != null ? _e : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }), lv.seat) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat }), lv.seat) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat, lv.seat);
       nodes.push(...grid.nodes);
       y += grid.height + 8;
     }
@@ -1520,6 +1637,103 @@
       requestButton("no-confess", rect(body.x, btnY, half, NIGHT_BUTTON_H), "\u4E0D\u81EA\u9996", () => void act({ type: "confess", tryalId: null }), busy, "secondary"),
       requestButton("confirm-confess", rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), "\u81EA\u9996", picked ? () => void act({ type: "confess", tryalId: picked }) : null, busy, "danger")
     );
+    if (silentLeft > 0) {
+      nodes.push(
+        requestButton(
+          "silent-confess",
+          rect(body.x, silentY, body.w, NIGHT_BUTTON_H),
+          `\u4E0D\u7FFB\u724C\u81EA\u9996\uFF08\u5269 ${silentLeft} \u6B21\uFF09`,
+          () => void act({ type: "confess", tryalId: null, silent: true }),
+          busy,
+          "secondary"
+        )
+      );
+    }
+    return nodes;
+  }
+  function characterPanel(ui2, _m, p, st, cd, slide) {
+    const { nodes, body } = sheet(ui2.screen, 400, "\u9009\u62E9\u4F60\u7684\u89D2\u8272", null, slide, `\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00 \xB7 \u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u968F\u673A\u9009\u62E9`);
+    const gap = 10;
+    const w = (body.w - gap) / 2;
+    const h = Math.min(200, body.h - 60);
+    p.offers.forEach((c, i) => {
+      const r = rect(body.x + i * (w + gap), body.y, w, h);
+      nodes.push({
+        id: `character:${c}`,
+        rect: r,
+        onTap: () => st.picked = i,
+        draw: (ctx2) => {
+          const sel = st.picked === i;
+          drawPanel(ctx2, r, { fill: sel ? goldGlow(0.2) : C.panel, stroke: sel ? C.gold : C.panelLine, lineWidth: sel ? 2 : 1 });
+          drawText(ctx2, CHAR_INFO[c].name, r.x + r.w / 2, r.y + 28, { size: 20, bold: true, color: C.gold, align: "center" });
+          ctx2.font = font(13);
+          wrapText(CHAR_INFO[c].desc, r.w - 20, (s) => ctx2.measureText(s).width).forEach(
+            (line, k) => drawText(ctx2, line, r.x + 10, r.y + 62 + k * 20, { size: 13 })
+          );
+        }
+      });
+    });
+    const idx = typeof st.picked === "number" ? st.picked : null;
+    nodes.push(
+      requestButton(
+        "confirm-character",
+        rect(body.x, body.y + h + 16, body.w, 44),
+        "\u9009\u8FD9\u4E2A\u89D2\u8272",
+        idx !== null ? () => void ui2.ctl.act({ type: "pickCharacter", index: idx }) : null,
+        ui2.ctl.busy
+      )
+    );
+    return nodes;
+  }
+
+  // src/scenes/abilityPanels.ts
+  function priestPanel(ui2, m, picked, close) {
+    const { nodes, body } = sheet(ui2.screen, 420, "\u7267\u5E08\uFF1A\u4ECE\u5F03\u724C\u5806\u62FF\u724C", close, 1, "\u9009 1\u20132 \u5F20\u975E\u9ED1\u5361\uFF0C\u62FF\u5B8C\u56DE\u5408\u7ED3\u675F");
+    const pool = m.view.discard.filter((c) => !isBlack(c.kind));
+    const kinds = [...new Set(pool.map((c) => c.kind))];
+    const cols = 4;
+    const gap = 8;
+    const w = (body.w - gap * (cols - 1)) / cols;
+    const h = 56;
+    kinds.forEach((kind, i) => {
+      const r = rect(body.x + i % cols * (w + gap), body.y + Math.floor(i / cols) * (h + gap), w, h);
+      const ids = pool.filter((c) => c.kind === kind).map((c) => c.id);
+      const mine = picked.filter((id) => ids.includes(id)).length;
+      nodes.push({
+        id: `priest:${kind}`,
+        rect: r,
+        onTap: () => {
+          const free = ids.find((id) => !picked.includes(id));
+          if (free && picked.length < 2) {
+            picked.push(free);
+            return;
+          }
+          for (const id of ids) {
+            const k = picked.indexOf(id);
+            if (k >= 0) picked.splice(k, 1);
+          }
+        },
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: mine ? goldGlow(0.2) : C.panel, stroke: mine ? C.gold : C.panelLine, lineWidth: mine ? 2 : 1 });
+          drawText(ctx2, CARD_INFO[kind].name, r.x + r.w / 2, r.y + 20, { size: 14, align: "center" });
+          drawText(ctx2, mine ? `\u5DF2\u9009 ${mine} / ${ids.length}` : `${ids.length} \u5F20`, r.x + r.w / 2, r.y + 40, {
+            size: 11,
+            align: "center",
+            color: mine ? C.gold : C.textDim
+          });
+        }
+      });
+    });
+    const y = body.y + Math.ceil(kinds.length / cols) * (h + gap) + 8;
+    nodes.push(
+      requestButton(
+        "confirm-priest",
+        rect(body.x, y, body.w, 44),
+        picked.length ? `\u62FF\u8FD9 ${picked.length} \u5F20` : "\u9009\u62E9\u8981\u62FF\u7684\u724C",
+        picked.length ? () => void ui2.ctl.act({ type: "priestDraw", cardIds: [...picked] }) : null,
+        ui2.ctl.busy
+      )
+    );
     return nodes;
   }
 
@@ -1530,13 +1744,23 @@
     for (const n of names) counts.set(n, ((_a = counts.get(n)) != null ? _a : 0) + 1);
     return [...counts].map(([n, k]) => k > 1 ? `${n}\xD7${k}` : n).join("\u3001");
   }
+  function characterLines(p) {
+    if (!p.character) return [];
+    const c = CHAR_INFO[p.character];
+    const lines = [`\u89D2\u8272\uFF1A${c.name}\u2014\u2014${c.desc}`];
+    if (p.character === "tailor") {
+      lines.push(p.ability ? `\u5F53\u524D\u6280\u80FD\uFF1A${CHAR_INFO[p.ability].name}\u2014\u2014${CHAR_INFO[p.ability].desc}` : "\u5F53\u524D\u6280\u80FD\uFF1A\u65E0\uFF08\u53F3\u624B\u8FB9\u7684\u4EBA\u6CA1\u6709\u89D2\u8272\uFF09");
+    }
+    if (p.usesLeft !== null) lines.push(`\u6280\u80FD\u5269\u4F59\u6B21\u6570\uFF1A${p.usesLeft}`);
+    return lines;
+  }
   function detailPanel(ui2, m, seat, close) {
     const p = m.view.players[seat];
-    const { nodes, body } = sheet(ui2.screen, 330, `${p.name}${seat === m.mySeat ? "\uFF08\u4F60\uFF09" : ""}${p.alive ? "" : "\uFF08\u5DF2\u51FA\u5C40\uFF09"}`, close);
+    const { nodes, body } = sheet(ui2.screen, 420, `${p.name}${seat === m.mySeat ? "\uFF08\u4F60\uFF09" : ""}${p.alive ? "" : "\uFF08\u5DF2\u51FA\u5C40\uFF09"}`, close);
     const revealed = p.tryals.filter((t) => t.revealed && t.kind).map((t) => TRYAL_NAME[t.kind]);
     const reds = countNames(p.red.map((c) => CARD_INFO[c.kind].name));
     const lines = [
-      ...p.character ? [`\u89D2\u8272\uFF1A${p.character}`] : [],
+      ...characterLines(p),
       `\u6307\u63A7\uFF1A${p.redTotal} / ${p.threshold}${reds ? `\uFF08${reds}\uFF09` : ""}`,
       `\u84DD\u5361\uFF1A${p.blue.length ? countNames(p.blue.map((c) => CARD_INFO[c.kind].name)) : "\u65E0"}`,
       ...p.green.length ? [`\u9762\u524D\uFF1A${countNames(p.green.map((c) => CARD_INFO[c.kind].name))}`] : [],
@@ -1546,7 +1770,17 @@
     nodes.push({
       id: "detail-body",
       rect: body,
-      draw: (ctx2) => lines.forEach((t, i) => drawText(ctx2, t, body.x, body.y + 12 + i * 28, { size: 14, maxWidth: body.w }))
+      draw: (ctx2) => {
+        ctx2.font = font(14);
+        let y = body.y + 12;
+        for (const line of lines) {
+          for (const t of wrapText(line, body.w, (s) => ctx2.measureText(s).width)) {
+            drawText(ctx2, t, body.x, y, { size: 14 });
+            y += 22;
+          }
+          y += 6;
+        }
+      }
     });
     return nodes;
   }
@@ -1582,6 +1816,173 @@
     const lines = logLines(m.view).reverse().map((text, i) => ({ text, size: 13, color: i === 0 ? C.text : C.textDim, gap: 2 }));
     nodes.push(box.node("log-list", body, lines));
     return nodes;
+  }
+  var COLOR_GROUPS = [
+    ["\u7EA2\u5361", "red"],
+    ["\u84DD\u5361", "blue"],
+    ["\u7EFF\u5361", "green"],
+    ["\u9ED1\u5361", "black"]
+  ];
+  function discardPanel(ui2, m, box, close) {
+    const discard = m.view.discard;
+    const { nodes, body } = sheet(ui2.screen, ui2.screen.H * 0.6, `\u5F03\u724C\u5806\uFF08${discard.length} \u5F20\uFF09`, close, 1, "\u6240\u6709\u4EBA\u90FD\u53EF\u4EE5\u67E5\u770B");
+    const lines = COLOR_GROUPS.flatMap(([title, color]) => {
+      const names = discard.filter((c) => CARD_INFO[c.kind].color === color).map((c) => CARD_INFO[c.kind].name);
+      return names.length ? [{ text: `${title}\uFF1A${countNames(names)}`, size: 14, gap: 8 }] : [];
+    });
+    nodes.push(box.node("discard-list", body, lines.length ? lines : [{ text: "\u5F03\u724C\u5806\u662F\u7A7A\u7684", color: C.textMuted }]));
+    return nodes;
+  }
+
+  // src/scenes/storyBoard.ts
+  var ROW_H = 52;
+  var HANDLE_W = 48;
+  var EDGE = 70;
+  var MAX_SPEED = 14;
+  var StoryBoard = class {
+    constructor() {
+      __publicField(this, "key", "");
+      __publicField(this, "order", []);
+      __publicField(this, "scroll", 0);
+      __publicField(this, "drag", null);
+      __publicField(this, "list", null);
+    }
+    build(ui2, m, deck, now) {
+      const key = deck.map((c) => c.id).join(",");
+      if (key !== this.key) {
+        this.key = key;
+        this.order = deck.map((c) => c.id);
+        this.scroll = 0;
+        this.drag = null;
+      }
+      const byId = new Map(deck.map((c) => [c.id, c]));
+      const S = ui2.screen;
+      const { nodes, body } = sheet(
+        S,
+        S.H - S.top,
+        "\u8BF4\u4E66\u4EBA\uFF1A\u8C03\u6574\u724C\u5806",
+        null,
+        1,
+        `\u4E0A\u9762\u662F\u724C\u5806\u9876 \xB7 \u6309\u4F4F\u53F3\u4FA7 \u2261 \u62D6\u52A8 \xB7 \u5269\u4F59 ${formatCountdown(m.deadline, now)}`
+      );
+      const btnH = 44;
+      const list = rect(body.x, body.y, body.w, body.h - btnH - 12);
+      this.list = list;
+      const contentH = this.order.length * ROW_H;
+      this.scroll = clampScroll(this.scroll, contentH, list.h);
+      nodes.push({
+        id: "story-list",
+        rect: list,
+        clip: true,
+        onScroll: (dy) => {
+          if (!this.drag) this.scroll = clampScroll(this.scroll + dy, contentH, list.h);
+        },
+        draw: (ctx2) => {
+          this.order.forEach((id, i) => {
+            var _a;
+            const y = list.y + this.scroll + i * ROW_H;
+            if (y + ROW_H < list.y || y > list.y + list.h) return;
+            const r = rect(list.x, y, list.w, ROW_H - 6);
+            if (((_a = this.drag) == null ? void 0 : _a.id) === id) drawPanel(ctx2, r, { fill: C.transparent, stroke: C.goldDark });
+            else drawRow(ctx2, r, byId.get(id), i, false);
+          });
+        }
+      });
+      this.order.forEach((id, i) => {
+        const y = list.y + this.scroll + i * ROW_H;
+        const top = Math.max(y, list.y);
+        const bottom = Math.min(y + ROW_H - 6, list.y + list.h);
+        if (bottom <= top) return;
+        nodes.push({
+          id: `handle:${id}`,
+          rect: rect(list.x + list.w - HANDLE_W, top, HANDLE_W, bottom - top),
+          onPress: (_x, py) => this.press(id, py)
+        });
+      });
+      const d = this.drag;
+      if (d) {
+        const gy = Math.max(list.y - 20, Math.min(list.y + list.h - ROW_H + 26, d.y - d.grab));
+        const r = rect(list.x, gy, list.w, ROW_H - 6);
+        const card = byId.get(d.id);
+        const index = this.order.indexOf(d.id);
+        nodes.push({ id: "story-ghost", rect: r, draw: (ctx2) => drawRow(ctx2, r, card, index, true) });
+      }
+      const half = (body.w - 10) / 2;
+      const by = list.y + list.h + 12;
+      nodes.push(
+        button("story-reset", rect(body.x, by, half, btnH), "\u8FD8\u539F", () => {
+          this.order = deck.map((c) => c.id);
+        }, "secondary"),
+        requestButton(
+          "story-confirm",
+          rect(body.x + half + 10, by, half, btnH),
+          "\u786E\u8BA4\u987A\u5E8F",
+          () => void ui2.ctl.act({ type: "storyReorder", order: [...this.order] }),
+          ui2.ctl.busy
+        )
+      );
+      return nodes;
+    }
+    press(id, y) {
+      const list = this.list;
+      const i = this.order.indexOf(id);
+      this.drag = { id, y, grab: y - (list.y + this.scroll + i * ROW_H) };
+      return {
+        move: (_x, ny) => {
+          if (!this.drag) return;
+          this.drag.y = ny;
+          this.follow();
+        },
+        frame: () => this.autoScroll(),
+        end: () => {
+          this.drag = null;
+        }
+      };
+    }
+    /** 手指靠近列表上下边缘时滚动，越靠边越快 */
+    autoScroll() {
+      const d = this.drag;
+      const list = this.list;
+      if (!d || !list) return;
+      const contentH = this.order.length * ROW_H;
+      if (d.y < list.y + EDGE) this.scroll += Math.ceil((list.y + EDGE - d.y) / EDGE * MAX_SPEED);
+      else if (d.y > list.y + list.h - EDGE) this.scroll -= Math.ceil((d.y - (list.y + list.h - EDGE)) / EDGE * MAX_SPEED);
+      else return;
+      this.scroll = clampScroll(this.scroll, contentH, list.h);
+      this.follow();
+    }
+    /** 把被拖的牌移到手指所在的位置 */
+    follow() {
+      const d = this.drag;
+      const list = this.list;
+      const top = d.y - d.grab;
+      const target = Math.max(0, Math.min(this.order.length - 1, Math.round((top - list.y - this.scroll) / ROW_H)));
+      const cur = this.order.indexOf(d.id);
+      if (target !== cur) {
+        this.order.splice(cur, 1);
+        this.order.splice(target, 0, d.id);
+      }
+    }
+  };
+  function drawRow(ctx2, r, card, index, lifted) {
+    const info = CARD_INFO[card.kind];
+    drawPanel(ctx2, r, { fill: lifted ? C.panelSolid : C.panel, stroke: lifted ? C.gold : C.panelLine, lineWidth: lifted ? 2 : 1 });
+    drawText(ctx2, String(index + 1), r.x + 26, r.y + r.h / 2, { size: 12, color: C.textMuted, align: "right" });
+    const chip = rect(r.x + 34, r.y + 5, 28, r.h - 10);
+    const [top, bottom] = CARD_GRADIENT[info.color];
+    const g = ctx2.createLinearGradient(0, chip.y, 0, chip.y + chip.h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    roundRect(ctx2, chip, 4);
+    ctx2.fillStyle = g;
+    ctx2.fill();
+    ctx2.strokeStyle = C.goldLine;
+    ctx2.stroke();
+    drawText(ctx2, info.name.slice(0, 1), chip.x + chip.w / 2, chip.y + chip.h / 2, { size: 13, bold: true, color: C.cardText, align: "center" });
+    const black = info.color === "black";
+    drawText(ctx2, info.name, r.x + 72, r.y + r.h / 2 - 8, { size: 15, bold: black, color: black ? C.gold : C.text });
+    drawText(ctx2, info.desc, r.x + 72, r.y + r.h / 2 + 10, { size: 11, color: C.textMuted, maxWidth: r.w - 72 - HANDLE_W - 8 });
+    drawText(ctx2, "\u2261", r.x + r.w - HANDLE_W / 2, r.y + r.h / 2, { size: 20, color: C.textDim, align: "center" });
   }
 
   // src/scenes/tableLayout.ts
@@ -1644,6 +2045,10 @@
   function frontMarks(p) {
     return [...p.blue, ...p.green].map((c) => CARD_INFO[c.kind].name[0]).join("");
   }
+  function cellName(p) {
+    const label = charLabel(p);
+    return label ? `${label}\xB7${p.name}` : p.name;
+  }
   function drawCell(ctx2, r, p, o) {
     ctx2.globalAlpha = o.alpha;
     drawPanel(ctx2, r, {
@@ -1656,7 +2061,7 @@
     const tag = o.partner && !o.order;
     if (r.h >= 70) {
       drawBadge(ctx2, cx, r.y + 17, 12, p.name, p.seat);
-      drawText(ctx2, p.name, cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
+      drawText(ctx2, cellName(p), cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
       redBar(ctx2, p, r.x + 6, r.y + 47, r.w - 12);
       tryalRow2(ctx2, p, cx, r.y + 55, 11, o.flip);
       if (r.h >= 80) {
@@ -1665,7 +2070,7 @@
       }
     } else {
       drawBadge(ctx2, r.x + 13, r.y + 13, 9, p.name, p.seat);
-      drawText(ctx2, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
+      drawText(ctx2, cellName(p), r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
       redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
       tryalRow2(ctx2, p, cx, r.y + 34, 10, o.flip);
     }
@@ -1689,7 +2094,8 @@
     }
     drawBadge(ctx2, r.x + 20, cy, Math.min(13, r.h / 2 - 3), me.name, me.seat);
     const status = me.alive ? `\u6307\u63A7 ${me.redTotal}/${me.threshold} \xB7 \u624B\u724C ${me.handCount}` : "\u4F60\u5DF2\u51FA\u5C40";
-    drawText(ctx2, `\u4F60\uFF08${me.name}\uFF09  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
+    const label = charLabel(me);
+    drawText(ctx2, `\u4F60\uFF08${label ? `${label}\xB7` : ""}${me.name}\uFF09  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
     drawText(ctx2, "\u6211\u7684\u8EAB\u4EFD\u5361 \u203A", r.x + r.w - 10, cy, { size: 12, color: C.gold, align: "right" });
     if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 96, cy, { size: 12, bold: true, color: C.gold, align: "center" });
   }
@@ -1709,11 +2115,17 @@
       __publicField(this, "mine", false);
       __publicField(this, "logOpen", false);
       __publicField(this, "logBox", new ScrollBox());
+      __publicField(this, "discardOpen", false);
+      __publicField(this, "discardBox", new ScrollBox());
+      __publicField(this, "priestOpen", false);
+      __publicField(this, "priestPick", []);
       __publicField(this, "layout", null);
       __publicField(this, "choice", { key: "", picked: null, suspect: null });
+      __publicField(this, "board", new StoryBoard());
       __publicField(this, "prev", null);
     }
     build(now) {
+      var _a;
       const ctl2 = this.ui.ctl;
       const room = ctl2.room;
       if (!room || !ctl2.openid) return [];
@@ -1723,9 +2135,11 @@
       const L = tableLayout(this.ui.screen, m.others.length);
       this.layout = L;
       const a = this.anim(m, now);
-      const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+      const choice = ((_a = m.pending) == null ? void 0 : _a.kind) === "storytelling" ? this.board.build(this.ui, m, m.pending.deck, now) : choicePanel(this.ui, m, this.choice, now, a.panelSlide);
       const nodes = [skyNode(this.ui.screen, a.darkness)];
       nodes.push(this.topBar(m, L.top, now));
+      const sheetOpen = this.askOption || this.priestOpen || this.detail !== null || this.mine || this.logOpen;
+      if (!choice.length && !sheetOpen) nodes.push(this.discardNode(L.top));
       if (!choice.length) nodes.push(this.leaveButton(L.top));
       m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
       nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
@@ -1815,9 +2229,11 @@
     panels(m, choice) {
       if (choice.length) return choice;
       if (this.askOption) return this.optionSheet(m);
+      if (this.priestOpen) return priestPanel(this.ui, m, this.priestPick, () => this.priestOpen = false);
       if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => this.detail = null);
       if (this.mine) return myTryalsPanel(this.ui, m, () => this.mine = false);
       if (this.logOpen) return logPanel(this.ui, m, this.logBox, () => this.logOpen = false);
+      if (this.discardOpen) return discardPanel(this.ui, m, this.discardBox, () => this.discardOpen = false);
       return [];
     }
     /** 某个座位在画面上的位置（我自己是信息栏）；给出牌飞行动画用 */
@@ -1829,9 +2245,10 @@
       return i >= 0 ? L.grid[i] : null;
     }
     sync(m) {
-      var _a;
+      var _a, _b;
       if (this.sel && !playableCardIds(m).includes(this.sel)) this.clearSel();
       if (this.peek && !((_a = m.priv) == null ? void 0 : _a.hand.some((c) => c.id === this.peek))) this.peek = null;
+      if (this.priestOpen && !(((_b = m.pending) == null ? void 0 : _b.kind) === "turn" && m.pending.mode === "choose")) this.priestOpen = false;
     }
     clearSel() {
       this.sel = null;
@@ -1853,6 +2270,18 @@
           const x = r.x + r.w - LEAVE_W - 8;
           drawText(ctx2, `\u724C\u5806 ${m.view.deckCount}`, x, cy - 7, { size: 10, color: C.textDim, align: "right" });
           drawText(ctx2, `\u5F03\u724C ${m.view.discardCount}`, x, cy + 7, { size: 10, color: C.textDim, align: "right" });
+        }
+      };
+    }
+    /** 顶栏右侧「牌堆 / 弃牌」数字的点击区域：打开弃牌堆 */
+    discardNode(r) {
+      const right = r.x + r.w - LEAVE_W - 8;
+      return {
+        id: "discard",
+        rect: rect(right - 56, r.y, 56, r.h),
+        onTap: () => {
+          this.discardOpen = true;
+          this.discardBox.reset();
         }
       };
     }
@@ -1959,6 +2388,10 @@
         if (k) return `${CARD_INFO[k].name}\uFF1A${CARD_INFO[k].desc}`;
       }
       if (m.me && !m.me.alive) return "\u4F60\u5DF2\u51FA\u5C40\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u89C2\u770B";
+      if (m.view.phase.kind === "characterPick") {
+        const done = m.view.players.filter((p) => p.character).length;
+        return `\u7B49\u5F85\u5176\u4ED6\u4EBA\u9009\u62E9\u89D2\u8272\uFF08${done}/${m.view.players.length}\uFF09`;
+      }
       if (((_a = m.pending) == null ? void 0 : _a.kind) === "turn") return m.pending.mode === "choose" ? "\u4F60\u7684\u56DE\u5408\uFF1A\u62BD 2 \u5F20\uFF0C\u6216\u70B9\u4E00\u5F20\u624B\u724C\u6253\u51FA" : "\u53EF\u4EE5\u7EE7\u7EED\u51FA\u724C\uFF0C\u6216\u7ED3\u675F\u56DE\u5408";
       if (m.view.phase.kind === "day") return `\u7B49\u5F85 ${m.view.players[m.turnSeat].name} \u884C\u52A8\u2026`;
       return phaseTitle(m);
@@ -2020,8 +2453,32 @@
         ];
       }
       if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn") return [];
-      if (m.pending.mode === "choose") return [requestButton("draw", r, "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy)];
+      if (m.pending.mode === "choose") {
+        const skill = this.skillButton(m, rect(r.x + half + 10, r.y, half, r.h));
+        if (!skill) return [requestButton("draw", r, "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy)];
+        return [requestButton("draw", rect(r.x, r.y, half, r.h), "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy), skill];
+      }
       return [requestButton("end-turn", r, "\u7ED3\u675F\u56DE\u5408", () => void ctl2.act({ type: "endTurn" }), busy, "secondary")];
+    }
+    /** 回合开始时的技能按钮：牧师从弃牌堆拿牌、说书人调整牌堆；没有可用技能时返回 null */
+    skillButton(m, r) {
+      var _a;
+      const me = m.me;
+      const left = (_a = me == null ? void 0 : me.usesLeft) != null ? _a : 0;
+      if (!me || left <= 0) return null;
+      const busy = this.ui.ctl.busy;
+      if (me.ability === "priest") {
+        const ok = m.view.discard.some((c) => !isBlack(c.kind));
+        const open = () => {
+          this.priestOpen = true;
+          this.priestPick.length = 0;
+        };
+        return button("priest", r, `\u4ECE\u5F03\u724C\u5806\u62FF\uFF08\u5269 ${left}\uFF09`, ok && !busy ? open : null, "secondary");
+      }
+      if (me.ability === "storyteller") {
+        return requestButton("story-start", r, `\u8C03\u6574\u724C\u5806\uFF08\u5269 ${left}\uFF09`, () => void this.ui.ctl.act({ type: "storyStart" }), busy, "secondary");
+      }
+      return null;
     }
     optionSheet(m) {
       const kind = this.selKind(m);
@@ -2035,9 +2492,9 @@
         this.askOption = false;
         this.targets = this.targets.slice(0, -1);
       };
-      const title = need.kind === "curse" ? "\u8BC5\u5492\uFF1A\u4E22\u5F03\u54EA\u5F20\u84DD\u5361\uFF1F" : "\u8FA9\u62A4\uFF1A\u4E22\u5F03\u54EA\u79CD\u7EA2\u5361\uFF1F";
-      const { nodes, body } = sheet(this.ui.screen, 280, title, close);
-      const choices = need.kind === "curse" ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name })) : ALIBI_CHOICES.map((c) => ({ value: c.value, label: c.label }));
+      const title = need.kind === "curse" ? "\u8BC5\u5492\uFF1A\u4E22\u5F03\u54EA\u5F20\u84DD\u5361\uFF1F" : need.doctor ? "\u8FA9\u62A4\uFF1A\u600E\u4E48\u6253\u51FA\uFF1F" : "\u8FA9\u62A4\uFF1A\u4E22\u5F03\u54EA\u79CD\u7EA2\u5361\uFF1F";
+      const { nodes, body } = sheet(this.ui.screen, need.kind === "alibi" && need.doctor ? 340 : 280, title, close);
+      const choices = need.kind === "curse" ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name })) : [...need.doctor ? [DOCTOR_CHOICE] : [], ...ALIBI_CHOICES.filter((c) => need.kinds.includes(c.value))].map((c) => ({ value: c.value, label: c.label }));
       choices.forEach(
         (c, i) => nodes.push(
           button(`option:${c.value}`, rect(body.x, body.y + i * 52, body.w, 44), c.label, () => {
