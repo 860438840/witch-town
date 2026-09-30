@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, seededRng } from '../../engine/src/index';
-import { BOT_TURN_MS, CHOICE_MS, deadlineKey, phaseDuration, PICK_MS, TURN_MS } from '../src/deadlines';
+import { BOT_TURN_MS, CHOICE_MS, deadlineKey, phaseDuration, PICK_MS, STORY_MS, TURN_MS } from '../src/deadlines';
 
 function game(openids = ['u0', 'u1', 'u2', 'u3', 'u4']) {
   return createGame(openids.map((openid) => ({ openid, name: openid })), seededRng(1));
@@ -11,11 +11,30 @@ describe('deadlineKey', () => {
     const s = game();
     s.phase = { kind: 'day', mode: 'choose' };
     s.turn = 2;
-    expect(deadlineKey(s)).toBe('day:2:0');
+    expect(deadlineKey(s)).toBe('day:2:0:0');
     s.phase = { kind: 'day', mode: 'playing' };
-    expect(deadlineKey(s)).toBe('day:2:0');
+    expect(deadlineKey(s)).toBe('day:2:0:0');
     s.turn = 3;
-    expect(deadlineKey(s)).toBe('day:3:0');
+    expect(deadlineKey(s)).toBe('day:3:0:0');
+  });
+
+  it('说书人调整完牌堆回到回合时 key 变化（重新计时）', () => {
+    const s = game();
+    s.phase = { kind: 'day', mode: 'choose' };
+    s.turn = 2;
+    const before = deadlineKey(s);
+    s.phase = { kind: 'storytelling', seat: 2 };
+    expect(deadlineKey(s)).toBe('storytelling');
+    s.log.push({ t: 'ability', seat: 2, ability: 'storyteller' });
+    s.phase = { kind: 'day', mode: 'choose' };
+    expect(deadlineKey(s)).not.toBe(before);
+  });
+
+  it('说书人调整牌堆限时 2 分钟', () => {
+    const s = game();
+    s.phase = { kind: 'storytelling', seat: 1 };
+    expect(phaseDuration(s)).toBe(STORY_MS);
+    expect(STORY_MS).toBe(120_000);
   });
 
   it('同一座位连续两次回合（例如只剩 2 人存活，另一人被拘留）时 key 不同（F4）', () => {

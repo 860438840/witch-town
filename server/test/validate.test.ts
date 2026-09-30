@@ -5,6 +5,27 @@ import { parseClientAction } from '../src/validate';
 const n = 5;
 
 describe('parseClientAction', () => {
+  it('计划 C 的新操作：只保留白名单字段，格式不对一律拒绝', () => {
+    expect(parseClientAction({ type: 'pickCharacter', index: 1, seat: 3 }, n)).toEqual({ type: 'pickCharacter', index: 1 });
+    expect(() => parseClientAction({ type: 'pickCharacter', index: 2 }, n)).toThrow('操作参数无效');
+    expect(() => parseClientAction({ type: 'pickCharacter', index: '0' }, n)).toThrow('操作参数无效');
+    expect(parseClientAction({ type: 'priestDraw', cardIds: ['alibi-1', 'evidence-2'] }, n)).toEqual({
+      type: 'priestDraw',
+      cardIds: ['alibi-1', 'evidence-2'],
+    });
+    expect(() => parseClientAction({ type: 'priestDraw', cardIds: [] }, n)).toThrow('操作参数无效');
+    expect(() => parseClientAction({ type: 'priestDraw', cardIds: ['a', 'b', 'c'] }, n)).toThrow('操作参数无效');
+    expect(() => parseClientAction({ type: 'priestDraw', cardIds: 'alibi-1' }, n)).toThrow('操作参数无效');
+    expect(parseClientAction({ type: 'storyStart', extra: 1 }, n)).toEqual({ type: 'storyStart' });
+    expect(parseClientAction({ type: 'storyReorder', order: ['x', 'y'] }, n)).toEqual({ type: 'storyReorder', order: ['x', 'y'] });
+    expect(() => parseClientAction({ type: 'storyReorder', order: Array(61).fill('x') }, n)).toThrow('操作参数无效');
+    expect(() => parseClientAction({ type: 'storyReorder', order: [1] }, n)).toThrow('操作参数无效');
+    expect(parseClientAction({ type: 'confess', tryalId: null, silent: true }, n)).toEqual({ type: 'confess', tryalId: null, silent: true });
+    expect(parseClientAction({ type: 'confess', tryalId: null, silent: false }, n)).toEqual({ type: 'confess', tryalId: null });
+    expect(() => parseClientAction({ type: 'confess', tryalId: 't1', silent: true }, n)).toThrow('操作参数无效');
+    expect(() => parseClientAction({ type: 'confess', tryalId: null, silent: 'yes' }, n)).toThrow('操作参数无效');
+  });
+
   it('接受每种类型的合法操作，只保留白名单字段', () => {
     expect(parseClientAction({ type: 'draw' }, n)).toEqual({ type: 'draw' });
     expect(parseClientAction({ type: 'endTurn' }, n)).toEqual({ type: 'endTurn' });

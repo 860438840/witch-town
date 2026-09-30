@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { RuleError, seededRng, targetCount, type GameState } from '../../engine/src/index';
-import { BOT_TURN_MS, CHOICE_MS, PICK_MS, TURN_MS } from '../src/deadlines';
+import { BOT_TURN_MS, CHOICE_MS, PICK_MS, STORY_MS, TURN_MS } from '../src/deadlines';
 import { act, startGame, tick } from '../src/game';
 import { addBots } from '../src/lobby';
 import { MemoryStore } from '../src/memoryStore';
 import { GAMES, handId, HANDS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from '../src/types';
-import { lobbyWith, NOW, run, skipCharacters } from './helpers';
+import { lobbyWith, mutateGame, NOW, run, skipCharacters } from './helpers';
 
 const rng = () => seededRng(5);
 const room = (store: MemoryStore, code: string) => store.read<RoomDoc>(ROOMS, code) as RoomDoc;
@@ -238,5 +238,40 @@ describe('隐私（F13）', () => {
         }
       }
     }
+  });
+});
+
+describe('说书人', () => {
+  it('调整牌堆限时 2 分钟；牌堆顺序只写进说书人自己的手牌文档；回到回合后重新计 90 秒', async () => {
+    const { store, code } = await started(5);
+    const witch = witchOpenid(game(store, code).state);
+    await run(store, (tx) => act(tx, code, witch, { type: 'witchVote', target: 2 }, undefined, NOW, rng()));
+    await mutateGame(store, code, (s) => {
+      s.players[s.turn].character = 'storyteller';
+    });
+    const s0 = game(store, code).state;
+    const teller = s0.players[s0.turn];
+    const t1 = NOW + 1000;
+    await run(store, (tx) => act(tx, code, teller.openid, { type: 'storyStart' }, undefined, t1, rng()));
+    expect(room(store, code).view!.phase).toEqual({ kind: 'storytelling', seat: teller.seat });
+    expect(room(store, code).deadline).toBe(t1 + STORY_MS);
+
+    const deckIds = game(store, code).state.deck.map((c) => c.id);
+    const mine = JSON.stringify(store.read<HandDoc>(HANDS, handId(code, teller.openid)));
+    for (const id of deckIds) expect(mine).toContain(`"${id}"`);
+    const pub = JSON.stringify(room(store, code));
+    for (const id of deckIds) expect(pub).not.toContain(`"${id}"`);
+    for (const p of game(store, code).state.players) {
+      if (p.seat === teller.seat) continue;
+      const other = JSON.stringify(store.read<HandDoc>(HANDS, handId(code, p.openid)));
+      for (const id of deckIds) expect(other).not.toContain(`"${id}"`);
+    }
+
+    const t2 = t1 + 100_000;
+    const order = [...deckIds].reverse();
+    await run(store, (tx) => act(tx, code, teller.openid, { type: 'storyReorder', order }, undefined, t2, rng()));
+    expect(room(store, code).view!.phase).toEqual({ kind: 'day', mode: 'choose' });
+    expect(room(store, code).deadline).toBe(t2 + TURN_MS);
+    expect(game(store, code).state.deck.map((c) => c.id)).toEqual(order);
   });
 });
