@@ -1,8 +1,9 @@
 import { apply } from '../src/apply';
+import { RED_POINTS } from '../src/cards';
 import { RuleError } from '../src/errors';
 import { seededRng } from '../src/rng';
 import { createGame } from '../src/setup';
-import type { Card, CardKind, CharacterId, GameState, TryalKind } from '../src/types';
+import type { Card, CardKind, CharacterId, GameState, RedKind, TryalKind } from '../src/types';
 
 export const V: TryalKind = 'villager';
 
@@ -69,6 +70,13 @@ export function giveCard(s: GameState, seat: number, kind: CardKind): Card {
 export function placeBlue(s: GameState, seat: number, kind: CardKind): Card {
   const c = takeFromAnywhere(s, kind);
   s.players[seat].blue.push(c);
+  return c;
+}
+
+/** 在玩家面前放一张红卡（点数按默认值），卡从别处拿来，总卡数不变 */
+export function placeRed(s: GameState, seat: number, kind: RedKind): Card {
+  const c = takeFromAnywhere(s, kind);
+  s.players[seat].red.push({ id: c.id, kind, points: RED_POINTS[kind] });
   return c;
 }
 

@@ -1,3 +1,4 @@
+import { hasAbility } from './characters';
 import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
 import { proceed } from './flow';
@@ -18,6 +19,7 @@ function agreedTarget(s: GameState, votes: Record<number, number>): number | nul
 export function witchVote(s: GameState, seat: number, target: number, rng: Rng): void {
   if (!getPlayer(s, seat).witchFaction) throw new RuleError('只有女巫阵营可以投票');
   if (!getPlayer(s, target).alive) throw new RuleError('目标必须是活着的玩家');
+  if (s.phase.kind === 'dawn' && hasAbility(s, target, 'maid')) throw new RuleError('女仆：黑猫对她无效，不能选她');
   if (s.phase.kind === 'dawn') {
     s.dawnVotes[seat] = target;
     tryResolveDawn(s);

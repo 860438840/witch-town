@@ -1,3 +1,4 @@
+import { hasAbility } from './characters';
 import { RuleError } from './errors';
 import { getPlayer, toCard, unrevealed, witchSeats } from './state';
 import type { DeathCause, GameState, RevealCause, Winner } from './types';
@@ -24,17 +25,34 @@ export function killPlayer(s: GameState, seat: number, cause: DeathCause): void 
     }
   }
   s.log.push({ t: 'death', seat, cause });
-  const wasLover = p.blue.some((c) => c.kind === 'matchmaker');
-  s.discard.push(...p.hand, ...p.red.map(toCard), ...p.blue, ...p.green);
+  // 情侣的另一方会在同一事件里殉情
+  const partner = p.blue.some((c) => c.kind === 'matchmaker')
+    ? s.players.find((q) => q.alive && q.blue.some((c) => c.kind === 'matchmaker'))
+    : undefined;
+  const heir = farmerHeir(s, seat, partner?.seat ?? null);
+  if (heir !== null) {
+    getPlayer(s, heir).hand.push(...p.hand, ...p.blue);
+    s.discard.push(...p.red.map(toCard), ...p.green);
+    s.log.push({ t: 'ability', seat: heir, ability: 'farmer', from: seat });
+  } else {
+    s.discard.push(...p.hand, ...p.red.map(toCard), ...p.blue, ...p.green);
+  }
   p.hand = [];
   p.red = [];
   p.blue = [];
   p.green = [];
-  if (wasLover) {
-    const partner = s.players.find((q) => q.alive && q.blue.some((c) => c.kind === 'matchmaker'));
-    if (partner) killPlayer(s, partner.seat, 'lover');
-  }
+  if (partner) killPlayer(s, partner.seat, 'lover');
   checkWin(s);
+}
+
+/** 继承死者手牌和蓝卡的人：从死者的下一个座位起顺时针第一个拥有农民技能的活人；同一事件里也要死去的情侣不算 */
+function farmerHeir(s: GameState, dead: number, alsoDying: number | null): number | null {
+  const n = s.players.length;
+  for (let i = 1; i < n; i++) {
+    const q = s.players[(dead + i) % n];
+    if (q.alive && q.seat !== alsoDying && hasAbility(s, q.seat, 'farmer')) return q.seat;
+  }
+  return null;
 }
 
 export function checkWin(s: GameState): void {
