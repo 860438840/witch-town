@@ -33,4 +33,5 @@ export function bindTouches(app: App): void {
     const t = e.changedTouches[0];
     if (t) app.touchEnd(t.clientX, t.clientY);
   });
+  wx.onTouchCancel(() => app.touchCancel());
 }

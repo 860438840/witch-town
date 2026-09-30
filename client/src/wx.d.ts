@@ -24,6 +24,7 @@ declare const wx: {
   onTouchStart(cb: (e: WxTouchEvent) => void): void;
   onTouchMove(cb: (e: WxTouchEvent) => void): void;
   onTouchEnd(cb: (e: WxTouchEvent) => void): void;
+  onTouchCancel(cb: (e: WxTouchEvent) => void): void;
   getLaunchOptionsSync(): WxLaunchOptions;
   onShow(cb: (o: WxLaunchOptions) => void): void;
   showModal(o: {

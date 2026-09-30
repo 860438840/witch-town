@@ -71,6 +71,7 @@ export class App {
     const press = hitTest(this.nodes, x, y, 'onPress');
     if (press) {
       this.touch = null;
+      this.drag?.end();
       this.drag = press.onPress!(x, y);
       this.render();
       return;
@@ -92,6 +93,17 @@ export class App {
       this.render();
     }
     t.lastY = y;
+  }
+
+  /** 系统打断触摸（来电、弹窗等）：结束拖动，丢弃未完成的点击和滚动 */
+  touchCancel(): void {
+    this.touch = null;
+    if (this.drag) {
+      const d = this.drag;
+      this.drag = null;
+      d.end();
+      this.render();
+    }
   }
 
   touchEnd(x: number, y: number): void {

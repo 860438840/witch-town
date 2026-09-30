@@ -185,4 +185,31 @@ describe('App 按住拖动', () => {
     app.touchEnd(10, 80);
     expect(events).toEqual(['tap', 'scroll']);
   });
+
+  it('touchCancel 结束拖动并停止逐帧 frame', () => {
+    const { app, frames, events } = setup();
+    app.touchStart(90, 10);
+    app.touchCancel();
+    expect(events.filter((e) => e !== 'frame')).toEqual(['press 10', 'end']);
+    while (frames.length) frames.shift()!();
+    const after = events.filter((e) => e === 'frame').length;
+    app.render();
+    while (frames.length) frames.shift()!();
+    expect(events.filter((e) => e === 'frame').length).toBe(after);
+  });
+
+  it('按下后被取消的点击，之后的 touchEnd 不触发 onTap', () => {
+    const { app, events } = setup();
+    app.touchStart(10, 50);
+    app.touchCancel();
+    app.touchEnd(10, 50);
+    expect(events).toEqual([]);
+  });
+
+  it('拖动中又有新的按下：先结束旧拖动', () => {
+    const { app, events } = setup();
+    app.touchStart(90, 10);
+    app.touchStart(90, 12);
+    expect(events.filter((e) => e !== 'frame')).toEqual(['press 10', 'end', 'press 12']);
+  });
 });

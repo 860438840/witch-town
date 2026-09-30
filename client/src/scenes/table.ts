@@ -21,6 +21,7 @@ import { C, CARD_GRADIENT } from '../theme/palette';
 import { choicePanel, type ChoiceState } from './choicePanels';
 import { priestPanel } from './abilityPanels';
 import { detailPanel, discardPanel, logPanel, myTryalsPanel } from './infoPanels';
+import { StoryBoard } from './storyBoard';
 import { tableLayout, type TableLayout } from './tableLayout';
 import { drawCell, drawMeBar, type CellOpts } from './tableParts';
 import type { Ui } from './ui';
@@ -55,6 +56,7 @@ export class TableScene implements Scene {
   protected readonly priestPick: string[] = [];
   protected layout: TableLayout | null = null;
   protected readonly choice: ChoiceState = { key: '', picked: null, suspect: null };
+  protected readonly board = new StoryBoard();
   private prev: TableModel | null = null;
 
   constructor(protected readonly ui: Ui) {}
@@ -69,7 +71,10 @@ export class TableScene implements Scene {
     const L = tableLayout(this.ui.screen, m.others.length);
     this.layout = L;
     const a = this.anim(m, now);
-    const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+    const choice =
+      m.pending?.kind === 'storytelling'
+        ? this.board.build(this.ui, m, m.pending.deck, now)
+        : choicePanel(this.ui, m, this.choice, now, a.panelSlide);
     const nodes: Node[] = [skyNode(this.ui.screen, a.darkness)];
     nodes.push(this.topBar(m, L.top, now));
     const sheetOpen = this.askOption || this.priestOpen || this.detail !== null || this.mine || this.logOpen;
