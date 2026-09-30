@@ -1,4 +1,5 @@
 import { buildBaseDeck, TRYALS_PER_PLAYER, tryalComposition } from './cards';
+import { dealCharacters } from './characters';
 import { RuleError } from './errors';
 import { shuffle, type Rng } from './rng';
 import type { Card, GameState, Player } from './types';
@@ -29,6 +30,7 @@ export function createGame(newPlayers: NewPlayer[], rng: Rng): GameState {
       openid: np.openid,
       name: np.name,
       character: null,
+      uses: {},
       alive: true,
       witchFaction: tryals.some((t) => t.kind === 'witch'),
       hand: [],
@@ -45,7 +47,7 @@ export function createGame(newPlayers: NewPlayer[], rng: Rng): GameState {
   }
   deck = shuffle<Card>([...deck, { id: 'night-1', kind: 'night' }, { id: 'conspiracy-1', kind: 'conspiracy' }], rng);
 
-  return {
+  const state: GameState = {
     players,
     deck,
     discard: [],
@@ -56,7 +58,11 @@ export function createGame(newPlayers: NewPlayer[], rng: Rng): GameState {
     dawnVotes: {},
     night: null,
     conspiracyPicks: {},
+    characterOffers: {},
     log: [{ t: 'gameStart', players: players.length }],
     version: 0,
   };
+  // 角色最后才发：之前的随机数顺序不变，同一种子下身份卡和牌堆与没有角色时相同
+  dealCharacters(state, rng);
+  return state;
 }

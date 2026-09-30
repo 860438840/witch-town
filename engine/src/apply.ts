@@ -1,3 +1,4 @@
+import { pickCharacter } from './characters';
 import { catReveal, conspiracyPick } from './conspiracy';
 import { revealTryal } from './death';
 import { RuleError } from './errors';
@@ -44,6 +45,9 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       break;
     case 'conspiracyPick':
       conspiracyPick(s, action.seat, action.index, rng);
+      break;
+    case 'pickCharacter':
+      pickCharacter(s, action.seat, action.index);
       break;
     default:
       throw new RuleError('现在不能执行这个操作');

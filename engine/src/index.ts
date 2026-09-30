@@ -11,6 +11,7 @@ export {
   TOTAL_GAME_CARDS,
   TRYALS_PER_PLAYER,
 } from './cards';
+export { abilityOf, CHARACTERS, PICK_BELOW, USE_LIMITS } from './characters';
 export { createGame, type NewPlayer } from './setup';
 export { apply } from './apply';
 export { autoActions } from './auto';

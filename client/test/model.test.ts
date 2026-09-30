@@ -17,6 +17,14 @@ import { giveCard, handOf, lobbyRoom, newState, roomOf, setDay } from './fixture
 const name = (seat: number) => `P${seat}`;
 
 describe('日志', () => {
+  it('角色和技能事件', () => {
+    const name = (seat: number) => `P${seat}`;
+    expect(describeEvent({ t: 'character', seat: 2, character: 'judge' }, name)).toBe('P2 的角色是「法官」');
+    expect(describeEvent({ t: 'ability', seat: 3, ability: 'maid', kind: 'matchmaker' }, name)).toBe('P3（女仆）：「情侣」对 TA 无效，直接丢弃');
+    expect(describeEvent({ t: 'ability', seat: 1, ability: 'farmer', from: 4 }, name)).toBe('P1（农民） 获得了 P4 的手牌和蓝卡');
+    expect(describeEvent({ t: 'ability', seat: 0, ability: 'priest', count: 2 }, name)).toBe('P0（牧师） 从弃牌堆拿了 2 张牌');
+  });
+
   it('把事件翻译成中文', () => {
     expect(describeEvent({ t: 'play', seat: 0, kind: 'accusation', targets: [2] }, name)).toBe('P0 对 P2 打出「指控」');
     expect(describeEvent({ t: 'play', seat: 1, kind: 'asylum', targets: [1] }, name)).toBe('P1 给自己打出「避难」');

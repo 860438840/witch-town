@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { RuleError, seededRng, targetCount, type GameState } from '../../engine/src/index';
-import { BOT_TURN_MS, CHOICE_MS, TURN_MS } from '../src/deadlines';
+import { BOT_TURN_MS, CHOICE_MS, PICK_MS, TURN_MS } from '../src/deadlines';
 import { act, startGame, tick } from '../src/game';
 import { addBots } from '../src/lobby';
 import { MemoryStore } from '../src/memoryStore';
 import { GAMES, handId, HANDS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from '../src/types';
-import { lobbyWith, NOW, run } from './helpers';
+import { lobbyWith, NOW, run, skipCharacters } from './helpers';
 
 const rng = () => seededRng(5);
 const room = (store: MemoryStore, code: string) => store.read<RoomDoc>(ROOMS, code) as RoomDoc;
@@ -14,6 +14,7 @@ const game = (store: MemoryStore, code: string) => store.read<GameDoc>(GAMES, co
 async function started(n = 5) {
   const { store, code } = await lobbyWith(n);
   await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+  await skipCharacters(store, code);
   return { store, code };
 }
 
@@ -22,6 +23,17 @@ function witchOpenid(s: GameState): string {
 }
 
 describe('startGame', () => {
+  it('不到 7 人时先选角色：限时 30 秒，每人的手牌文档里有自己的 2 个候选', async () => {
+    const { store, code } = await lobbyWith(5);
+    await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+    const r = room(store, code);
+    expect(r.view!.phase).toEqual({ kind: 'characterPick' });
+    expect(r.deadline).toBe(NOW + PICK_MS);
+    const offers = game(store, code).state.characterOffers;
+    const hand = store.read<HandDoc>(HANDS, handId(code, 'u0'))!;
+    expect(hand.view.pending).toEqual({ kind: 'characterPick', offers: offers[0] });
+  });
+
   it('只有房主能开始，且至少 4 人', async () => {
     const small = await lobbyWith(3);
     await expect(run(small.store, (tx) => startGame(tx, small.code, 'u0', NOW, rng()))).rejects.toThrow('至少需要 4 名玩家');
@@ -178,7 +190,8 @@ describe('tick', () => {
     const { store, code } = await lobbyWith(1);
     await run(store, (tx) => addBots(tx, code, 'u0', 4, NOW));
     await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
-    const t = NOW + CHOICE_MS;
+    await run(store, (tx) => tick(tx, code, NOW + PICK_MS, rng()));
+    const t = NOW + PICK_MS + CHOICE_MS;
     await run(store, (tx) => tick(tx, code, t, rng()));
     const s = game(store, code).state;
     const expected = s.players[s.turn].openid.startsWith('bot-') ? BOT_TURN_MS : TURN_MS;

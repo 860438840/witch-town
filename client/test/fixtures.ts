@@ -12,10 +12,16 @@ export const CODE = '1234';
 export const GAME_ID = '1234-1';
 
 export function newState(n = 5, seed = 1): GameState {
-  return createGame(
+  const s = createGame(
     Array.from({ length: n }, (_, i) => ({ openid: `u${i}`, name: `P${i}` })),
     seededRng(seed),
   );
+  // 大多数界面测试不关心角色：去掉随机角色，直接从第一夜开始
+  for (const p of s.players) p.character = null;
+  s.characterOffers = {};
+  s.log = s.log.filter((e) => e.t !== 'character');
+  if (s.phase.kind === 'characterPick') s.phase = { kind: 'dawn' };
+  return s;
 }
 
 /** 数据库快照每次都是新对象；视图深拷贝一份，避免之后改 state 时连带改到旧快照 */

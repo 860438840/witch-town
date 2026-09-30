@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, seededRng } from '../../engine/src/index';
-import { BOT_TURN_MS, CHOICE_MS, deadlineKey, phaseDuration, TURN_MS } from '../src/deadlines';
+import { BOT_TURN_MS, CHOICE_MS, deadlineKey, phaseDuration, PICK_MS, TURN_MS } from '../src/deadlines';
 
 function game(openids = ['u0', 'u1', 'u2', 'u3', 'u4']) {
   return createGame(openids.map((openid) => ({ openid, name: openid })), seededRng(1));
@@ -31,6 +31,8 @@ describe('deadlineKey', () => {
 
   it('其他阶段', () => {
     const s = game();
+    expect(deadlineKey(s)).toBe('characterPick');
+    s.phase = { kind: 'dawn' };
     expect(deadlineKey(s)).toBe('dawn');
     s.phase = { kind: 'trialReveal', target: 3, initiator: 2 };
     expect(deadlineKey(s)).toBe('trial:3');
@@ -46,12 +48,14 @@ describe('deadlineKey', () => {
 describe('phaseDuration', () => {
   it('真人回合 90 秒，机器人回合 3 秒，其他选择 45 秒', () => {
     const s = game(['u0', 'bot-1', 'u2', 'u3', 'u4']);
+    expect(phaseDuration(s)).toBe(PICK_MS);
+    s.phase = { kind: 'dawn' };
     expect(phaseDuration(s)).toBe(CHOICE_MS);
     s.phase = { kind: 'day', mode: 'choose' };
     s.turn = 0;
     expect(phaseDuration(s)).toBe(TURN_MS);
     s.turn = 1;
     expect(phaseDuration(s)).toBe(BOT_TURN_MS);
-    expect([TURN_MS, BOT_TURN_MS, CHOICE_MS]).toEqual([90_000, 3_000, 45_000]);
+    expect([TURN_MS, BOT_TURN_MS, CHOICE_MS, PICK_MS]).toEqual([90_000, 3_000, 45_000, 30_000]);
   });
 });

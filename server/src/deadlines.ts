@@ -4,6 +4,7 @@ import { isBot } from './types';
 export const TURN_MS = 90_000;
 export const BOT_TURN_MS = 3_000;
 export const CHOICE_MS = 45_000;
+export const PICK_MS = 30_000;
 
 /** 同一个等待阶段的 key 相同；key 变化时才重新计时 */
 export function deadlineKey(s: GameState): string {
@@ -25,6 +26,7 @@ export function deadlineKey(s: GameState): string {
 }
 
 export function phaseDuration(s: GameState): number {
+  if (s.phase.kind === 'characterPick') return PICK_MS;
   if (s.phase.kind !== 'day') return CHOICE_MS;
   return isBot(s.players[s.turn].openid) ? BOT_TURN_MS : TURN_MS;
 }

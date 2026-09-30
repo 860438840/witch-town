@@ -20,13 +20,37 @@ export interface RedCard {
   id: string;
   kind: RedKind;
   points: number;
+  /** 这张牌原来是什么卡（医生当作目击打出的辩护为 'alibi'）；没有这个字段时就是 kind 本身 */
+  source?: CardKind;
 }
+
+export type CharacterId =
+  | 'doctor'
+  | 'beggar'
+  | 'landlord'
+  | 'judge'
+  | 'priest'
+  | 'storyteller'
+  | 'tailor'
+  | 'housewife'
+  | 'farmer'
+  | 'child'
+  | 'minister'
+  | 'official'
+  | 'strongman'
+  | 'maid'
+  | 'maiden';
+
+/** 整局限次的技能 */
+export type LimitedAbility = 'priest' | 'storyteller' | 'official';
 
 export interface Player {
   seat: number;
   openid: string;
   name: string;
-  character: string | null;
+  character: CharacterId | null;
+  /** 限次技能已经用了几次（记在使用者本人身上，所以裁缝复制时单独计次） */
+  uses: Partial<Record<LimitedAbility, number>>;
   alive: boolean;
   witchFaction: boolean;
   hand: Card[];
@@ -40,6 +64,7 @@ export interface Player {
 export type Winner = 'village' | 'witch';
 
 export type Phase =
+  | { kind: 'characterPick' }
   | { kind: 'dawn' }
   | { kind: 'day'; mode: 'choose' | 'playing' | 'drawing' }
   | { kind: 'trialReveal'; target: number; initiator: number }
@@ -72,6 +97,9 @@ export type GameEvent =
   | { t: 'conspiracyDone' }
   | { t: 'nightResult'; target: number; died: boolean }
   | { t: 'reshuffle' }
+  | { t: 'character'; seat: number; character: CharacterId }
+  /** 技能生效。kind：被挡下的卡（乞丐、女仆）；from：死者（农民）；count：拿了几张（牧师） */
+  | { t: 'ability'; seat: number; ability: CharacterId; kind?: CardKind; from?: number; count?: number }
   | { t: 'gameEnd'; winner: Winner };
 
 export interface GameState {
@@ -86,6 +114,8 @@ export interface GameState {
   dawnVotes: Record<number, number>;
   night: NightState | null;
   conspiracyPicks: Record<number, number>;
+  /** 选角色阶段每人的 2 个候选；选完后清空 */
+  characterOffers: Record<number, CharacterId[]>;
   log: GameEvent[];
   version: number;
 }
@@ -98,4 +128,5 @@ export type Action =
   | { type: 'witchVote'; seat: number; target: number }
   | { type: 'protect'; seat: number; target: number }
   | { type: 'confess'; seat: number; tryalId: string | null }
-  | { type: 'conspiracyPick'; seat: number; index: number };
+  | { type: 'conspiracyPick'; seat: number; index: number }
+  | { type: 'pickCharacter'; seat: number; index: number };

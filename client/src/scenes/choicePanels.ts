@@ -119,6 +119,7 @@ export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number,
   const busy = ui.ctl.busy;
   const act = ui.ctl.act.bind(ui.ctl);
 
+  if (p.kind === 'characterPick') return [];
   if (p.kind === 'revealTryal') {
     const title = p.reason === 'trial' ? '你受到审判：翻开一张身份卡' : '传染：你持有黑猫，翻开一张身份卡';
     const { nodes, body } = sheet(ui.screen, 320, title, null, slide, `剩余 ${cd} · 超时将随机翻开`);

@@ -1,14 +1,29 @@
 import { seededRng } from '../src/rng';
 import { createGame } from '../src/setup';
-import type { Card, CardKind, GameState, TryalKind } from '../src/types';
+import type { Card, CardKind, CharacterId, GameState, TryalKind } from '../src/types';
 
 export const V: TryalKind = 'villager';
 
+/** 去掉随机角色，直接从第一夜开始（大多数规则测试不希望角色干扰） */
+export function withoutCharacters(s: GameState): GameState {
+  for (const p of s.players) p.character = null;
+  s.characterOffers = {};
+  s.log = s.log.filter((e) => e.t !== 'character');
+  if (s.phase.kind === 'characterPick') s.phase = { kind: 'dawn' };
+  return s;
+}
+
 export function newGame(n = 5, seed = 1): GameState {
-  return createGame(
-    Array.from({ length: n }, (_, i) => ({ openid: `u${i}`, name: `P${i}` })),
-    seededRng(seed),
+  return withoutCharacters(
+    createGame(
+      Array.from({ length: n }, (_, i) => ({ openid: `u${i}`, name: `P${i}` })),
+      seededRng(seed),
+    ),
   );
+}
+
+export function setCharacter(s: GameState, seat: number, c: CharacterId): void {
+  s.players[seat].character = c;
 }
 
 /** 覆盖某个玩家的身份卡（测试专用，会打破身份卡总数的约束） */

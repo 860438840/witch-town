@@ -62,6 +62,8 @@ export function nameOf(m: TableModel, seat: number): string {
 export function phaseTitle(m: TableModel): string {
   const ph = m.view.phase;
   switch (ph.kind) {
+    case 'characterPick':
+      return '选择角色';
     case 'dawn':
       return '第一夜：女巫放置黑猫';
     case 'day':
