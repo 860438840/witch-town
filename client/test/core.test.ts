@@ -124,3 +124,65 @@ describe('App', () => {
     expect(frames).toHaveLength(1);
   });
 });
+
+describe('App 按住拖动', () => {
+  function setup() {
+    const frames: (() => void)[] = [];
+    const events: string[] = [];
+    const app = new App(fakeCtx().ctx, { W: 100, H: 100, top: 0, bottom: 100 }, (cb) => frames.push(cb), () => 0);
+    const scene: Scene = {
+      build: () => [
+        { id: 'row', rect: rect(0, 0, 100, 100), onTap: () => events.push('tap'), onScroll: () => events.push('scroll') },
+        {
+          id: 'handle',
+          rect: rect(80, 0, 20, 20),
+          onPress: (_x, y) => {
+            events.push(`press ${y}`);
+            return {
+              move: (_mx, my) => events.push(`move ${my}`),
+              end: () => events.push('end'),
+              frame: () => events.push('frame'),
+            };
+          },
+        },
+      ],
+    };
+    app.setScene(scene);
+    frames.shift()!();
+    return { app, frames, events };
+  }
+
+  it('按住把手立即开始拖动：移动和松手都交给拖动，不触发点击和滚动', () => {
+    const { app, events } = setup();
+    app.touchStart(90, 10);
+    app.touchMove(90, 50);
+    app.touchEnd(90, 50);
+    expect(events.filter((e) => e !== 'frame')).toEqual(['press 10', 'move 50', 'end']);
+  });
+
+  it('拖动期间每一帧都调用 frame（手指不动也调用），松手后不再调用', () => {
+    const { app, frames, events } = setup();
+    app.touchStart(90, 10);
+    frames.shift()!();
+    frames.shift()!();
+    const during = events.filter((e) => e === 'frame').length;
+    expect(during).toBeGreaterThanOrEqual(2);
+    app.touchEnd(90, 10);
+    while (frames.length) frames.shift()!();
+    const after = events.filter((e) => e === 'frame').length;
+    app.render();
+    while (frames.length) frames.shift()!();
+    expect(events.filter((e) => e === 'frame').length).toBe(after);
+    expect(frames).toHaveLength(0);
+  });
+
+  it('把手以外的地方照常点击和滚动', () => {
+    const { app, events } = setup();
+    app.touchStart(10, 50);
+    app.touchEnd(10, 50);
+    app.touchStart(10, 50);
+    app.touchMove(10, 80);
+    app.touchEnd(10, 80);
+    expect(events).toEqual(['tap', 'scroll']);
+  });
+});

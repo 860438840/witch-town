@@ -2,6 +2,13 @@ import { contains, type Rect } from './geom';
 
 export type Ctx = CanvasRenderingContext2D;
 
+/** 一次按住拖动：移动、松手都交给它；frame 在拖动期间每一帧调用（手指不动时也调用） */
+export interface Drag {
+  move(x: number, y: number): void;
+  end(): void;
+  frame?(): void;
+}
+
 /** 画面上的一个元素。场景每次重画都重新生成节点树（立即模式），节点本身不保存状态。 */
 export interface Node {
   /** 测试和调试用的名字 */
@@ -11,6 +18,8 @@ export interface Node {
   onTap?: () => void;
   /** 在该区域内上下拖动时调用，dy 为本次移动量（手指向上为负） */
   onScroll?: (dy: number) => void;
+  /** 按下时立即开始拖动（例如列表的拖动把手），返回这次拖动 */
+  onPress?: (x: number, y: number) => Drag;
   children?: Node[];
   /** 绘制时裁剪到 rect（滚动列表用） */
   clip?: boolean;
@@ -31,7 +40,7 @@ export function drawNodes(ctx: Ctx, nodes: Node[]): void {
 }
 
 /** 返回位于 (x, y)、带有指定回调的最上层节点（后画的在上层，子节点在父节点之上） */
-export function hitTest(nodes: Node[], x: number, y: number, key: 'onTap' | 'onScroll'): Node | null {
+export function hitTest(nodes: Node[], x: number, y: number, key: 'onTap' | 'onScroll' | 'onPress'): Node | null {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     if (n.children) {

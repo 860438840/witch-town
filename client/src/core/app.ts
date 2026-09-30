@@ -1,4 +1,4 @@
-import { drawNodes, hitTest, type Ctx, type Node } from './node';
+import { drawNodes, hitTest, type Ctx, type Drag, type Node } from './node';
 import { Animator } from './tween';
 
 export interface Screen {
@@ -28,6 +28,7 @@ export class App {
   private nodes: Node[] = [];
   private scheduled = false;
   private touch: Touch | null = null;
+  private drag: Drag | null = null;
 
   constructor(
     private readonly ctx: Ctx,
@@ -54,10 +55,12 @@ export class App {
   draw(): void {
     if (!this.scene) return;
     const now = this.clock();
+    this.drag?.frame?.();
     this.nodes = this.scene.build(now);
     this.ctx.clearRect(0, 0, this.screen.W, this.screen.H);
     drawNodes(this.ctx, this.nodes);
-    if (this.animator.active(now)) this.render();
+    // 动画进行中或正在拖动时继续逐帧重画
+    if (this.animator.active(now) || this.drag) this.render();
   }
 
   get current(): Node[] {
@@ -65,10 +68,22 @@ export class App {
   }
 
   touchStart(x: number, y: number): void {
+    const press = hitTest(this.nodes, x, y, 'onPress');
+    if (press) {
+      this.touch = null;
+      this.drag = press.onPress!(x, y);
+      this.render();
+      return;
+    }
     this.touch = { x0: x, y0: y, lastY: y, moved: false, scroll: hitTest(this.nodes, x, y, 'onScroll') };
   }
 
   touchMove(x: number, y: number): void {
+    if (this.drag) {
+      this.drag.move(x, y);
+      this.render();
+      return;
+    }
     const t = this.touch;
     if (!t) return;
     if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) t.moved = true;
@@ -80,6 +95,13 @@ export class App {
   }
 
   touchEnd(x: number, y: number): void {
+    if (this.drag) {
+      const d = this.drag;
+      this.drag = null;
+      d.end();
+      this.render();
+      return;
+    }
     const t = this.touch;
     this.touch = null;
     if (!t || t.moved) return;
