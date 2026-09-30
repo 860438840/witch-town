@@ -20,7 +20,10 @@ export interface ChoiceState {
 }
 
 export function choiceKey(m: TableModel): string {
-  return m.pending ? `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}` : '';
+  if (!m.pending) return '';
+  // 选角色时别人选择也会写日志，不能因此清掉自己已点选的候选
+  if (m.pending.kind === 'characterPick') return `characterPick:${m.view.phase.kind}`;
+  return `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}`;
 }
 
 interface SeatSize {

@@ -72,7 +72,8 @@ export class TableScene implements Scene {
     const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
     const nodes: Node[] = [skyNode(this.ui.screen, a.darkness)];
     nodes.push(this.topBar(m, L.top, now));
-    nodes.push(this.discardNode(L.top));
+    const sheetOpen = this.askOption || this.priestOpen || this.detail !== null || this.mine || this.logOpen;
+    if (!choice.length && !sheetOpen) nodes.push(this.discardNode(L.top));
     if (!choice.length) nodes.push(this.leaveButton(L.top));
     m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
     nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));

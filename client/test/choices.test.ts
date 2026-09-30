@@ -218,6 +218,18 @@ describe('选角色', () => {
     expect(ctl.act).toHaveBeenCalledWith({ type: 'pickCharacter', index: 1 });
   });
 
+  it('别人选角色时，自己已点选的候选不会被清掉', () => {
+    const { s, ctl, t } = picking();
+    tap(t.build(0), 'character:maid');
+    s.players[1].character = 'priest';
+    s.log.push({ t: 'character', seat: 1, character: 'priest' });
+    (ctl as unknown as { room: unknown }).room = roomOf(s);
+    const nodes = t.build(0);
+    expect(canTap(nodes, 'confirm-character')).toBe(true);
+    tap(nodes, 'confirm-character');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'pickCharacter', index: 1 });
+  });
+
   it('小屏上确认按钮在屏幕内', () => {
     const { t } = picking(SMALL);
     const r = rectOf(t.build(0), 'confirm-character');

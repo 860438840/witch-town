@@ -55,6 +55,13 @@ describe('游戏桌', () => {
     expect(has(t.build(0), 'discard-list')).toBe(false);
   });
 
+  it('选择面板显示时，顶栏弃牌数不可点', () => {
+    const s = newState(5);
+    s.phase = { kind: 'trialReveal', target: 0, initiator: 1 };
+    const { scene: t } = scene(s);
+    expect(has(t.build(0), 'discard')).toBe(false);
+  });
+
   it('牧师：回合开始时可以从弃牌堆拿 1–2 张', () => {
     const s = newState(5);
     setDay(s, 0);
