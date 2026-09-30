@@ -1,10 +1,13 @@
+import type { PublicPlayer } from '../../../engine/src/index';
 import { rect } from '../core/geom';
 import type { Node } from '../core/node';
+import { wrapText } from '../core/text';
 import { CARD_INFO, TRYAL_NAME } from '../model/cards';
+import { CHAR_INFO } from '../model/characters';
 import { logLines } from '../model/log';
 import { nameOf, type TableModel } from '../model/table';
 import { drawText, drawTryalChip } from '../theme/draw';
-import { C } from '../theme/palette';
+import { C, font } from '../theme/palette';
 import type { Ui } from './ui';
 import { sheet, type ScrollBox } from './widgets';
 
@@ -14,13 +17,24 @@ function countNames(names: string[]): string {
   return [...counts].map(([n, k]) => (k > 1 ? `${n}×${k}` : n)).join('、');
 }
 
+function characterLines(p: PublicPlayer): string[] {
+  if (!p.character) return [];
+  const c = CHAR_INFO[p.character];
+  const lines = [`角色：${c.name}——${c.desc}`];
+  if (p.character === 'tailor') {
+    lines.push(p.ability ? `当前技能：${CHAR_INFO[p.ability].name}——${CHAR_INFO[p.ability].desc}` : '当前技能：无（右手边的人没有角色）');
+  }
+  if (p.usesLeft !== null) lines.push(`技能剩余次数：${p.usesLeft}`);
+  return lines;
+}
+
 export function detailPanel(ui: Ui, m: TableModel, seat: number, close: () => void): Node[] {
   const p = m.view.players[seat];
-  const { nodes, body } = sheet(ui.screen, 330, `${p.name}${seat === m.mySeat ? '（你）' : ''}${p.alive ? '' : '（已出局）'}`, close);
+  const { nodes, body } = sheet(ui.screen, 420, `${p.name}${seat === m.mySeat ? '（你）' : ''}${p.alive ? '' : '（已出局）'}`, close);
   const revealed = p.tryals.filter((t) => t.revealed && t.kind).map((t) => TRYAL_NAME[t.kind!]);
   const reds = countNames(p.red.map((c) => CARD_INFO[c.kind].name));
   const lines = [
-    ...(p.character ? [`角色：${p.character}`] : []),
+    ...characterLines(p),
     `指控：${p.redTotal} / ${p.threshold}${reds ? `（${reds}）` : ''}`,
     `蓝卡：${p.blue.length ? countNames(p.blue.map((c) => CARD_INFO[c.kind].name)) : '无'}`,
     ...(p.green.length ? [`面前：${countNames(p.green.map((c) => CARD_INFO[c.kind].name))}`] : []),
@@ -30,7 +44,17 @@ export function detailPanel(ui: Ui, m: TableModel, seat: number, close: () => vo
   nodes.push({
     id: 'detail-body',
     rect: body,
-    draw: (ctx) => lines.forEach((t, i) => drawText(ctx, t, body.x, body.y + 12 + i * 28, { size: 14, maxWidth: body.w })),
+    draw: (ctx) => {
+      ctx.font = font(14);
+      let y = body.y + 12;
+      for (const line of lines) {
+        for (const t of wrapText(line, body.w, (s) => ctx.measureText(s).width)) {
+          drawText(ctx, t, body.x, y, { size: 14 });
+          y += 22;
+        }
+        y += 6;
+      }
+    },
   });
   return nodes;
 }

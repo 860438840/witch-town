@@ -2,6 +2,7 @@ import type { PublicPlayer } from '../../../engine/src/index';
 import type { Rect } from '../core/geom';
 import type { Ctx } from '../core/node';
 import { CARD_INFO } from '../model/cards';
+import { charLabel } from '../model/characters';
 import type { TableModel } from '../model/table';
 import { drawBadge, drawPanel, drawText, drawTryalChip, roundRect } from '../theme/draw';
 import { C, goldGlow } from '../theme/palette';
@@ -57,6 +58,12 @@ function frontMarks(p: PublicPlayer): string {
   return [...p.blue, ...p.green].map((c) => CARD_INFO[c.kind].name[0]).join('');
 }
 
+/** 格子里的名字：角色在前，昵称在后（太长时截掉的是昵称） */
+function cellName(p: PublicPlayer): string {
+  const label = charLabel(p);
+  return label ? `${label}·${p.name}` : p.name;
+}
+
 export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void {
   ctx.globalAlpha = o.alpha;
   drawPanel(ctx, r, {
@@ -70,7 +77,7 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
   const tag = o.partner && !o.order;
   if (r.h >= 70) {
     drawBadge(ctx, cx, r.y + 17, 12, p.name, p.seat);
-    drawText(ctx, p.name, cx, r.y + 38, { size: 11, align: 'center', maxWidth: r.w - 6 });
+    drawText(ctx, cellName(p), cx, r.y + 38, { size: 11, align: 'center', maxWidth: r.w - 6 });
     redBar(ctx, p, r.x + 6, r.y + 47, r.w - 12);
     tryalRow(ctx, p, cx, r.y + 55, 11, o.flip);
     if (r.h >= 80) {
@@ -79,7 +86,7 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
     }
   } else {
     drawBadge(ctx, r.x + 13, r.y + 13, 9, p.name, p.seat);
-    drawText(ctx, p.name, r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
+    drawText(ctx, cellName(p), r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
     redBar(ctx, p, r.x + 5, r.y + 27, r.w - 10);
     tryalRow(ctx, p, cx, r.y + 34, 10, o.flip);
   }
@@ -104,7 +111,8 @@ export function drawMeBar(ctx: Ctx, r: Rect, m: TableModel, o: { targetable: boo
   }
   drawBadge(ctx, r.x + 20, cy, Math.min(13, r.h / 2 - 3), me.name, me.seat);
   const status = me.alive ? `指控 ${me.redTotal}/${me.threshold} · 手牌 ${me.handCount}` : '你已出局';
-  drawText(ctx, `你（${me.name}）  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
+  const label = charLabel(me);
+  drawText(ctx, `你（${label ? `${label}·` : ''}${me.name}）  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
   drawText(ctx, '我的身份卡 ›', r.x + r.w - 10, cy, { size: 12, color: C.gold, align: 'right' });
   if (o.order) drawText(ctx, o.order === 1 ? '①' : '②', r.x + r.w - 96, cy, { size: 12, bold: true, color: C.gold, align: 'center' });
 }

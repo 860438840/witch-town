@@ -4,6 +4,7 @@ import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
 import {
   ALIBI_CHOICES,
+  DOCTOR_CHOICE,
   cardKindOf,
   optionNeed,
   playableCardIds,
@@ -397,12 +398,12 @@ export class TableScene implements Scene {
       this.askOption = false;
       this.targets = this.targets.slice(0, -1);
     };
-    const title = need.kind === 'curse' ? '诅咒：丢弃哪张蓝卡？' : '辩护：丢弃哪种红卡？';
-    const { nodes, body } = sheet(this.ui.screen, 280, title, close);
+    const title = need.kind === 'curse' ? '诅咒：丢弃哪张蓝卡？' : need.doctor ? '辩护：怎么打出？' : '辩护：丢弃哪种红卡？';
+    const { nodes, body } = sheet(this.ui.screen, need.kind === 'alibi' && need.doctor ? 340 : 280, title, close);
     const choices =
       need.kind === 'curse'
         ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name }))
-        : ALIBI_CHOICES.map((c) => ({ value: c.value as string, label: c.label as string }));
+        : [...(need.doctor ? [DOCTOR_CHOICE] : []), ...ALIBI_CHOICES].map((c) => ({ value: c.value as string, label: c.label as string }));
     choices.forEach((c, i) =>
       nodes.push(
         button(`option:${c.value}`, rect(body.x, body.y + i * 52, body.w, 44), c.label, () => {

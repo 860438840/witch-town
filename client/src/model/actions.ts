@@ -19,17 +19,24 @@ export type ClientAction =
   | { type: 'revealTryal'; tryalId: string }
   | { type: 'witchVote'; target: number }
   | { type: 'protect'; target: number }
-  | { type: 'confess'; tryalId: string | null }
-  | { type: 'conspiracyPick'; index: number };
+  | { type: 'confess'; tryalId: string | null; silent?: boolean }
+  | { type: 'conspiracyPick'; index: number }
+  | { type: 'pickCharacter'; index: number }
+  | { type: 'priestDraw'; cardIds: string[] }
+  | { type: 'storyStart' }
+  | { type: 'storyReorder'; order: string[] };
 
 export type NightPending = Extract<PendingChoice, { kind: 'night' }>;
 export type NightStep = 'kill' | 'protect' | 'suspect';
-export type OptionNeed = { kind: 'curse'; cards: Card[] } | { kind: 'alibi' } | null;
+export type OptionNeed = { kind: 'curse'; cards: Card[] } | { kind: 'alibi'; doctor: boolean } | null;
 
 export const ALIBI_CHOICES = [
   { value: 'accusation', label: '丢弃最多 3 张指控' },
   { value: 'evidence', label: '丢弃 1 张证据' },
 ] as const;
+
+/** 医生：把辩护当作目击打出 */
+export const DOCTOR_CHOICE = { value: 'witness', label: '当作「目击」打出（7 点）' } as const;
 
 export function playableCardIds(m: TableModel): string[] {
   if (m.pending?.kind !== 'turn' || !m.priv) return [];
@@ -62,9 +69,12 @@ export function optionNeed(m: TableModel, kind: CardKind, target: number): Optio
   if (!p) return null;
   if (kind === 'curse') return { kind: 'curse', cards: p.blue };
   if (kind === 'alibi') {
+    // 医生对别人（没有信徒）打辩护时，总要问一下是否当作目击
+    const doctor = m.me?.ability === 'doctor' && target !== m.mySeat && !p.blue.some((c) => c.kind === 'piety');
+    if (doctor) return { kind: 'alibi', doctor: true };
     const acc = p.red.some((c) => c.kind === 'accusation');
     const evi = p.red.some((c) => c.kind === 'evidence');
-    return acc && evi ? { kind: 'alibi' } : null;
+    return acc && evi ? { kind: 'alibi', doctor: false } : null;
   }
   return null;
 }
@@ -81,8 +91,9 @@ export function nightTargets(m: TableModel, step: NightStep): number[] {
   return m.view.players.filter((p) => p.alive && (step === 'kill' || p.seat !== m.mySeat)).map((p) => p.seat);
 }
 
+/** 第一夜放黑猫的目标：活着、且不是女仆（黑猫对女仆无效） */
 export function dawnTargets(m: TableModel): number[] {
-  return m.view.players.filter((p) => p.alive).map((p) => p.seat);
+  return m.view.players.filter((p) => p.alive && p.ability !== 'maid').map((p) => p.seat);
 }
 
 export function unrevealedTryals(m: TableModel): Tryal[] {

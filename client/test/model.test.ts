@@ -10,6 +10,7 @@ import {
   unrevealedTryals,
   type NightPending,
 } from '../src/model/actions';
+import { RULES } from '../src/model/rules';
 import { describeEvent, logLines } from '../src/model/log';
 import { buildTable, currentHand, formatCountdown, phaseTitle } from '../src/model/table';
 import { giveCard, handOf, lobbyRoom, newState, roomOf, setDay } from './fixtures';
@@ -140,7 +141,7 @@ describe('可做的操作', () => {
     const curse = optionNeed(m, 'curse', 1);
     expect(curse?.kind).toBe('curse');
     expect(curse && curse.kind === 'curse' ? curse.cards.map((c) => c.id) : []).toEqual(['asylum-1', 'piety-1']);
-    expect(optionNeed(m, 'alibi', 2)).toEqual({ kind: 'alibi' });
+    expect(optionNeed(m, 'alibi', 2)).toEqual({ kind: 'alibi', doctor: false });
     expect(optionNeed(m, 'alibi', 3)).toBeNull();
     expect(optionNeed(m, 'accusation', 2)).toBeNull();
   });
@@ -175,5 +176,21 @@ describe('可做的操作', () => {
     s.players[0].tryals[0].revealed = true;
     const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
     expect(unrevealedTryals(m)).toHaveLength(4);
+  });
+});
+
+describe('角色相关', () => {
+  it('第一夜不能选女仆放黑猫', () => {
+    const s = newState(5);
+    s.players[2].character = 'maid';
+    const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
+    expect(dawnTargets(m)).not.toContain(2);
+    expect(dawnTargets(m)).toContain(3);
+  });
+
+  it('规则页有「角色」一节，列出 15 个角色', () => {
+    const sec = RULES.find((r) => r.title.startsWith('角色'))!;
+    expect(sec.items.filter((t) => t.includes('：'))).toHaveLength(15);
+    expect(sec.items.join('')).toContain('裁缝');
   });
 });

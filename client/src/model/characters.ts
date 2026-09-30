@@ -18,3 +18,10 @@ export const CHAR_INFO: Record<CharacterId, { name: string; short: string; desc:
   maid: { name: '女仆', short: '女仆', desc: '「黑猫」和「情侣」对你无效' },
   maiden: { name: '少女', short: '少女', desc: '你发起审判时，审判前先抽 2 张牌，本回合可以立即使用' },
 };
+
+/** 格子里的角色文字：裁缝带上当前复制的角色；没有角色时为空 */
+export function charLabel(p: { character: CharacterId | null; ability: CharacterId | null }): string {
+  if (!p.character) return '';
+  if (p.character === 'tailor') return p.ability ? `裁缝→${CHAR_INFO[p.ability].short}` : '裁缝';
+  return CHAR_INFO[p.character].short;
+}

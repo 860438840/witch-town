@@ -1,3 +1,4 @@
+import { CHAR_INFO } from './characters';
 import { CARD_INFO, type CardColor } from './cards';
 
 const cardsOf = (color: CardColor): string[] =>
@@ -44,4 +45,11 @@ export const RULES: { title: string; items: string[] }[] = [
   { title: '蓝卡（留在面前持续生效）', items: cardsOf('blue') },
   { title: '绿卡（一次性）', items: cardsOf('green') },
   { title: '黑卡（抽到立即结算）', items: cardsOf('black') },
+  {
+    title: '角色（公开）',
+    items: [
+      '少于 7 人时每人从 2 个随机角色中选 1 个；7 人及以上直接随机发。角色对所有人公开。',
+      ...Object.values(CHAR_INFO).map((c) => `${c.name}：${c.desc}`),
+    ],
+  },
 ];

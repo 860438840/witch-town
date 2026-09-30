@@ -41,6 +41,42 @@ describe('布局', () => {
 });
 
 describe('游戏桌', () => {
+  it('格子和我的信息栏显示角色；裁缝显示当前复制的角色', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.players[0].character = 'priest';
+    s.players[1].character = 'judge';
+    s.players[2].character = 'tailor';
+    const nodes = scene(s).scene.build(0);
+    expect(labelOf(nodes, 'seat:1')).toContain('法官');
+    expect(labelOf(nodes, 'seat:2')).toContain('裁缝→法官');
+    expect(labelOf(nodes, 'me')).toContain('牧师');
+  });
+
+  it('玩家详情显示技能说明；限次技能显示剩余次数', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.players[3].character = 'priest';
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'seat:3');
+    const text = drawAll(t.build(0)).join('');
+    expect(text).toContain('牧师');
+    expect(text).toContain('弃牌堆');
+    expect(text).toContain('技能剩余次数：2');
+  });
+
+  it('医生出辩护：可以选「当作目击」', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'doctor';
+    const id = giveCard(s, 0, 'alibi');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), `card:${id}`);
+    tap(t.build(0), 'seat:2');
+    tap(t.build(0), 'option:witness');
+    tap(t.build(0), 'confirm-play');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: id, targets: [2], option: 'witness' });
+  });
   it('轮到我时可以抽 2 张', () => {
     const s = newState(5);
     setDay(s, 0);
