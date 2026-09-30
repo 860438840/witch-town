@@ -191,3 +191,70 @@ describe('结算页', () => {
     expect(ctl.backHome).toHaveBeenCalled();
   });
 });
+
+describe('选角色', () => {
+  function picking(screen: Screen = SCREEN) {
+    const s = newState(5);
+    s.phase = { kind: 'characterPick' };
+    s.characterOffers = {
+      0: ['judge', 'maid'],
+      1: ['priest', 'child'],
+      2: ['farmer', 'beggar'],
+      3: ['doctor', 'maiden'],
+      4: ['official', 'tailor'],
+    };
+    return { s, ...table(s, 0, screen) };
+  }
+
+  it('两个候选显示技能说明；点一个再确认', () => {
+    const { ctl, t } = picking();
+    const nodes = t.build(0);
+    const text = drawAll(nodes).join('');
+    expect(text).toContain('法官');
+    expect(text).toContain('女仆');
+    expect(canTap(nodes, 'confirm-character')).toBe(false);
+    tap(nodes, 'character:maid');
+    tap(t.build(0), 'confirm-character');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'pickCharacter', index: 1 });
+  });
+
+  it('小屏上确认按钮在屏幕内', () => {
+    const { t } = picking(SMALL);
+    const r = rectOf(t.build(0), 'confirm-character');
+    expect(r.y + r.h).toBeLessThanOrEqual(SMALL.bottom);
+  });
+
+  it('自己选完后显示等待其他人', () => {
+    const { s } = picking();
+    s.players[0].character = 'judge';
+    const text = drawAll(table(s, 0).t.build(0)).join('');
+    expect(text).toContain('等待其他人选择角色（1/5）');
+  });
+});
+
+describe('官员', () => {
+  it('夜晚多一个「不翻牌自首」按钮；小屏 12 人也放得下', () => {
+    const s = newState(12);
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    const me = s.players.find((p) => !p.witchFaction && p.seat !== constable(s))!.seat;
+    s.players[me].character = 'official';
+    const { ctl, t } = table(s, me, SMALL);
+    const nodes = t.build(0);
+    const silent = rectOf(nodes, 'silent-confess');
+    expect(labelOf(nodes, 'silent-confess')).toContain('剩 1 次');
+    expect(bottomOf(nodes, /^(kill|protect|suspect):/)).toBeLessThanOrEqual(silent.y);
+    expect(bottomOf(nodes, /^confess:/) + 20).toBeLessThanOrEqual(silent.y);
+    expect(silent.y + silent.h).toBeLessThanOrEqual(rectOf(nodes, 'no-confess').y);
+    tap(nodes, 'silent-confess');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'confess', tryalId: null, silent: true });
+  });
+
+  it('不是官员没有这个按钮', () => {
+    const s = newState(5);
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {} };
+    const plain = s.players.find((p) => !p.witchFaction)!.seat;
+    expect(has(table(s, plain).t.build(0), 'silent-confess')).toBe(false);
+  });
+});

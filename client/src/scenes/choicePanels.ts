@@ -1,10 +1,13 @@
+import type { PendingChoice } from '../../../engine/src/index';
 import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
+import { wrapText } from '../core/text';
 import { dawnTargets, nightSteps, nightTargets, unrevealedTryals, type NightPending, type NightStep } from '../model/actions';
 import { TRYAL_NAME } from '../model/cards';
+import { CHAR_INFO } from '../model/characters';
 import { formatCountdown, isPartner, nameOf, type TableModel } from '../model/table';
 import { drawBadge, drawPanel, drawText, drawTryalChip } from '../theme/draw';
-import { C, goldGlow } from '../theme/palette';
+import { C, font, goldGlow } from '../theme/palette';
 import type { Ui } from './ui';
 import { button, requestButton, sheet, textNode } from './widgets';
 
@@ -119,7 +122,8 @@ export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number,
   const busy = ui.ctl.busy;
   const act = ui.ctl.act.bind(ui.ctl);
 
-  if (p.kind === 'characterPick' || p.kind === 'storytelling') return [];
+  if (p.kind === 'storytelling') return [];
+  if (p.kind === 'characterPick') return characterPanel(ui, m, p, st, cd, slide);
   if (p.kind === 'revealTryal') {
     const title = p.reason === 'trial' ? '你受到审判：翻开一张身份卡' : '传染：你持有黑猫，翻开一张身份卡';
     const { nodes, body } = sheet(ui.screen, 320, title, null, slide, `剩余 ${cd} · 超时将随机翻开`);
@@ -182,8 +186,11 @@ function nightPanel(ui: Ui, m: TableModel, p: NightPending, st: ChoiceState, cd:
   const bodyH = body.h + sheetH * (1 - slide);
   const steps = nightSteps(p).map((step) => ({ step, seats: nightTargets(m, step) }));
   const tryals = p.confessed ? [] : unrevealedTryals(m);
+  // 官员还有次数时，两个自首按钮上方多一个「不翻牌自首」
+  const silentLeft = !p.confessed && m.me?.ability === 'official' ? (m.me.usesLeft ?? 0) : 0;
   const btnY = body.y + bodyH - NIGHT_BUTTON_H;
-  const avail = p.confessed ? bodyH - 24 : btnY - body.y;
+  const silentY = btnY - NIGHT_BUTTON_H - 8;
+  const avail = p.confessed ? bodyH - 24 : (silentLeft > 0 ? silentY : btnY) - body.y;
   const need = (lv: (typeof NIGHT_LEVELS)[number]): number =>
     steps.reduce((sum, x) => sum + 24 + seatGridHeight(x.seats.length, lv.seat) + 8, 0) +
     (p.confessed ? 0 : 26 + tryalRowHeight(body.w, tryals.length, tryals.length > 0, lv.chip) + 6);
@@ -217,5 +224,60 @@ function nightPanel(ui: Ui, m: TableModel, p: NightPending, st: ChoiceState, cd:
     requestButton('no-confess', rect(body.x, btnY, half, NIGHT_BUTTON_H), '不自首', () => void act({ type: 'confess', tryalId: null }), busy, 'secondary'),
     requestButton('confirm-confess', rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), '自首', picked ? () => void act({ type: 'confess', tryalId: picked }) : null, busy, 'danger'),
   );
+  if (silentLeft > 0) {
+    nodes.push(
+      requestButton(
+        'silent-confess',
+        rect(body.x, silentY, body.w, NIGHT_BUTTON_H),
+        `不翻牌自首（剩 ${silentLeft} 次）`,
+        () => void act({ type: 'confess', tryalId: null, silent: true }),
+        busy,
+        'secondary',
+      ),
+    );
+  }
   return nodes;
 }
+
+function characterPanel(
+  ui: Ui,
+  _m: TableModel,
+  p: Extract<PendingChoice, { kind: 'characterPick' }>,
+  st: ChoiceState,
+  cd: string,
+  slide: number,
+): Node[] {
+  const { nodes, body } = sheet(ui.screen, 400, '选择你的角色', null, slide, `角色对所有人公开 · 剩余 ${cd} · 超时随机选择`);
+  const gap = 10;
+  const w = (body.w - gap) / 2;
+  const h = Math.min(200, body.h - 60);
+  p.offers.forEach((c, i) => {
+    const r = rect(body.x + i * (w + gap), body.y, w, h);
+    nodes.push({
+      id: `character:${c}`,
+      rect: r,
+      onTap: () => (st.picked = i),
+      draw: (ctx) => {
+        const sel = st.picked === i;
+        drawPanel(ctx, r, { fill: sel ? goldGlow(0.2) : C.panel, stroke: sel ? C.gold : C.panelLine, lineWidth: sel ? 2 : 1 });
+        drawText(ctx, CHAR_INFO[c].name, r.x + r.w / 2, r.y + 28, { size: 20, bold: true, color: C.gold, align: 'center' });
+        ctx.font = font(13);
+        wrapText(CHAR_INFO[c].desc, r.w - 20, (s) => ctx.measureText(s).width).forEach((line, k) =>
+          drawText(ctx, line, r.x + 10, r.y + 62 + k * 20, { size: 13 }),
+        );
+      },
+    });
+  });
+  const idx = typeof st.picked === 'number' ? st.picked : null;
+  nodes.push(
+    requestButton(
+      'confirm-character',
+      rect(body.x, body.y + h + 16, body.w, 44),
+      '选这个角色',
+      idx !== null ? () => void ui.ctl.act({ type: 'pickCharacter', index: idx }) : null,
+      ui.ctl.busy,
+    ),
+  );
+  return nodes;
+}
+

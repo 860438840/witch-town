@@ -1,4 +1,4 @@
-import type { CardKind } from '../../../engine/src/index';
+import { isBlack, type CardKind } from '../../../engine/src/index';
 import type { Scene } from '../core/app';
 import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
@@ -19,7 +19,8 @@ import { buildTable, formatCountdown, isPartner, phaseTitle, type TableModel } f
 import { drawCardFace, drawPanel, drawText, roundRect } from '../theme/draw';
 import { C, CARD_GRADIENT } from '../theme/palette';
 import { choicePanel, type ChoiceState } from './choicePanels';
-import { detailPanel, logPanel, myTryalsPanel } from './infoPanels';
+import { priestPanel } from './abilityPanels';
+import { detailPanel, discardPanel, logPanel, myTryalsPanel } from './infoPanels';
 import { tableLayout, type TableLayout } from './tableLayout';
 import { drawCell, drawMeBar, type CellOpts } from './tableParts';
 import type { Ui } from './ui';
@@ -48,6 +49,10 @@ export class TableScene implements Scene {
   protected mine = false;
   protected logOpen = false;
   protected readonly logBox = new ScrollBox();
+  protected discardOpen = false;
+  protected readonly discardBox = new ScrollBox();
+  protected priestOpen = false;
+  protected readonly priestPick: string[] = [];
   protected layout: TableLayout | null = null;
   protected readonly choice: ChoiceState = { key: '', picked: null, suspect: null };
   private prev: TableModel | null = null;
@@ -67,6 +72,7 @@ export class TableScene implements Scene {
     const choice = choicePanel(this.ui, m, this.choice, now, a.panelSlide);
     const nodes: Node[] = [skyNode(this.ui.screen, a.darkness)];
     nodes.push(this.topBar(m, L.top, now));
+    nodes.push(this.discardNode(L.top));
     if (!choice.length) nodes.push(this.leaveButton(L.top));
     m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
     nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
@@ -161,9 +167,11 @@ export class TableScene implements Scene {
   protected panels(m: TableModel, choice: Node[]): Node[] {
     if (choice.length) return choice;
     if (this.askOption) return this.optionSheet(m);
+    if (this.priestOpen) return priestPanel(this.ui, m, this.priestPick, () => (this.priestOpen = false));
     if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => (this.detail = null));
     if (this.mine) return myTryalsPanel(this.ui, m, () => (this.mine = false));
     if (this.logOpen) return logPanel(this.ui, m, this.logBox, () => (this.logOpen = false));
+    if (this.discardOpen) return discardPanel(this.ui, m, this.discardBox, () => (this.discardOpen = false));
     return [];
   }
 
@@ -179,6 +187,7 @@ export class TableScene implements Scene {
   private sync(m: TableModel): void {
     if (this.sel && !playableCardIds(m).includes(this.sel)) this.clearSel();
     if (this.peek && !m.priv?.hand.some((c) => c.id === this.peek)) this.peek = null;
+    if (this.priestOpen && !(m.pending?.kind === 'turn' && m.pending.mode === 'choose')) this.priestOpen = false;
   }
 
   private clearSel(): void {
@@ -204,6 +213,19 @@ export class TableScene implements Scene {
         const x = r.x + r.w - LEAVE_W - 8;
         drawText(ctx, `牌堆 ${m.view.deckCount}`, x, cy - 7, { size: 10, color: C.textDim, align: 'right' });
         drawText(ctx, `弃牌 ${m.view.discardCount}`, x, cy + 7, { size: 10, color: C.textDim, align: 'right' });
+      },
+    };
+  }
+
+  /** 顶栏右侧「牌堆 / 弃牌」数字的点击区域：打开弃牌堆 */
+  private discardNode(r: Rect): Node {
+    const right = r.x + r.w - LEAVE_W - 8;
+    return {
+      id: 'discard',
+      rect: rect(right - 56, r.y, 56, r.h),
+      onTap: () => {
+        this.discardOpen = true;
+        this.discardBox.reset();
       },
     };
   }
@@ -320,6 +342,10 @@ export class TableScene implements Scene {
       if (k) return `${CARD_INFO[k].name}：${CARD_INFO[k].desc}`;
     }
     if (m.me && !m.me.alive) return '你已出局，可以继续观看';
+    if (m.view.phase.kind === 'characterPick') {
+      const done = m.view.players.filter((p) => p.character).length;
+      return `等待其他人选择角色（${done}/${m.view.players.length}）`;
+    }
     if (m.pending?.kind === 'turn') return m.pending.mode === 'choose' ? '你的回合：抽 2 张，或点一张手牌打出' : '可以继续出牌，或结束回合';
     if (m.view.phase.kind === 'day') return `等待 ${m.view.players[m.turnSeat].name} 行动…`;
     return phaseTitle(m);
@@ -382,8 +408,32 @@ export class TableScene implements Scene {
       ];
     }
     if (m.pending?.kind !== 'turn') return [];
-    if (m.pending.mode === 'choose') return [requestButton('draw', r, '抽 2 张', () => void ctl.act({ type: 'draw' }), busy)];
+    if (m.pending.mode === 'choose') {
+      const skill = this.skillButton(m, rect(r.x + half + 10, r.y, half, r.h));
+      if (!skill) return [requestButton('draw', r, '抽 2 张', () => void ctl.act({ type: 'draw' }), busy)];
+      return [requestButton('draw', rect(r.x, r.y, half, r.h), '抽 2 张', () => void ctl.act({ type: 'draw' }), busy), skill];
+    }
     return [requestButton('end-turn', r, '结束回合', () => void ctl.act({ type: 'endTurn' }), busy, 'secondary')];
+  }
+
+  /** 回合开始时的技能按钮：牧师从弃牌堆拿牌、说书人调整牌堆；没有可用技能时返回 null */
+  private skillButton(m: TableModel, r: Rect): Node | null {
+    const me = m.me;
+    const left = me?.usesLeft ?? 0;
+    if (!me || left <= 0) return null;
+    const busy = this.ui.ctl.busy;
+    if (me.ability === 'priest') {
+      const ok = m.view.discard.some((c) => !isBlack(c.kind));
+      const open = () => {
+        this.priestOpen = true;
+        this.priestPick.length = 0;
+      };
+      return button('priest', r, `从弃牌堆拿（剩 ${left}）`, ok && !busy ? open : null, 'secondary');
+    }
+    if (me.ability === 'storyteller') {
+      return requestButton('story-start', r, `调整牌堆（剩 ${left}）`, () => void this.ui.ctl.act({ type: 'storyStart' }), busy, 'secondary');
+    }
+    return null;
   }
 
   private optionSheet(m: TableModel): Node[] {

@@ -41,6 +41,55 @@ describe('布局', () => {
 });
 
 describe('游戏桌', () => {
+
+  it('点顶栏的弃牌数查看弃牌堆', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.discard.push(...s.players[3].hand.splice(0, 2));
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'discard');
+    const nodes = t.build(0);
+    expect(has(nodes, 'discard-list')).toBe(true);
+    expect(drawAll(nodes).join('')).toContain('弃牌堆（2 张）');
+    tap(nodes, 'sheet-close');
+    expect(has(t.build(0), 'discard-list')).toBe(false);
+  });
+
+  it('牧师：回合开始时可以从弃牌堆拿 1–2 张', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'priest';
+    const a = s.players[3].hand.pop()!;
+    const b = s.players[4].hand.pop()!;
+    s.discard.push(a, b);
+    const { ctl, scene: t } = scene(s);
+    const nodes = t.build(0);
+    expect(labelOf(nodes, 'priest')).toContain('剩 2');
+    expect(has(nodes, 'draw')).toBe(true);
+    tap(nodes, 'priest');
+    tap(t.build(0), `priest:${a.kind}`);
+    tap(t.build(0), `priest:${b.kind}`);
+    tap(t.build(0), 'confirm-priest');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'priestDraw', cardIds: expect.arrayContaining([a.id, b.id]) });
+  });
+
+  it('牧师：弃牌堆里只有黑卡时按钮不可点', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'priest';
+    const i = s.deck.findIndex((c) => c.kind === 'night');
+    s.discard.push(...s.deck.splice(i, 1));
+    expect(canTap(scene(s).scene.build(0), 'priest')).toBe(false);
+  });
+
+  it('说书人：回合开始时可以开始调整牌堆', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'storyteller';
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'story-start');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'storyStart' });
+  });
   it('格子和我的信息栏显示角色；裁缝显示当前复制的角色', () => {
     const s = newState(5);
     setDay(s, 1);

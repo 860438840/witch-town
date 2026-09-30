@@ -2,7 +2,7 @@ import type { PublicPlayer } from '../../../engine/src/index';
 import { rect } from '../core/geom';
 import type { Node } from '../core/node';
 import { wrapText } from '../core/text';
-import { CARD_INFO, TRYAL_NAME } from '../model/cards';
+import { CARD_INFO, TRYAL_NAME, type CardColor } from '../model/cards';
 import { CHAR_INFO } from '../model/characters';
 import { logLines } from '../model/log';
 import { nameOf, type TableModel } from '../model/table';
@@ -93,5 +93,23 @@ export function logPanel(ui: Ui, m: TableModel, box: ScrollBox, close: () => voi
     .reverse()
     .map((text, i) => ({ text, size: 13, color: i === 0 ? C.text : C.textDim, gap: 2 }));
   nodes.push(box.node('log-list', body, lines));
+  return nodes;
+}
+
+const COLOR_GROUPS: [string, CardColor][] = [
+  ['红卡', 'red'],
+  ['蓝卡', 'blue'],
+  ['绿卡', 'green'],
+  ['黑卡', 'black'],
+];
+
+export function discardPanel(ui: Ui, m: TableModel, box: ScrollBox, close: () => void): Node[] {
+  const discard = m.view.discard;
+  const { nodes, body } = sheet(ui.screen, ui.screen.H * 0.6, `弃牌堆（${discard.length} 张）`, close, 1, '所有人都可以查看');
+  const lines = COLOR_GROUPS.flatMap(([title, color]) => {
+    const names = discard.filter((c) => CARD_INFO[c.kind].color === color).map((c) => CARD_INFO[c.kind].name);
+    return names.length ? [{ text: `${title}：${countNames(names)}`, size: 14, gap: 8 }] : [];
+  });
+  nodes.push(box.node('discard-list', body, lines.length ? lines : [{ text: '弃牌堆是空的', color: C.textMuted }]));
   return nodes;
 }
