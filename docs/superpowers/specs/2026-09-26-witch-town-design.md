@@ -186,7 +186,7 @@
 - **规则引擎 `engine/`**：纯 TypeScript，不依赖任何微信 API。核心接口：
   `apply(state, action, rng) → { state, events }`，非法操作抛出带原因的错误。
   - 随机数通过注入的 `rng` 提供，测试时可固定种子。
-  - 角色技能以插件形式注册到固定**钩子**：`beforeDraw`、`afterDraw`、`onTargeted`、`accusationValue`、`trialThreshold`、`beforeTrial`、`afterTrial`、`onTryalRevealed`、`onDeath`、`onConfess`、`onBlueCardPlaced`。裁缝通过「查询右手边角色 → 调用其插件」实现。
+  - 角色技能以插件形式注册到固定**钩子**：`beforeDraw`、`afterDraw`、`onTargeted`、`accusationValue`、`trialThreshold`、`beforeTrial`、`afterTrial`、`onTryalRevealed`、`onDeath`、`onConfess`、`onBlueCardPlaced`。裁缝通过「查询右手边角色 → 调用其插件」实现。（2026-10-01 更新：改为「集中查询技能 + 规则处直接判断」，不再使用钩子插件，见 `2026-10-01-plan-c-characters-design.md` 第 2 节。）
   - `project(state, openid) → PrivateView` 和 `projectPublic(state) → PublicView` 负责生成视图。
 - **云函数 `cloudfunctions/game`**：单一入口，按 `action` 分发：`createRoom`、`joinRoom`、`reorderSeats`、`startGame`、`act`（所有游戏内操作）、`tick`（超时推进）。每次写操作在事务中完成：读取 `games` → 校验版本号 → `engine.apply` → 写回 `games`、`rooms`、所有 `hands`。构建时把 `engine/` 编译产物复制进云函数目录。
 - **小程序 `miniprogram/`**：原生小程序 + TypeScript，不使用 uni-app / Taro。（2026-09-28 更新：项目已改为微信**小游戏**，客户端目录是 `minigame/`，界面用 Canvas 绘制而不是 WXML；具体设计见 `2026-09-28-plan-b2-minigame-ui-design.md`。）
