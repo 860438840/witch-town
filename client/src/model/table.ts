@@ -64,6 +64,8 @@ export function phaseTitle(m: TableModel): string {
   switch (ph.kind) {
     case 'characterPick':
       return '选择角色';
+    case 'storytelling':
+      return ph.seat === m.mySeat ? '调整牌堆' : `${m.view.players[ph.seat].name} 正在调整牌堆`;
     case 'dawn':
       return '第一夜：女巫放置黑猫';
     case 'day':

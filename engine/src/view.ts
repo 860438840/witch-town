@@ -68,6 +68,7 @@ export function projectPublic(s: GameState): PublicView {
 export type PendingChoice =
   | { kind: 'turn'; mode: 'choose' | 'playing' }
   | { kind: 'characterPick'; offers: CharacterId[] }
+  | { kind: 'storytelling'; deck: Card[] }
   | { kind: 'revealTryal'; reason: 'trial' | 'cat' }
   | { kind: 'conspiracyPick'; from: number; count: number }
   | { kind: 'dawnVote'; votes: Record<number, number> }
@@ -125,6 +126,8 @@ function pendingFor(s: GameState, seat: number): PendingChoice | null {
       const offers = s.characterOffers[seat];
       return offers && p.character === null ? { kind: 'characterPick', offers } : null;
     }
+    case 'storytelling':
+      return ph.seat === seat ? { kind: 'storytelling', deck: s.deck } : null;
     case 'dawn':
       return p.witchFaction ? { kind: 'dawnVote', votes: s.dawnVotes } : null;
     case 'night': {

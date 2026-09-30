@@ -110,3 +110,10 @@ export function allPick(s: GameState, index = 0): GameState {
   }
   return s;
 }
+
+/** 把一张指定种类的卡放进弃牌堆（卡从别处拿来，总卡数不变） */
+export function placeDiscard(s: GameState, kind: CardKind): Card {
+  const c = takeFromAnywhere(s, kind);
+  s.discard.push(c);
+  return c;
+}

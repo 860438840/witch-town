@@ -1,3 +1,4 @@
+import { priestDraw, storyReorder, storyStart } from './abilities';
 import { pickCharacter } from './characters';
 import { catReveal, conspiracyPick } from './conspiracy';
 import { revealTryal } from './death';
@@ -35,7 +36,7 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       protect(s, action.seat, action.target, rng);
       break;
     case 'confess':
-      confess(s, action.seat, action.tryalId, rng);
+      confess(s, action.seat, action.tryalId, action.silent === true, rng);
       break;
     case 'draw':
       if (s.phase.kind !== 'day' || s.phase.mode !== 'choose' || s.turn !== action.seat) {
@@ -48,6 +49,15 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       break;
     case 'pickCharacter':
       pickCharacter(s, action.seat, action.index);
+      break;
+    case 'priestDraw':
+      priestDraw(s, action.seat, action.cardIds);
+      break;
+    case 'storyStart':
+      storyStart(s, action.seat);
+      break;
+    case 'storyReorder':
+      storyReorder(s, action.seat, action.order);
       break;
     default:
       throw new RuleError('现在不能执行这个操作');

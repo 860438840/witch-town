@@ -1,4 +1,4 @@
-import { hasAbility } from './characters';
+import { canUse, hasAbility, useAbility } from './characters';
 import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
 import { proceed } from './flow';
@@ -47,7 +47,7 @@ function tryResolveDawn(s: GameState): void {
 
 export function startNight(s: GameState): void {
   setPhase(s, { kind: 'night' });
-  s.night = { witchVotes: {}, protect: null, confessions: {} };
+  s.night = { witchVotes: {}, protect: null, confessions: {}, silent: [] };
 }
 
 export function protect(s: GameState, seat: number, target: number, rng: Rng): void {
@@ -59,9 +59,15 @@ export function protect(s: GameState, seat: number, target: number, rng: Rng): v
   tryResolveNight(s, rng);
 }
 
-export function confess(s: GameState, seat: number, tryalId: string | null, rng: Rng): void {
+export function confess(s: GameState, seat: number, tryalId: string | null, silent: boolean, rng: Rng): void {
   if (s.phase.kind !== 'night' || !s.night) throw new RuleError('现在不能自首');
-  if (tryalId !== null && !unrevealed(getPlayer(s, seat)).some((t) => t.id === tryalId)) {
+  if (silent) {
+    if (tryalId !== null) throw new RuleError('不翻牌自首时不能选身份卡');
+    if (seat in s.night.confessions) throw new RuleError('你已经决定过是否自首了');
+    if (!canUse(s, seat, 'official')) throw new RuleError('你不能不翻牌自首');
+    useAbility(s, seat, 'official');
+    (s.night.silent ??= []).push(seat);
+  } else if (tryalId !== null && !unrevealed(getPlayer(s, seat)).some((t) => t.id === tryalId)) {
     throw new RuleError('这张身份卡不能翻开');
   }
   s.night.confessions[seat] = tryalId;
@@ -84,6 +90,11 @@ function tryResolveNight(s: GameState, rng: Rng): void {
       revealTryal(s, seat, tid, 'confess');
       confessed.add(seat);
     }
+  }
+  for (const seat of night.silent ?? []) {
+    if (!getPlayer(s, seat).alive) continue;
+    confessed.add(seat);
+    s.log.push({ t: 'ability', seat, ability: 'official' });
   }
   s.night = null;
   if (isEnded(s)) return;

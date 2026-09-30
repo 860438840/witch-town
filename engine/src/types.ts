@@ -70,6 +70,7 @@ export type Phase =
   | { kind: 'trialReveal'; target: number; initiator: number }
   | { kind: 'catReveal'; holder: number }
   | { kind: 'conspiracyPick' }
+  | { kind: 'storytelling'; seat: number }
   | { kind: 'night' }
   | { kind: 'ended'; winner: Winner };
 
@@ -78,6 +79,8 @@ export interface NightState {
   protect: number | null;
   /** 值为要翻开的身份卡 id；null 表示不自首；没有 key 表示还没提交 */
   confessions: Record<number, string | null>;
+  /** 不翻牌自首的官员 */
+  silent?: number[];
 }
 
 export type RevealCause = 'trial' | 'cat' | 'confess' | 'death';
@@ -146,6 +149,9 @@ export type Action =
   | { type: 'revealTryal'; seat: number; tryalId: string }
   | { type: 'witchVote'; seat: number; target: number }
   | { type: 'protect'; seat: number; target: number }
-  | { type: 'confess'; seat: number; tryalId: string | null }
+  | { type: 'confess'; seat: number; tryalId: string | null; silent?: boolean }
+  | { type: 'priestDraw'; seat: number; cardIds: string[] }
+  | { type: 'storyStart'; seat: number }
+  | { type: 'storyReorder'; seat: number; order: string[] }
   | { type: 'conspiracyPick'; seat: number; index: number }
   | { type: 'pickCharacter'; seat: number; index: number };

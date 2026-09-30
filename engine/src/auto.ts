@@ -29,6 +29,8 @@ export function autoActions(s: GameState, rng: Rng): Action[] {
       return s.players
         .filter((p) => p.character === null && s.characterOffers[p.seat])
         .map((p): Action => ({ type: 'pickCharacter', seat: p.seat, index: rng.next() < 0.5 ? 0 : 1 }));
+    case 'storytelling':
+      return [{ type: 'storyReorder', seat: ph.seat, order: s.deck.map((c) => c.id) }];
     case 'day':
       if (ph.mode === 'choose') return [{ type: 'draw', seat: s.turn }];
       if (ph.mode === 'playing') return [{ type: 'endTurn', seat: s.turn }];
