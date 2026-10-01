@@ -4,7 +4,8 @@ import { RuleError } from '../src/errors';
 import { startNight } from '../src/night';
 import { seededRng } from '../src/rng';
 import type { Action, GameState } from '../src/types';
-import { fixedGame, placeBlue, setTryals, V } from './helpers';
+import { countCards } from '../src/state';
+import { fixedGame, giveCard, placeBlue, placeDiscard, placeRed, quietNight, setTryals, V } from './helpers';
 
 const act = (s: GameState, a: Action) => apply(s, a, seededRng(7));
 
@@ -52,16 +53,13 @@ describe('第一夜', () => {
 });
 
 describe('夜晚', () => {
-  it('未受保护的目标死亡；弃牌堆与牌堆重洗；由下一位活着的玩家开始', () => {
+  it('未受保护的目标死亡；由下一位活着的玩家开始', () => {
     let s = night();
-    const before = s.deck.length + s.discard.length;
     s = act(s, { type: 'witchVote', seat: 0, target: 3 });
     s = act(s, { type: 'protect', seat: 1, target: 4 });
     s = everyoneConfessesNothing(s);
     expect(s.players[3].alive).toBe(false);
     expect(s.log).toContainEqual({ t: 'nightResult', target: 3, died: true });
-    expect(s.discard).toEqual([]);
-    expect(s.deck.length).toBe(before + 3);
     expect(s.night).toBeNull();
     expect(s.turn).toBe(4);
     expect(s.phase).toEqual({ kind: 'day', mode: 'choose' });
@@ -163,5 +161,84 @@ describe('夜晚', () => {
     expect(s.players[2].alive).toBe(false);
     expect(s.players[3].alive).toBe(false);
     expect(s.phase.kind).not.toBe('ended');
+  });
+});
+
+describe('夜晚过后全部重置', () => {
+  /** 0 号女巫和 1 号警长都选 4 号、没人自首的平静夜晚，开始前在桌上摆满各种牌 */
+  function busyTable(): GameState {
+    const s = fixedGame();
+    placeRed(s, 3, 'evidence');
+    placeRed(s, 2, 'accusation');
+    placeBlue(s, 3, 'blackCat');
+    placeBlue(s, 4, 'asylum');
+    s.players[2].green.push(giveCard(s, 2, 'stocks'));
+    s.players[2].hand.pop();
+    placeDiscard(s, 'alibi');
+    startNight(s);
+    return s;
+  }
+
+  it('收回所有手牌和面前的牌，每个活人重新发 3 张；弃牌堆清空；总卡数不变', () => {
+    let s = busyTable();
+    const total = countCards(s);
+    s = quietNight(s);
+    for (const p of s.players) {
+      expect(p.hand).toHaveLength(3);
+      expect([...p.red, ...p.blue, ...p.green]).toEqual([]);
+    }
+    expect(s.discard).toEqual([]);
+    expect(countCards(s)).toBe(total);
+    expect(s.log).toContainEqual({ t: 'nightReset' });
+    expect(s.log.some((e) => e.t === 'reshuffle')).toBe(false);
+  });
+
+  it('死亡的玩家不发牌', () => {
+    let s = busyTable();
+    s = act(s, { type: 'witchVote', seat: 0, target: 3 });
+    s = act(s, { type: 'protect', seat: 1, target: 2 });
+    s = everyoneConfessesNothing(s);
+    expect(s.players[3].alive).toBe(false);
+    expect(s.players[3].hand).toEqual([]);
+    for (const seat of [0, 1, 2, 4]) expect(s.players[seat].hand).toHaveLength(3);
+  });
+
+  it('发牌不会发到夜晚和传染：它们之后才洗进剩下的牌堆', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      let s = busyTable();
+      placeDiscard(s, 'conspiracy');
+      s = apply(s, { type: 'witchVote', seat: 0, target: 4 }, seededRng(seed));
+      s = apply(s, { type: 'protect', seat: 1, target: 4 }, seededRng(seed));
+      for (const p of s.players) if (s.phase.kind === 'night') s = apply(s, { type: 'confess', seat: p.seat, tryalId: null }, seededRng(seed));
+      const hands = s.players.flatMap((p) => p.hand.map((c) => c.kind));
+      expect(hands).not.toContain('night');
+      expect(hands).not.toContain('conspiracy');
+      expect(s.deck.map((c) => c.kind)).toEqual(expect.arrayContaining(['night', 'conspiracy']));
+    }
+  });
+
+  it('黑猫和其他牌一样洗回牌堆，不再留在任何人面前', () => {
+    let s = busyTable();
+    s = quietNight(s);
+    const where = [...s.deck, ...s.players.flatMap((p) => p.hand)].filter((c) => c.kind === 'blackCat');
+    expect(where).toHaveLength(1);
+  });
+
+  it('拘留随之解除：下一位玩家照常开始回合', () => {
+    let s = busyTable();
+    s.turn = 1;
+    s = quietNight(s);
+    expect(s.turn).toBe(2);
+    expect(s.log.some((e) => e.t === 'skipped')).toBe(false);
+  });
+
+  it('身份卡（含已翻开的）和角色技能次数不变', () => {
+    let s = busyTable();
+    s.players[2].tryals[1].revealed = true;
+    s.players[2].uses = { priest: 1 };
+    s = quietNight(s);
+    expect(s.players[2].tryals[1].revealed).toBe(true);
+    expect(s.players[2].tryals).toHaveLength(5);
+    expect(s.players[2].uses).toEqual({ priest: 1 });
   });
 });

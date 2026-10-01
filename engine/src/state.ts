@@ -64,8 +64,9 @@ export function isEnded(s: GameState): boolean {
   return s.phase.kind === 'ended';
 }
 
-export function toCard(c: { id: string; kind: CardKind }): Card {
-  return { id: c.id, kind: c.kind };
+/** 把面前的卡还原成普通卡：医生当作目击打出的辩护还原成辩护 */
+export function toCard(c: { id: string; kind: CardKind; source?: CardKind }): Card {
+  return { id: c.id, kind: c.source ?? c.kind };
 }
 
 export function countCards(s: GameState): number {

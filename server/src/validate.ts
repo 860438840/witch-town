@@ -1,4 +1,4 @@
-import { RuleError } from '../../engine/src/index';
+import { RuleError, TOTAL_GAME_CARDS } from '../../engine/src/index';
 import type { ClientAction } from './game';
 
 /** 校验失败统一报这个错，不区分具体原因，避免向客户端泄露校验细节 */
@@ -22,6 +22,12 @@ function targets(v: unknown, playerCount: number): number[] {
   if (!Array.isArray(v) || v.length < 1 || v.length > 2) fail();
   for (const t of v) if (!isSeat(t, playerCount)) fail();
   return v as number[];
+}
+
+function idList(v: unknown, min: number, max: number): string[] {
+  if (!Array.isArray(v) || v.length < min || v.length > max) fail();
+  for (const id of v) if (!isBoundedString(id, 64)) fail();
+  return v as string[];
 }
 
 /**
@@ -58,6 +64,11 @@ export function parseClientAction(raw: unknown, playerCount: number): ClientActi
       return { type: 'protect', target: r.target };
     }
     case 'confess': {
+      if (r.silent === true) {
+        if (r.tryalId !== null) fail();
+        return { type: 'confess', tryalId: null, silent: true };
+      }
+      if (r.silent !== undefined && r.silent !== false) fail();
       if (r.tryalId === null) return { type: 'confess', tryalId: null };
       if (!isBoundedString(r.tryalId, 64)) fail();
       return { type: 'confess', tryalId: r.tryalId };
@@ -66,6 +77,16 @@ export function parseClientAction(raw: unknown, playerCount: number): ClientActi
       if (!isNonNegInt(r.index)) fail();
       return { type: 'conspiracyPick', index: r.index };
     }
+    case 'pickCharacter': {
+      const index = r.index === 0 ? 0 : r.index === 1 ? 1 : fail();
+      return { type: 'pickCharacter', index };
+    }
+    case 'priestDraw':
+      return { type: 'priestDraw', cardIds: idList(r.cardIds, 1, 2) };
+    case 'storyStart':
+      return { type: 'storyStart' };
+    case 'storyReorder':
+      return { type: 'storyReorder', order: idList(r.order, 0, TOTAL_GAME_CARDS) };
     default:
       fail();
   }

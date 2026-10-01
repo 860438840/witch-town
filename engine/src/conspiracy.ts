@@ -1,25 +1,27 @@
 import { checkWin, revealTryal } from './death';
 import { RuleError } from './errors';
+import { proceed, pushHousewifeDraws, type StepResult } from './flow';
 import type { Rng } from './rng';
-import { aliveSeats, catHolder, getPlayer, isEnded, leftOf, setPhase, unrevealed } from './state';
-import { resumeDrawing } from './turn';
+import { aliveSeats, catHolder, getPlayer, leftOf, setPhase, unrevealed } from './state';
 import type { Card, GameState } from './types';
 
-export function startConspiracy(s: GameState, card: Card, rng: Rng): void {
+/** 抽到传染：有黑猫时持有者先翻牌（之后再盲抽），没有黑猫时直接盲抽 */
+export function startConspiracy(s: GameState, card: Card): StepResult {
   s.discard.push(card);
   const holder = catHolder(s);
   if (holder !== null) {
+    s.steps.push({ kind: 'picks' });
     setPhase(s, { kind: 'catReveal', holder });
-    return;
+    return 'paused';
   }
-  beginPicks(s, rng);
+  return beginPicks(s);
 }
 
 export function catReveal(s: GameState, seat: number, tryalId: string, rng: Rng): void {
   if (s.phase.kind !== 'catReveal' || s.phase.holder !== seat) throw new RuleError('现在不能翻开身份卡');
   revealTryal(s, seat, tryalId, 'cat');
-  if (isEnded(s)) return;
-  beginPicks(s, rng);
+  pushHousewifeDraws(s, seat);
+  proceed(s, rng);
 }
 
 /** 需要拿牌的玩家：活着，且左边邻居还有未翻开的身份卡 */
@@ -30,10 +32,13 @@ export function conspiracyPickers(s: GameState): number[] {
   });
 }
 
-function beginPicks(s: GameState, rng: Rng): void {
+/** 开始盲抽；没有人需要抽时直接完成传染 */
+export function beginPicks(s: GameState): StepResult {
   s.conspiracyPicks = {};
   setPhase(s, { kind: 'conspiracyPick' });
-  if (conspiracyPickers(s).length === 0) finishConspiracy(s, rng);
+  if (conspiracyPickers(s).length > 0) return 'paused';
+  finishConspiracy(s);
+  return 'done';
 }
 
 export function conspiracyPick(s: GameState, seat: number, index: number, rng: Rng): void {
@@ -44,11 +49,14 @@ export function conspiracyPick(s: GameState, seat: number, index: number, rng: R
   const count = unrevealed(getPlayer(s, left)).length;
   if (!Number.isInteger(index) || index < 0 || index >= count) throw new RuleError('选择的位置无效');
   s.conspiracyPicks[seat] = index;
-  if (conspiracyPickers(s).every((p) => p in s.conspiracyPicks)) finishConspiracy(s, rng);
+  if (conspiracyPickers(s).every((p) => p in s.conspiracyPicks)) {
+    finishConspiracy(s);
+    proceed(s, rng);
+  }
 }
 
 /** 所有人同时拿牌：先按拿牌前的局面算出每一步，再一起移动 */
-function finishConspiracy(s: GameState, rng: Rng): void {
+function finishConspiracy(s: GameState): void {
   const moves = conspiracyPickers(s).map((seat) => {
     const from = leftOf(s, seat) as number;
     const tryal = unrevealed(getPlayer(s, from))[s.conspiracyPicks[seat]];
@@ -65,5 +73,4 @@ function finishConspiracy(s: GameState, rng: Rng): void {
   s.conspiracyPicks = {};
   s.log.push({ t: 'conspiracyDone' });
   checkWin(s);
-  resumeDrawing(s, rng);
 }

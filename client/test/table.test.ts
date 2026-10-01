@@ -1,0 +1,344 @@
+import { describe, expect, it } from 'vitest';
+import type { Screen } from '../src/core/app';
+import { findNode, hitTest } from '../src/core/node';
+import { TableScene } from '../src/scenes/table';
+import { tableLayout } from '../src/scenes/tableLayout';
+import { giveCard, handOf, infect, newState, roomOf, setDay } from './fixtures';
+import { canTap, drawAll, fakeCtl, fakeUi, has, labelOf, tap } from './sceneKit';
+import type { GameState } from '../../engine/src/index';
+
+function scene(s: GameState, seat = 0, over: Record<string, unknown> = {}) {
+  const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, seat), openid: `u${seat}`, ...over });
+  const ui = fakeUi(ctl);
+  return { ctl, ui, scene: new TableScene(ui) };
+}
+
+describe('布局', () => {
+  const screens: Screen[] = [
+    { W: 320, H: 568, top: 64, bottom: 568 },
+    { W: 375, H: 667, top: 60, bottom: 667 },
+    { W: 414, H: 896, top: 92, bottom: 862 },
+  ];
+  for (const sc of screens) {
+    for (const others of [3, 11]) {
+      it(`${sc.W}×${sc.H}，${others + 1} 人时各区域不重叠`, () => {
+        const L = tableLayout(sc, others);
+        expect(L.grid).toHaveLength(others);
+        expect(L.cellH).toBeGreaterThanOrEqual(48);
+        for (const c of L.grid) {
+          expect(c.y).toBeGreaterThanOrEqual(L.top.y + L.top.h);
+          expect(c.y + c.h).toBeLessThanOrEqual(L.log.y + 0.01);
+          expect(c.x + c.w).toBeLessThanOrEqual(sc.W - 12 + 0.01);
+        }
+        expect(L.log.y + L.log.h).toBeLessThanOrEqual(L.me.y);
+        expect(L.me.y + L.me.h).toBeLessThanOrEqual(L.info.y);
+        expect(L.info.y + L.info.h).toBeLessThanOrEqual(L.hand.y);
+        expect(L.hand.y + L.hand.h).toBeLessThanOrEqual(L.buttons.y);
+        expect(L.buttons.y + L.buttons.h).toBeLessThanOrEqual(sc.bottom);
+      });
+    }
+  }
+});
+
+describe('游戏桌', () => {
+
+  it('点顶栏的弃牌数查看弃牌堆', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.discard.push(...s.players[3].hand.splice(0, 2));
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'discard');
+    const nodes = t.build(0);
+    expect(has(nodes, 'discard-list')).toBe(true);
+    expect(drawAll(nodes).join('')).toContain('弃牌堆（2 张）');
+    tap(nodes, 'sheet-close');
+    expect(has(t.build(0), 'discard-list')).toBe(false);
+  });
+
+  it('选择面板显示时，顶栏弃牌数不可点', () => {
+    const s = newState(5);
+    s.phase = { kind: 'trialReveal', target: 0, initiator: 1 };
+    const { scene: t } = scene(s);
+    expect(has(t.build(0), 'discard')).toBe(false);
+  });
+
+  it('牧师：回合开始时可以从弃牌堆拿 1–2 张', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'priest';
+    const a = s.players[3].hand.pop()!;
+    const b = s.players[4].hand.pop()!;
+    s.discard.push(a, b);
+    const { ctl, scene: t } = scene(s);
+    const nodes = t.build(0);
+    expect(labelOf(nodes, 'priest')).toContain('剩 2');
+    expect(has(nodes, 'draw')).toBe(true);
+    tap(nodes, 'priest');
+    tap(t.build(0), `priest:${a.kind}`);
+    tap(t.build(0), `priest:${b.kind}`);
+    tap(t.build(0), 'confirm-priest');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'priestDraw', cardIds: expect.arrayContaining([a.id, b.id]) });
+  });
+
+  it('牧师：弃牌堆里只有黑卡时按钮不可点', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'priest';
+    const i = s.deck.findIndex((c) => c.kind === 'night');
+    s.discard.push(...s.deck.splice(i, 1));
+    expect(canTap(scene(s).scene.build(0), 'priest')).toBe(false);
+  });
+
+  it('说书人：回合开始时可以开始调整牌堆', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'storyteller';
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'story-start');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'storyStart' });
+  });
+  it('格子和我的信息栏显示角色；裁缝显示当前复制的角色', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.players[0].character = 'priest';
+    s.players[1].character = 'judge';
+    s.players[2].character = 'tailor';
+    const nodes = scene(s).scene.build(0);
+    expect(labelOf(nodes, 'seat:1')).toContain('法官');
+    expect(labelOf(nodes, 'seat:2')).toContain('裁缝→法官');
+    expect(labelOf(nodes, 'me')).toContain('牧师');
+  });
+
+  it('玩家详情显示技能说明；限次技能显示剩余次数', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.players[3].character = 'priest';
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'seat:3');
+    const text = drawAll(t.build(0)).join('');
+    expect(text).toContain('牧师');
+    expect(text).toContain('弃牌堆');
+    expect(text).toContain('技能剩余次数：2');
+  });
+
+  it('医生出辩护：可以选「当作目击」', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'doctor';
+    const id = giveCard(s, 0, 'alibi');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), `card:${id}`);
+    tap(t.build(0), 'seat:2');
+    tap(t.build(0), 'option:witness');
+    tap(t.build(0), 'confirm-play');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: id, targets: [2], option: 'witness' });
+  });
+  it('轮到我时可以抽 2 张', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const { ctl, scene: t } = scene(s);
+    const nodes = t.build(0);
+    drawAll(nodes);
+    tap(nodes, 'draw');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'draw' });
+  });
+
+  it('不是我的回合时没有操作按钮', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const nodes = scene(s).scene.build(0);
+    expect(has(nodes, 'draw')).toBe(false);
+    expect(drawAll(nodes).join('')).toContain('等待 P1 行动');
+  });
+
+  it('请求进行中按钮不可点，显示「处理中」', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    giveCard(s, 0, 'accusation', 'acc-1');
+    const { scene: t } = scene(s, 0, { busy: true });
+    const nodes = t.build(0);
+    expect(canTap(nodes, 'draw')).toBe(false);
+    expect(labelOf(nodes, 'draw')).toBe('处理中');
+    tap(nodes, 'card:acc-1');
+    tap(t.build(0), 'seat:2');
+    const ready = t.build(0);
+    expect(canTap(ready, 'confirm-play')).toBe(false);
+    expect(labelOf(ready, 'confirm-play')).toBe('处理中');
+    expect(labelOf(ready, 'cancel')).toBe('取消');
+    setDay(s, 0, 'playing');
+    expect(labelOf(scene(s, 0, { busy: true }).scene.build(0), 'end-turn')).toBe('处理中');
+  });
+
+  it('出指控：选牌 → 选目标 → 确认', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    giveCard(s, 0, 'accusation', 'acc-1');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'card:acc-1');
+    let nodes = t.build(0);
+    expect(canTap(nodes, 'confirm-play')).toBe(false);
+    tap(nodes, 'seat:2');
+    nodes = t.build(0);
+    tap(nodes, 'confirm-play');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'acc-1', targets: [2] });
+  });
+
+  it('红卡不能选信徒持有者；再点一次已选目标可以取消', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[3].blue.push({ id: 'piety-1', kind: 'piety' });
+    giveCard(s, 0, 'accusation', 'acc-1');
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'card:acc-1');
+    tap(t.build(0), 'seat:3');
+    expect(canTap(t.build(0), 'confirm-play')).toBe(false);
+    tap(t.build(0), 'seat:2');
+    expect(canTap(t.build(0), 'confirm-play')).toBe(true);
+    tap(t.build(0), 'seat:2');
+    expect(canTap(t.build(0), 'confirm-play')).toBe(false);
+  });
+
+  it('抢劫要选两个目标', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    giveCard(s, 0, 'robbery', 'rob-1');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'card:rob-1');
+    tap(t.build(0), 'seat:1');
+    expect(canTap(t.build(0), 'confirm-play')).toBe(false);
+    tap(t.build(0), 'seat:3');
+    tap(t.build(0), 'confirm-play');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'rob-1', targets: [1, 3] });
+  });
+
+  it('诅咒：目标有两张蓝卡时要选一张；只有一张时自动选', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[1].blue.push({ id: 'asylum-1', kind: 'asylum' }, { id: 'piety-1', kind: 'piety' });
+    s.players[2].blue.push({ id: 'matchmaker-1', kind: 'matchmaker' });
+    giveCard(s, 0, 'curse', 'curse-1');
+    const a = scene(s);
+    tap(a.scene.build(0), 'card:curse-1');
+    tap(a.scene.build(0), 'seat:1');
+    tap(a.scene.build(0), 'option:piety-1');
+    tap(a.scene.build(0), 'confirm-play');
+    expect(a.ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'curse-1', targets: [1], option: 'piety-1' });
+    const b = scene(s);
+    tap(b.scene.build(0), 'card:curse-1');
+    tap(b.scene.build(0), 'seat:2');
+    tap(b.scene.build(0), 'confirm-play');
+    expect(b.ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'curse-1', targets: [2], option: 'matchmaker-1' });
+  });
+
+  it('蓝卡可以打给自己（点我的信息栏）', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    giveCard(s, 0, 'asylum', 'asy-1');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'card:asy-1');
+    tap(t.build(0), 'me');
+    tap(t.build(0), 'confirm-play');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'asy-1', targets: [0] });
+  });
+
+  it('出过牌之后可以结束回合', () => {
+    const s = newState(5);
+    setDay(s, 0, 'playing');
+    const { ctl, scene: t } = scene(s);
+    tap(t.build(0), 'end-turn');
+    expect(ctl.act).toHaveBeenCalledWith({ type: 'endTurn' });
+  });
+
+  it('没选牌时点玩家格子打开详情，点我的信息栏打开我的身份卡', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'seat:2');
+    let nodes = t.build(0);
+    expect(drawAll(nodes).join('')).toContain('P2');
+    tap(nodes, 'sheet-close');
+    expect(has(t.build(0), 'my-tryals')).toBe(false);
+    tap(t.build(0), 'me');
+    nodes = t.build(0);
+    expect(has(nodes, 'my-tryals')).toBe(true);
+    expect(drawAll(nodes).join('')).toContain('阵营');
+  });
+
+  it('点日志打开完整记录', () => {
+    const s = newState(5);
+    const { scene: t } = scene(s);
+    tap(t.build(0), 'log');
+    expect(has(t.build(0), 'log-list')).toBe(true);
+  });
+
+  it('顶栏有「离开」按钮：确认后离开牌局', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { ctl, ui, scene: t } = scene(s);
+    const nodes = t.build(0);
+    expect(drawAll(nodes).join('')).toContain('离开');
+    tap(nodes, 'leave-game');
+    expect(ui.confirm).toHaveBeenCalledWith('离开牌局？', '可以用房号 1234 回来', expect.any(Function));
+    expect(ctl.leaveRoom).toHaveBeenCalled();
+  });
+
+  it('「离开」按钮的点击区域够大（≥44×36），且不盖住座位格', () => {
+    const s = newState(12);
+    setDay(s, 1);
+    const nodes = scene(s).scene.build(0);
+    const leave = findNode(nodes, 'leave-game')!;
+    expect(leave.rect.w).toBeGreaterThanOrEqual(44);
+    expect(leave.rect.h).toBeGreaterThanOrEqual(36);
+    // 按钮画框下方、点击区域之内的一点仍然点中「离开」
+    const r = leave.rect;
+    expect(hitTest(nodes, r.x + r.w / 2, r.y + r.h - 1, 'onTap')?.id).toBe('leave-game');
+    for (let seat = 1; seat < 12; seat++) {
+      const c = findNode(nodes, `seat:${seat}`)!.rect;
+      const overlaps = r.x < c.x + c.w && c.x < r.x + r.w && r.y < c.y + c.h && c.y < r.y + r.h;
+      expect(overlaps).toBe(false);
+    }
+  });
+
+  it('选择面板打开时不显示「离开」按钮', () => {
+    const s = newState(5);
+    s.phase = { kind: 'trialReveal', target: 2, initiator: 0 };
+    const nodes = scene(s, 2).scene.build(0);
+    expect(has(nodes, 'confirm-reveal')).toBe(true);
+    expect(has(nodes, 'leave-game')).toBe(false);
+  });
+
+  it('女巫阵营在桌面格子上能看到同伴（包括传染后的原女巫），村民看不到', () => {
+    const s = newState(6, 2); // 1、2 号是女巫
+    setDay(s, 0);
+    infect(s, 2, 3);
+    const nodes = scene(s, 3).scene.build(0);
+    expect(labelOf(nodes, 'seat:1')).toContain('同伴');
+    expect(labelOf(nodes, 'seat:2')).toContain('同伴');
+    expect(labelOf(nodes, 'seat:4')).not.toContain('同伴');
+    expect(drawAll(scene(s, 0).scene.build(0)).join('')).not.toContain('同伴');
+  });
+
+  it('我已出局时显示提示', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    s.players[0].alive = false;
+    expect(drawAll(scene(s).scene.build(0)).join('')).toContain('你已出局');
+  });
+});
+
+describe('医生的辩护选项只列目标拥有的红卡种类', () => {
+  it('目标只有证据：只有「当作目击」和「丢弃证据」', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    s.players[0].character = 'doctor';
+    s.players[2].red.push({ id: 'ev-1', kind: 'evidence', points: 2 });
+    const id = giveCard(s, 0, 'alibi');
+    const { scene: t } = scene(s);
+    tap(t.build(0), `card:${id}`);
+    tap(t.build(0), 'seat:2');
+    const nodes = t.build(0);
+    expect(has(nodes, 'option:witness')).toBe(true);
+    expect(has(nodes, 'option:evidence')).toBe(true);
+    expect(has(nodes, 'option:accusation')).toBe(false);
+  });
+});

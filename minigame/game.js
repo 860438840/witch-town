@@ -1,172 +1,2657 @@
-// 临时调试界面（计划 B1 Task 5）：验证云函数、数据库权限和实时推送。正式界面在计划 B2 中重做。
-wx.cloud.init({ traceUser: true });
-const db = wx.cloud.database();
+// 由 client/build.mjs 生成，请勿手改。修改 client/src 后运行 npm run build。
+"use strict";
+(() => {
+  var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
-const canvas = wx.createCanvas();
-const ctx = canvas.getContext('2d');
-const { windowWidth: W, windowHeight: H, pixelRatio: DPR } = wx.getSystemInfoSync();
-canvas.width = W * DPR;
-canvas.height = H * DPR;
-ctx.scale(DPR, DPR);
+  // src/core/geom.ts
+  var rect = (x, y, w, h) => ({ x, y, w, h });
+  function contains(r, px, py) {
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
 
-const state = { code: '', logs: [] };
-let roomWatcher = null;
-let handWatcher = null;
-
-function print(label, value) {
-  const time = new Date().toTimeString().slice(0, 8);
-  state.logs.unshift(`[${time}] ${label}: ${JSON.stringify(value)}`);
-  state.logs = state.logs.slice(0, 60);
-  render();
-}
-
-async function call(data) {
-  const t0 = Date.now();
-  try {
-    const res = await wx.cloud.callFunction({ name: 'game', data });
-    print(`${data.type} (${Date.now() - t0}ms)`, res.result);
-    return res.result;
-  } catch (e) {
-    print(`${data.type} 调用失败`, e.errMsg || String(e));
+  // src/core/node.ts
+  function drawNodes(ctx2, nodes) {
+    var _a;
+    for (const n of nodes) {
+      ctx2.save();
+      if (n.clip) {
+        ctx2.beginPath();
+        ctx2.rect(n.rect.x, n.rect.y, n.rect.w, n.rect.h);
+        ctx2.clip();
+      }
+      (_a = n.draw) == null ? void 0 : _a.call(n, ctx2);
+      if (n.children) drawNodes(ctx2, n.children);
+      ctx2.restore();
+    }
+  }
+  function hitTest(nodes, x, y, key) {
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      if (n.children) {
+        const hit = hitTest(n.children, x, y, key);
+        if (hit) return hit;
+      }
+      if (n[key] && contains(n.rect, x, y)) return n;
+    }
     return null;
   }
-}
 
-function askCode() {
-  wx.showModal({
-    title: '输入房间号',
-    editable: true,
-    placeholderText: '4 位数字',
-    success: (res) => {
-      if (res.confirm && res.content) {
-        state.code = res.content.trim();
-        render();
+  // src/core/tween.ts
+  var easeOutCubic = (t) => 1 - (1 - t) ** 3;
+  var Animator = class {
+    constructor() {
+      __publicField(this, "items", /* @__PURE__ */ new Map());
+    }
+    start(key, now, dur = 300, data) {
+      this.items.set(key, { start: now, dur, data });
+    }
+    progress(key, now) {
+      const it = this.items.get(key);
+      if (!it) return 1;
+      const t = (now - it.start) / it.dur;
+      return t >= 1 ? 1 : easeOutCubic(Math.max(0, t));
+    }
+    /** 未缓动的线性进度 0→1；没有这个动画或已结束时返回 1 */
+    linear(key, now) {
+      const it = this.items.get(key);
+      if (!it) return 1;
+      return Math.min(1, Math.max(0, (now - it.start) / it.dur));
+    }
+    data(key) {
+      var _a;
+      return (_a = this.items.get(key)) == null ? void 0 : _a.data;
+    }
+    running(key, now) {
+      const it = this.items.get(key);
+      return !!it && now < it.start + it.dur;
+    }
+    /** 是否还有动画在进行；顺便清理已结束的动画 */
+    active(now) {
+      let any = false;
+      for (const [key, it] of this.items) {
+        if (now >= it.start + it.dur) this.items.delete(key);
+        else any = true;
       }
-    },
-  });
-}
+      return any;
+    }
+    keys() {
+      return [...this.items.keys()];
+    }
+  };
 
-function watch() {
-  const code = state.code;
-  if (roomWatcher) roomWatcher.close();
-  if (handWatcher) handWatcher.close();
-  roomWatcher = db.collection('rooms').doc(code).watch({
-    onChange: (snap) => {
-      const doc = snap.docs[0];
-      print('rooms 推送', doc ? { status: doc.status, version: doc.view && doc.view.version, turn: doc.view && doc.view.turn, players: doc.view && doc.view.players.length, phase: doc.view && doc.view.phase, deadline: doc.deadline } : null);
-    },
-    onError: (e) => print('rooms 监听失败', e.errMsg || String(e)),
-  });
-  handWatcher = db
-    .collection('hands')
-    .where({ _openid: '{openid}', roomId: code })
-    .watch({
-      onChange: (snap) => {
-        const doc = snap.docs[0];
-        print('hands 推送', doc ? { seat: doc.view.seat, hand: doc.view.hand.map((c) => c.kind), pending: doc.view.pending } : null);
-      },
-      onError: (e) => print('hands 监听失败', e.errMsg || String(e)),
+  // src/core/app.ts
+  var App = class {
+    constructor(ctx2, screen2, raf, clock) {
+      __publicField(this, "ctx", ctx2);
+      __publicField(this, "screen", screen2);
+      __publicField(this, "raf", raf);
+      __publicField(this, "clock", clock);
+      __publicField(this, "animator", new Animator());
+      __publicField(this, "scene", null);
+      __publicField(this, "nodes", []);
+      __publicField(this, "scheduled", false);
+      __publicField(this, "touch", null);
+      __publicField(this, "drag", null);
+    }
+    setScene(scene) {
+      this.scene = scene;
+      this.render();
+    }
+    /** 请求在下一帧重画；同一帧内多次调用只画一次 */
+    render() {
+      if (this.scheduled) return;
+      this.scheduled = true;
+      this.raf(() => {
+        this.scheduled = false;
+        this.draw();
+      });
+    }
+    draw() {
+      var _a, _b;
+      if (!this.scene) return;
+      const now = this.clock();
+      (_b = (_a = this.drag) == null ? void 0 : _a.frame) == null ? void 0 : _b.call(_a);
+      this.nodes = this.scene.build(now);
+      this.ctx.clearRect(0, 0, this.screen.W, this.screen.H);
+      drawNodes(this.ctx, this.nodes);
+      if (this.animator.active(now) || this.drag) this.render();
+    }
+    get current() {
+      return this.nodes;
+    }
+    touchStart(x, y) {
+      var _a;
+      const press = hitTest(this.nodes, x, y, "onPress");
+      if (press) {
+        this.touch = null;
+        (_a = this.drag) == null ? void 0 : _a.end();
+        this.drag = press.onPress(x, y);
+        this.render();
+        return;
+      }
+      this.touch = { x0: x, y0: y, lastY: y, moved: false, scroll: hitTest(this.nodes, x, y, "onScroll") };
+    }
+    touchMove(x, y) {
+      if (this.drag) {
+        this.drag.move(x, y);
+        this.render();
+        return;
+      }
+      const t = this.touch;
+      if (!t) return;
+      if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) t.moved = true;
+      if (t.moved && t.scroll) {
+        t.scroll.onScroll(y - t.lastY);
+        this.render();
+      }
+      t.lastY = y;
+    }
+    /** 系统打断触摸（来电、弹窗等）：结束拖动，丢弃未完成的点击和滚动 */
+    touchCancel() {
+      this.touch = null;
+      if (this.drag) {
+        const d = this.drag;
+        this.drag = null;
+        d.end();
+        this.render();
+      }
+    }
+    touchEnd(x, y) {
+      if (this.drag) {
+        const d = this.drag;
+        this.drag = null;
+        d.end();
+        this.render();
+        return;
+      }
+      const t = this.touch;
+      this.touch = null;
+      if (!t || t.moved) return;
+      const n = hitTest(this.nodes, x, y, "onTap");
+      if (n) {
+        n.onTap();
+        this.render();
+      }
+    }
+  };
+
+  // src/controller.ts
+  var STALE_ERROR = "\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5";
+  var OUTDATED_ERROR = "\u4E91\u51FD\u6570\u7248\u672C\u8FC7\u65E7\uFF0C\u8BF7\u5728\u5F00\u53D1\u8005\u5DE5\u5177\u91CC\u91CD\u65B0\u90E8\u7F72 game";
+  var LEAVE_ERRORS = ["\u623F\u95F4\u4E0D\u5B58\u5728", "\u623F\u95F4\u5DF2\u7ED3\u675F", "\u4F60\u4E0D\u5728\u8FD9\u4E2A\u623F\u95F4\u91CC"];
+  var Controller = class {
+    constructor(d) {
+      __publicField(this, "d", d);
+      __publicField(this, "openid", null);
+      __publicField(this, "code", null);
+      __publicField(this, "busy", false);
+      __publicField(this, "session", null);
+      __publicField(this, "ticker", null);
+    }
+    get nickname() {
+      return this.d.store.nickname();
+    }
+    get room() {
+      var _a, _b;
+      return (_b = (_a = this.session) == null ? void 0 : _a.room) != null ? _b : null;
+    }
+    get hand() {
+      var _a, _b;
+      return (_b = (_a = this.session) == null ? void 0 : _a.hand) != null ? _b : null;
+    }
+    setNickname(name) {
+      const n = name.trim();
+      const len = [...n].length;
+      if (len < 1 || len > 12) {
+        this.d.toast("\u6635\u79F0\u9700\u8981 1\u201312 \u4E2A\u5B57");
+        return false;
+      }
+      this.d.store.setNickname(n);
+      this.d.render();
+      return true;
+    }
+    async createRoom() {
+      const r = await this.run({ type: "createRoom", profile: this.profile() });
+      if (r) this.enterFrom(r);
+    }
+    async joinRoom(code) {
+      if (!/^\d{4}$/.test(code)) {
+        this.d.toast("\u8BF7\u8F93\u5165 4 \u4F4D\u623F\u95F4\u53F7");
+        return;
+      }
+      const r = await this.run({ type: "joinRoom", code, profile: this.profile() });
+      if (r) this.enterFrom(r);
+    }
+    async leaveRoom() {
+      if (!this.code) return;
+      if (!this.room || this.room.status === "lobby") {
+        const r = await this.run({ type: "leaveRoom", code: this.code });
+        if (r !== null) this.backHome();
+        return;
+      }
+      this.backHome();
+    }
+    async addBot() {
+      if (this.code) await this.run({ type: "addBots", code: this.code, count: 1 });
+    }
+    async moveSeat(index, dir) {
+      var _a;
+      const seats = (_a = this.room) == null ? void 0 : _a.seats;
+      const j = index + dir;
+      if (!this.code || !seats || j < 0 || j >= seats.length) return;
+      const order = seats.map((s) => s.openid);
+      [order[index], order[j]] = [order[j], order[index]];
+      await this.run({ type: "reorderSeats", code: this.code, order });
+    }
+    async startGame() {
+      if (this.code) await this.run({ type: "startGame", code: this.code });
+    }
+    async act(action) {
+      var _a, _b;
+      if (!this.code) return;
+      await this.run({ type: "act", code: this.code, action, version: (_b = (_a = this.room) == null ? void 0 : _a.view) == null ? void 0 : _b.version });
+    }
+    backHome() {
+      var _a, _b;
+      (_a = this.session) == null ? void 0 : _a.stop();
+      (_b = this.ticker) == null ? void 0 : _b.stop();
+      this.session = null;
+      this.ticker = null;
+      this.code = null;
+      this.d.store.clearLastRoom();
+      this.d.render();
+    }
+    onShow() {
+      var _a;
+      void ((_a = this.session) == null ? void 0 : _a.refresh());
+    }
+    profile() {
+      var _a;
+      return { name: (_a = this.nickname) != null ? _a : "", avatar: "" };
+    }
+    /** 旧版云函数只返回 { code }：没有 openid 就认不出自己的座位，不能进房间 */
+    enterFrom(r) {
+      if (typeof r.openid !== "string" || r.openid === "") {
+        this.d.toast(OUTDATED_ERROR);
+        return;
+      }
+      this.enter(r.code, r.openid);
+    }
+    enter(code, openid) {
+      var _a, _b;
+      (_a = this.session) == null ? void 0 : _a.stop();
+      (_b = this.ticker) == null ? void 0 : _b.stop();
+      this.code = code;
+      this.openid = openid;
+      this.d.store.setLastRoom(code);
+      this.ticker = this.d.makeTicker(() => this.d.api.call({ type: "tick", code }));
+      this.session = this.d.openSession(code, openid, () => this.onRoomChange());
+      this.session.start();
+      this.d.render();
+    }
+    onRoomChange() {
+      var _a;
+      const room = this.room;
+      (_a = this.ticker) == null ? void 0 : _a.update((room == null ? void 0 : room.status) === "playing" ? room.deadline : null);
+      if (room && !room.seats.some((s) => s.openid === this.openid)) {
+        this.d.toast("\u4F60\u5DF2\u4E0D\u5728\u8FD9\u4E2A\u623F\u95F4\u91CC");
+        this.backHome();
+        return;
+      }
+      if ((room == null ? void 0 : room.status) === "ended") this.d.store.clearLastRoom();
+      this.d.render();
+    }
+    async run(req) {
+      var _a;
+      if (this.busy) return null;
+      this.busy = true;
+      this.d.render();
+      try {
+        const res = await this.d.api.call(req);
+        if (res.ok) return res.data;
+        if (res.error === STALE_ERROR) {
+          void ((_a = this.session) == null ? void 0 : _a.refresh());
+          return null;
+        }
+        this.d.toast(res.error);
+        if (LEAVE_ERRORS.includes(res.error)) {
+          this.d.store.clearLastRoom();
+          if (this.code) this.backHome();
+        }
+        return null;
+      } finally {
+        this.busy = false;
+        this.d.render();
+      }
+    }
+  };
+
+  // src/net/api.ts
+  var NETWORK_ERROR = "\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u6B63\u5728\u91CD\u8BD5";
+  var Api = class {
+    constructor(cloud) {
+      __publicField(this, "cloud", cloud);
+    }
+    async call(data) {
+      try {
+        const r = await this.cloud.callFunction({ name: "game", data });
+        const res = r.result;
+        if (!res || typeof res !== "object" || typeof res.ok !== "boolean") {
+          return { ok: false, error: "\u670D\u52A1\u5668\u6CA1\u6709\u54CD\u5E94", network: true };
+        }
+        return res;
+      } catch (e) {
+        return { ok: false, error: NETWORK_ERROR, network: true };
+      }
+    }
+  };
+
+  // src/net/session.ts
+  var POLL_MS = 3e3;
+  var MAX_BACKOFF_MS = 3e4;
+  var POLL_AFTER_FAILURES = 3;
+  var NOT_FOUND = /does not exist|DOCUMENT_NOT_EXIST|-502004/i;
+  function isNotFound(e) {
+    var _a;
+    const msg = e instanceof Error ? e.message : String((_a = e == null ? void 0 : e.errMsg) != null ? _a : e);
+    return NOT_FOUND.test(msg);
+  }
+  async function rejoinable(db2, code) {
+    try {
+      const r = await db2.collection("rooms").doc(code).get();
+      const room = r.data;
+      return !!room && room.status !== "ended";
+    } catch (e) {
+      return !isNotFound(e);
+    }
+  }
+  var RoomSession = class {
+    constructor(db2, code, openid, timers, onChange) {
+      __publicField(this, "db", db2);
+      __publicField(this, "code", code);
+      __publicField(this, "openid", openid);
+      __publicField(this, "timers", timers);
+      __publicField(this, "onChange", onChange);
+      __publicField(this, "room", null);
+      __publicField(this, "hand", null);
+      __publicField(this, "watchers", []);
+      __publicField(this, "gen", 0);
+      __publicField(this, "failures", 0);
+      __publicField(this, "retryTimer", null);
+      __publicField(this, "pollTimer", null);
+      __publicField(this, "stopped", false);
+      /** 每个集合收到过几次推送；refresh 读取期间有新推送时丢掉读到的（可能更旧的）数据 */
+      __publicField(this, "pushes", { rooms: 0, hands: 0 });
+    }
+    start() {
+      void this.refresh();
+      this.watch();
+    }
+    stop() {
+      this.stopped = true;
+      this.closeWatchers();
+      this.stopPolling();
+      if (this.retryTimer !== null) {
+        this.timers.clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+      }
+    }
+    async refresh() {
+      const before = __spreadValues({}, this.pushes);
+      const [room, hand] = await Promise.all([
+        this.getDoc("rooms", this.code),
+        this.getDoc("hands", `${this.code}_${this.openid}`)
+      ]);
+      if (this.stopped) return;
+      if (room !== void 0 && this.pushes.rooms === before.rooms) this.room = room;
+      if (hand !== void 0 && this.pushes.hands === before.hands) this.hand = hand;
+      this.onChange();
+    }
+    /** 找不到文档返回 null；网络等其他错误返回 undefined（保留原数据） */
+    async getDoc(coll, id) {
+      var _a;
+      try {
+        const r = await this.db.collection(coll).doc(id).get();
+        return (_a = r.data) != null ? _a : null;
+      } catch (e) {
+        return isNotFound(e) ? null : void 0;
+      }
+    }
+    watch() {
+      this.closeWatchers();
+      const gen = this.gen;
+      const onError = () => {
+        if (gen === this.gen) this.fail();
+      };
+      this.watchers.push(
+        this.db.collection("rooms").doc(this.code).watch({
+          onChange: (snap) => {
+            var _a;
+            if (gen !== this.gen) return;
+            this.pushes.rooms++;
+            this.room = (_a = snap.docs[0]) != null ? _a : null;
+            this.ok();
+          },
+          onError
+        }),
+        this.db.collection("hands").where({ _openid: "{openid}", roomId: this.code }).watch({
+          onChange: (snap) => {
+            var _a;
+            if (gen !== this.gen) return;
+            this.pushes.hands++;
+            this.hand = (_a = snap.docs[0]) != null ? _a : null;
+            this.ok();
+          },
+          onError
+        })
+      );
+    }
+    closeWatchers() {
+      this.gen++;
+      for (const w of this.watchers) {
+        try {
+          w.close();
+        } catch (e) {
+        }
+      }
+      this.watchers = [];
+    }
+    ok() {
+      this.failures = 0;
+      this.stopPolling();
+      this.onChange();
+    }
+    fail() {
+      if (this.stopped) return;
+      this.closeWatchers();
+      this.failures++;
+      if (this.failures >= POLL_AFTER_FAILURES) this.startPolling();
+      if (this.retryTimer !== null) return;
+      const delay = Math.min(1e3 * 2 ** (this.failures - 1), MAX_BACKOFF_MS);
+      this.retryTimer = this.timers.setTimeout(() => {
+        this.retryTimer = null;
+        if (!this.stopped) this.watch();
+      }, delay);
+    }
+    startPolling() {
+      if (this.pollTimer !== null) return;
+      const loop = () => {
+        this.pollTimer = this.timers.setTimeout(async () => {
+          await this.refresh();
+          if (this.pollTimer !== null && !this.stopped) loop();
+        }, POLL_MS);
+      };
+      loop();
+    }
+    stopPolling() {
+      if (this.pollTimer !== null) {
+        this.timers.clearTimeout(this.pollTimer);
+        this.pollTimer = null;
+      }
+    }
+  };
+
+  // src/net/storage.ts
+  var NICK = "witchtown.nickname";
+  var ROOM = "witchtown.lastRoom";
+  var LocalStore = class {
+    constructor(s) {
+      __publicField(this, "s", s);
+    }
+    get(key) {
+      try {
+        const v = this.s.getStorageSync(key);
+        return typeof v === "string" && v ? v : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    set(key, v) {
+      try {
+        if (v === null) this.s.removeStorageSync(key);
+        else this.s.setStorageSync(key, v);
+      } catch (e) {
+      }
+    }
+    nickname() {
+      return this.get(NICK);
+    }
+    setNickname(name) {
+      this.set(NICK, name);
+    }
+    lastRoom() {
+      return this.get(ROOM);
+    }
+    setLastRoom(code) {
+      this.set(ROOM, code);
+    }
+    clearLastRoom() {
+      this.set(ROOM, null);
+    }
+  };
+
+  // src/net/ticker.ts
+  var TICK_JITTER_MS = 1500;
+  var TICK_RETRY_MS = 3e3;
+  var Ticker = class {
+    constructor(deps) {
+      __publicField(this, "deps", deps);
+      __publicField(this, "deadline", null);
+      __publicField(this, "timer", null);
+      __publicField(this, "inflight", false);
+    }
+    update(deadline) {
+      if (deadline === this.deadline) return;
+      this.deadline = deadline;
+      this.clear();
+      if (deadline !== null) {
+        this.schedule(Math.max(0, deadline - this.deps.now()) + this.deps.random() * TICK_JITTER_MS);
+      }
+    }
+    stop() {
+      this.deadline = null;
+      this.clear();
+    }
+    schedule(ms) {
+      this.timer = this.deps.timers.setTimeout(() => {
+        this.timer = null;
+        void this.fire();
+      }, ms);
+    }
+    async fire() {
+      const d = this.deadline;
+      if (d === null) return;
+      if (this.inflight) {
+        this.schedule(TICK_RETRY_MS);
+        return;
+      }
+      this.inflight = true;
+      try {
+        await this.deps.tick();
+      } catch (e) {
+      } finally {
+        this.inflight = false;
+      }
+      if (this.deadline === d && this.timer === null) this.schedule(TICK_RETRY_MS);
+    }
+    clear() {
+      if (this.timer !== null) {
+        this.deps.timers.clearTimeout(this.timer);
+        this.timer = null;
+      }
+    }
+  };
+
+  // src/net/timers.ts
+  var realTimers = {
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id)
+  };
+
+  // src/platform.ts
+  function createPlatform() {
+    const canvas = wx.createCanvas();
+    const info = wx.getSystemInfoSync();
+    const dpr = info.pixelRatio || 2;
+    canvas.width = info.windowWidth * dpr;
+    canvas.height = info.windowHeight * dpr;
+    const ctx2 = canvas.getContext("2d");
+    ctx2.scale(dpr, dpr);
+    let top = 64;
+    try {
+      top = wx.getMenuButtonBoundingClientRect().bottom + 8;
+    } catch (e) {
+    }
+    const bottom = info.safeArea ? Math.min(info.safeArea.bottom, info.windowHeight) : info.windowHeight;
+    return { ctx: ctx2, screen: { W: info.windowWidth, H: info.windowHeight, top, bottom } };
+  }
+  function bindTouches(app2) {
+    wx.onTouchStart((e) => {
+      const t = e.touches[0];
+      if (t) app2.touchStart(t.clientX, t.clientY);
     });
-  print('监听', `已开始监听房间 ${code}`);
-}
-
-async function readOthers() {
-  const code = state.code;
-  try {
-    const g = await db.collection('games').doc(code).get();
-    print('读 games（应该失败）', g.data);
-  } catch (e) {
-    print('读 games 被拒绝（正确）', e.errMsg || String(e));
+    wx.onTouchMove((e) => {
+      const t = e.touches[0];
+      if (t) app2.touchMove(t.clientX, t.clientY);
+    });
+    wx.onTouchEnd((e) => {
+      const t = e.changedTouches[0];
+      if (t) app2.touchEnd(t.clientX, t.clientY);
+    });
+    wx.onTouchCancel(() => app2.touchCancel());
   }
-  try {
-    const h = await db.collection('hands').doc(`${code}_bot-1`).get();
-    print('读 bot-1 的 hands（应该失败）', h.data);
-  } catch (e) {
-    print('读别人的 hands 被拒绝（正确）', e.errMsg || String(e));
+
+  // src/theme/palette.ts
+  var C = {
+    skyTop: "#3a2a5c",
+    skyMid: "#1a1326",
+    skyBottom: "#0d0a14",
+    gold: "#e8c774",
+    goldDark: "#b8913e",
+    goldLine: "#d6a44a",
+    text: "#e9dcb8",
+    textDim: "#bfb2d6",
+    textMuted: "#8a7fa3",
+    panel: "rgba(255,255,255,0.05)",
+    panelSolid: "#221833",
+    panelLine: "#4a3a6c",
+    logBg: "rgba(0,0,0,0.35)",
+    danger: "#c0394d",
+    moon: "#f1e3b3",
+    overlay: "rgba(8,5,14,0.72)",
+    tryalHidden: "#2e2446",
+    witch: "#b3263a",
+    constable: "#c9a24a",
+    villager: "#6b6384",
+    star: "#ffffff",
+    badgeText: "#fff",
+    cardText: "#f3d9a0",
+    badgeRing: "rgba(232,199,116,0.7)",
+    chipRevealedLine: "rgba(255,255,255,0.4)",
+    buttonDangerFill: "rgba(192,57,77,0.25)",
+    buttonFill: "rgba(0,0,0,0.25)",
+    glowStrong: "rgba(232,199,116,0.9)",
+    lineDark: "#3b2d57",
+    transparent: "rgba(0,0,0,0)"
+  };
+  var nightShade = (alpha) => `rgba(4,2,10,${alpha})`;
+  var goldGlow = (alpha) => `rgba(232,199,116,${alpha})`;
+  var CARD_GRADIENT = {
+    red: ["#7a1428", "#4a0a18"],
+    blue: ["#233d6e", "#142546"],
+    green: ["#265a45", "#143528"],
+    black: ["#2b2b2b", "#0e0e0e"]
+  };
+  var BADGE_COLORS = [
+    "#8e3b5a",
+    "#3b6e8e",
+    "#5a8e3b",
+    "#8e6a3b",
+    "#6a3b8e",
+    "#3b8e7a",
+    "#8e3b3b",
+    "#3b4a8e",
+    "#7a8e3b",
+    "#8e3b82",
+    "#3b8e4a",
+    "#8e5a3b"
+  ];
+  var badgeColor = (seat) => BADGE_COLORS[(seat % 12 + 12) % 12];
+  var font = (size, bold = false) => `${bold ? "bold " : ""}${size}px sans-serif`;
+
+  // src/model/characters.ts
+  var CHAR_INFO = {
+    doctor: { name: "\u533B\u751F", short: "\u533B\u751F", desc: "\u53EF\u4EE5\u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\uFF087 \u70B9\uFF09\u6253\u51FA" },
+    beggar: { name: "\u4E5E\u4E10", short: "\u4E5E\u4E10", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u62A2\u52AB\u300D\u300C\u7EB5\u706B\u300D\u65E0\u6548\uFF0C\u5E76\u7ACB\u523B\u4E22\u5F03" },
+    landlord: { name: "\u5730\u4E3B", short: "\u5730\u4E3B", desc: "\u62BD\u724C\u65F6\u5982\u679C\u62BD\u51FA 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u8FD9 2 \u5F20\uFF0C\u518D\u62BD\u4E00\u5F20" },
+    judge: { name: "\u6CD5\u5B98", short: "\u6CD5\u5B98", desc: "\u4F60\u6253\u51FA\u7684\u7EA2\u5361\u4F7F\u76EE\u6807\u7D2F\u8BA1\u8FBE\u5230 6 \u70B9\uFF0C\u5373\u53EF\u5BA1\u5224\u8BE5\u73A9\u5BB6" },
+    priest: { name: "\u7267\u5E08", short: "\u7267\u5E08", desc: "\u6E38\u620F\u4E2D\u4E24\u6B21\uFF1A\u62BD\u724C\u65F6\u53EF\u4EE5\u6539\u4E3A\u4ECE\u5F03\u724C\u5806\u9009\u6700\u591A 2 \u5F20\u975E\u9ED1\u5361\u52A0\u5165\u624B\u724C" },
+    storyteller: { name: "\u8BF4\u4E66\u4EBA", short: "\u8BF4\u4E66", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u7684\u56DE\u5408\u62BD\u724C\u524D\uFF0C\u53EF\u4EE5\u4EFB\u610F\u8C03\u6574\u724C\u5806\u987A\u5E8F\uFF0C\u9650\u65F6 2 \u5206\u949F" },
+    tailor: { name: "\u88C1\u7F1D", short: "\u88C1\u7F1D", desc: "\u6280\u80FD\u4E0E\u53F3\u624B\u8FB9\u7B2C\u4E00\u540D\u6D3B\u7740\u7684\u73A9\u5BB6\u4E00\u81F4" },
+    housewife: { name: "\u5BB6\u5EAD\u4E3B\u5987", short: "\u4E3B\u5987", desc: "\u5176\u4ED6\u73A9\u5BB6\u7684\u8EAB\u4EFD\u5361\u56E0\u5BA1\u5224\u6216\u9ED1\u732B\u88AB\u7FFB\u5F00\u65F6\uFF0C\u4F60\u4ECE\u724C\u5806\u62BD\u4E00\u5F20\u724C" },
+    farmer: { name: "\u519C\u6C11", short: "\u519C\u6C11", desc: "\u6709\u73A9\u5BB6\u6B7B\u4EA1\u65F6\uFF0C\u4F60\u83B7\u5F97\u4ED6\u7684\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u84DD\u5361" },
+    child: { name: "\u5C0F\u5B69", short: "\u5C0F\u5B69", desc: "\u4F60\u53D1\u8D77\u7684\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u4F60\u81EA\u5DF1\u9762\u524D\u6240\u6709\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D" },
+    minister: { name: "\u90E8\u957F", short: "\u90E8\u957F", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9" },
+    official: { name: "\u5B98\u5458", short: "\u5B98\u5458", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u81EA\u9996\u65F6\u65E0\u9700\u7FFB\u5F00\u8EAB\u4EFD\u5361" },
+    strongman: { name: "\u5927\u529B\u58EB", short: "\u529B\u58EB", desc: "\u5BF9\u4F60\u7684\u5BA1\u5224\u7EBF\u4E3A 8 \u70B9" },
+    maid: { name: "\u5973\u4EC6", short: "\u5973\u4EC6", desc: "\u300C\u9ED1\u732B\u300D\u548C\u300C\u60C5\u4FA3\u300D\u5BF9\u4F60\u65E0\u6548" },
+    maiden: { name: "\u5C11\u5973", short: "\u5C11\u5973", desc: "\u4F60\u53D1\u8D77\u5BA1\u5224\u65F6\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C\uFF0C\u672C\u56DE\u5408\u53EF\u4EE5\u7ACB\u5373\u4F7F\u7528" }
+  };
+  function charLabel(p) {
+    if (!p.character) return "";
+    if (p.character === "tailor") return p.ability ? `\u88C1\u7F1D\u2192${CHAR_INFO[p.ability].short}` : "\u88C1\u7F1D";
+    return CHAR_INFO[p.character].short;
   }
-}
 
-const buttons = [
-  { label: '建房', run: async () => { const r = await call({ type: 'createRoom', profile: { name: '测试' } }); if (r && r.ok) { state.code = r.data.code; render(); } } },
-  { label: '输入房号', run: askCode },
-  { label: '加入', run: () => call({ type: 'joinRoom', code: state.code, profile: { name: '测试' } }) },
-  { label: '加 4 个机器人', run: () => call({ type: 'addBots', code: state.code, count: 4 }) },
-  { label: '开始', run: () => call({ type: 'startGame', code: state.code }) },
-  { label: '开始监听', run: watch },
-  { label: '抽 2 张', run: () => call({ type: 'act', code: state.code, action: { type: 'draw' } }) },
-  { label: '超时推进', run: () => call({ type: 'tick', code: state.code }) },
-  { label: '读别人的数据', run: readOthers },
-];
+  // src/model/cards.ts
+  var CARD_INFO = {
+    accusation: { name: "\u6307\u63A7", color: "red", desc: "\u6307\u63A7\u70B9 +1" },
+    evidence: { name: "\u8BC1\u636E", color: "red", desc: "\u6307\u63A7\u70B9 +3" },
+    witness: { name: "\u76EE\u51FB", color: "red", desc: "\u6307\u63A7\u70B9 +7" },
+    blackCat: { name: "\u9ED1\u732B", color: "blue", desc: "\u4F20\u67D3\u65F6\uFF0C\u6301\u6709\u8005\u5148\u7FFB\u5F00\u81EA\u5DF1\u4E00\u5F20\u8EAB\u4EFD\u5361" },
+    matchmaker: { name: "\u60C5\u4FA3", color: "blue", desc: "\u4E24\u540D\u6301\u6709\u8005\u540C\u751F\u5171\u6B7B" },
+    asylum: { name: "\u907F\u96BE", color: "blue", desc: "\u591C\u665A\u4E0D\u4F1A\u88AB\u5973\u5DEB\u6740\u6B7B" },
+    piety: { name: "\u4FE1\u5F92", color: "blue", desc: "\u5176\u4ED6\u73A9\u5BB6\u4E0D\u80FD\u5BF9\u6301\u6709\u8005\u6253\u51FA\u7EA2\u5361" },
+    scapegoat: { name: "\u5AC1\u7978", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u6240\u6709\u5361\u8F6C\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
+    robbery: { name: "\u62A2\u52AB", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C\u4EA4\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
+    arson: { name: "\u7EB5\u706B", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C" },
+    curse: { name: "\u8BC5\u5492", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u4E00\u5F20\u84DD\u5361" },
+    stocks: { name: "\u62D8\u7559", color: "green", desc: "\u76EE\u6807\u8DF3\u8FC7\u81EA\u5DF1\u7684\u4E0B\u4E00\u56DE\u5408" },
+    alibi: { name: "\u8FA9\u62A4", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u6700\u591A 3 \u5F20\u6307\u63A7\u6216 1 \u5F20\u8BC1\u636E" },
+    night: { name: "\u591C\u665A", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u591C\u665A\u964D\u4E34" },
+    conspiracy: { name: "\u4F20\u67D3", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u6BCF\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u5904\u76F2\u62BD\u4E00\u5F20\u8EAB\u4EFD\u5361" }
+  };
+  var TRYAL_NAME = { witch: "\u5973\u5DEB", constable: "\u8B66\u957F", villager: "\u6751\u6C11" };
+  var TRYAL_SHORT = { witch: "\u5DEB", constable: "\u8B66", villager: "\u6C11" };
 
-const TOP = 48;
-const COLS = 3;
-const GAP = 8;
-const BTN_H = 40;
-const btnW = (W - GAP * (COLS + 1)) / COLS;
-buttons.forEach((b, i) => {
-  b.x = GAP + (i % COLS) * (btnW + GAP);
-  b.y = TOP + 36 + Math.floor(i / COLS) * (BTN_H + GAP);
-  b.w = btnW;
-  b.h = BTN_H;
-});
-const logTop = buttons[buttons.length - 1].y + BTN_H + 16;
+  // src/model/rules.ts
+  var cardsOf = (color) => Object.values(CARD_INFO).filter((c) => c.color === color).map((c) => `${c.name}\uFF1A${c.desc}`);
+  var RULES = [
+    {
+      title: "\u80DC\u8D1F",
+      items: ["\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u5168\u90E8\u51FA\u5C40\uFF08\u5305\u62EC\u4F20\u67D3\u65F6\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u539F\u5973\u5DEB\uFF09\uFF1A\u6751\u6C11\u80DC\u5229\u3002", "\u6D3B\u7740\u7684\u73A9\u5BB6\u5168\u90FD\u662F\u5973\u5DEB\u9635\u8425\uFF1A\u5973\u5DEB\u80DC\u5229\u3002"]
+    },
+    {
+      title: "\u8EAB\u4EFD\u5361",
+      items: [
+        "\u6BCF\u4EBA 5 \u5F20\uFF0C\u53EA\u6709\u81EA\u5DF1\u77E5\u9053\u5185\u5BB9\u30024\u20135 \u4EBA 1 \u5F20\u5973\u5DEB\u5361\uFF0C6 \u4EBA\u4EE5\u4E0A 2 \u5F20\uFF1B\u8B66\u957F 1 \u5F20\uFF0C\u5176\u4F59\u662F\u6751\u6C11\u3002",
+        "\u7FFB\u51FA\u5973\u5DEB\u5361\uFF0C\u6216 5 \u5F20\u5168\u90E8\u7FFB\u5F00\uFF0C\u7ACB\u5373\u6B7B\u4EA1\u3002",
+        "\u5F00\u5C40\u6301\u6709\u5973\u5DEB\u5361\u7684\u4EBA\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\uFF1B\u4E4B\u540E\u901A\u8FC7\u4F20\u67D3\u62FF\u5230\u5973\u5DEB\u5361\u7684\u4EBA\u4E5F\u52A0\u5165\u5973\u5DEB\u9635\u8425\uFF0C\u9635\u8425\u4E0D\u4F1A\u518D\u53D8\uFF08\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u4EBA\u4ECD\u662F\u5973\u5DEB\uFF09\u3002\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u80FD\u770B\u5230\u5F7C\u6B64\u3002"
+      ]
+    },
+    {
+      title: "\u56DE\u5408",
+      items: ["\u8F6E\u5230\u4F60\u65F6\u4E8C\u9009\u4E00\uFF1A\u62BD 2 \u5F20\u724C\uFF0C\u6216\u6253\u51FA\u4EFB\u610F\u5F20\u7EA2 / \u84DD / \u7EFF\u5361\u3002", "\u7EA2\u5361\u4E0D\u80FD\u6253\u7ED9\u81EA\u5DF1\uFF0C\u84DD\u5361\u548C\u7EFF\u5361\u53EF\u4EE5\u3002"]
+    },
+    {
+      title: "\u5BA1\u5224",
+      items: [
+        "\u9762\u524D\u7EA2\u5361\u70B9\u6570\u8FBE\u5230 7 \u70B9\u7ACB\u5373\u53D7\u5BA1\uFF0C\u7531\u53D7\u5BA1\u8005\u81EA\u5DF1\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\u3002",
+        "\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u53D7\u5BA1\u8005\u9762\u524D\u6240\u6709\u7EA2\u5361\u3002"
+      ]
+    },
+    {
+      title: "\u591C\u665A",
+      items: [
+        "\u5973\u5DEB\u9635\u8425\u4E00\u8D77\u9009\u4E00\u540D\u73A9\u5BB6\u51FB\u6740\uFF1B\u8B66\u957F\u4FDD\u62A4\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6\uFF1B\u6240\u6709\u4EBA\u90FD\u53EF\u4EE5\u81EA\u9996\uFF08\u7FFB\u5F00\u4E00\u5F20\u81EA\u5DF1\u7684\u8EAB\u4EFD\u5361\uFF09\uFF0C\u81EA\u9996\u7684\u4EBA\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740\u3002",
+        "\u88AB\u9009\u4E2D\u7684\u4EBA\u6CA1\u6709\u88AB\u4FDD\u62A4\u3001\u6CA1\u6709\u907F\u96BE\u3001\u4E5F\u6CA1\u6709\u81EA\u9996\u65F6\u6B7B\u4EA1\u3002",
+        "\u591C\u665A\u8FC7\u540E\u5168\u90E8\u91CD\u7F6E\uFF1A\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u724C\uFF08\u5305\u62EC\u9ED1\u732B\uFF09\u6536\u56DE\u91CD\u6D17\uFF0C\u6BCF\u4E2A\u6D3B\u4EBA\u91CD\u65B0\u53D1 3 \u5F20\uFF1B\u8EAB\u4EFD\u5361\u4E0D\u53D8\u3002\u62BD\u5230\u591C\u665A\u7684\u4EBA\u56DE\u5408\u7ED3\u675F\u3002",
+        "\u56DE\u5408\u5916\u6478\u5230\u591C\u665A\uFF08\u4F8B\u5982\u5BA1\u5224\u4E2D\uFF09\u65F6\uFF0C\u5148\u628A\u5BA1\u5224\u8D70\u5B8C\u518D\u8FDB\u5165\u591C\u665A\u3002"
+      ]
+    },
+    {
+      title: "\u4F20\u67D3",
+      items: ["\u9ED1\u732B\u6301\u6709\u8005\u5148\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF1B\u7136\u540E\u6BCF\u4E2A\u6D3B\u7740\u7684\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u7684\u672A\u7FFB\u5F00\u8EAB\u4EFD\u5361\u91CC\u76F2\u62BD\u4E00\u5F20\u3002"]
+    },
+    { title: "\u7EA2\u5361", items: cardsOf("red") },
+    { title: "\u84DD\u5361\uFF08\u7559\u5728\u9762\u524D\u6301\u7EED\u751F\u6548\uFF09", items: cardsOf("blue") },
+    { title: "\u7EFF\u5361\uFF08\u4E00\u6B21\u6027\uFF09", items: cardsOf("green") },
+    { title: "\u9ED1\u5361\uFF08\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF09", items: cardsOf("black") },
+    {
+      title: "\u89D2\u8272\uFF08\u516C\u5F00\uFF09",
+      items: [
+        "\u5C11\u4E8E 7 \u4EBA\u65F6\u6BCF\u4EBA\u4ECE 2 \u4E2A\u968F\u673A\u89D2\u8272\u4E2D\u9009 1 \u4E2A\uFF1B7 \u4EBA\u53CA\u4EE5\u4E0A\u76F4\u63A5\u968F\u673A\u53D1\u3002\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00\u3002",
+        ...Object.values(CHAR_INFO).map((c) => `${c.name}\uFF1A${c.desc}`)
+      ]
+    }
+  ];
 
-function wrap(text, maxWidth) {
-  const lines = [];
-  let line = '';
-  for (const ch of text) {
-    if (ctx.measureText(line + ch).width > maxWidth) {
+  // src/core/text.ts
+  function wrapText(text, maxWidth, measure) {
+    const lines = [];
+    for (const para of text.split("\n")) {
+      let line = "";
+      for (const ch of para) {
+        if (line && measure(line + ch) > maxWidth) {
+          lines.push(line);
+          line = ch;
+        } else {
+          line += ch;
+        }
+      }
       lines.push(line);
-      line = ch;
+    }
+    return lines;
+  }
+  function ellipsize(text, maxWidth, measure) {
+    if (measure(text) <= maxWidth) return text;
+    const chars = [...text];
+    while (chars.length > 0 && measure(chars.join("") + "\u2026") > maxWidth) chars.pop();
+    return chars.join("") + "\u2026";
+  }
+
+  // src/theme/draw.ts
+  function roundRect(ctx2, r, radius) {
+    const rr = Math.max(0, Math.min(radius, r.w / 2, r.h / 2));
+    ctx2.beginPath();
+    ctx2.moveTo(r.x + rr, r.y);
+    ctx2.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + r.h, rr);
+    ctx2.arcTo(r.x + r.w, r.y + r.h, r.x, r.y + r.h, rr);
+    ctx2.arcTo(r.x, r.y + r.h, r.x, r.y, rr);
+    ctx2.arcTo(r.x, r.y, r.x + r.w, r.y, rr);
+    ctx2.closePath();
+  }
+  function drawText(ctx2, text, x, y, o = {}) {
+    var _a, _b, _c, _d;
+    ctx2.font = font((_a = o.size) != null ? _a : 14, o.bold);
+    ctx2.fillStyle = (_b = o.color) != null ? _b : C.text;
+    ctx2.textAlign = (_c = o.align) != null ? _c : "left";
+    ctx2.textBaseline = (_d = o.baseline) != null ? _d : "middle";
+    const t = o.maxWidth ? ellipsize(text, o.maxWidth, (s) => ctx2.measureText(s).width) : text;
+    ctx2.fillText(t, x, y);
+  }
+  function drawSky(ctx2, W, H, darkness) {
+    const g = ctx2.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, C.skyTop);
+    g.addColorStop(0.55, C.skyMid);
+    g.addColorStop(1, C.skyBottom);
+    ctx2.fillStyle = g;
+    ctx2.fillRect(0, 0, W, H);
+    ctx2.fillStyle = C.star;
+    for (let i = 0; i < 40; i++) {
+      ctx2.globalAlpha = 0.25 + i % 5 * 0.1;
+      ctx2.fillRect((i * 97 + 13) % W, (i * 57 + 7) % (H * 0.5), 1.5, 1.5);
+    }
+    ctx2.globalAlpha = 0.85;
+    ctx2.fillStyle = C.moon;
+    ctx2.beginPath();
+    ctx2.arc(W - 60, H * 0.16, 22, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.globalAlpha = 1;
+    ctx2.fillStyle = g;
+    ctx2.beginPath();
+    ctx2.arc(W - 51, H * 0.16 - 7, 20, 0, Math.PI * 2);
+    ctx2.fill();
+    if (darkness > 0) {
+      ctx2.fillStyle = nightShade(0.55 * darkness);
+      ctx2.fillRect(0, 0, W, H);
+    }
+  }
+  function drawPanel(ctx2, r, o = {}) {
+    var _a, _b, _c, _d;
+    roundRect(ctx2, r, (_a = o.radius) != null ? _a : 8);
+    if (o.glow) {
+      ctx2.shadowColor = goldGlow(o.glow);
+      ctx2.shadowBlur = 12;
+    }
+    ctx2.fillStyle = (_b = o.fill) != null ? _b : C.panel;
+    ctx2.fill();
+    ctx2.shadowBlur = 0;
+    ctx2.lineWidth = (_c = o.lineWidth) != null ? _c : 1;
+    ctx2.strokeStyle = (_d = o.stroke) != null ? _d : C.panelLine;
+    ctx2.stroke();
+  }
+  function drawButton(ctx2, r, label, style) {
+    if (style === "primary") {
+      const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+      g.addColorStop(0, C.gold);
+      g.addColorStop(1, C.goldDark);
+      roundRect(ctx2, r, 10);
+      ctx2.fillStyle = g;
+      ctx2.fill();
     } else {
-      line += ch;
+      drawPanel(ctx2, r, {
+        radius: 10,
+        fill: style === "danger" ? C.buttonDangerFill : C.buttonFill,
+        stroke: style === "disabled" ? C.panelLine : style === "danger" ? C.danger : C.gold
+      });
+    }
+    const color = style === "primary" ? C.skyMid : style === "disabled" ? C.textMuted : style === "danger" ? C.danger : C.gold;
+    drawText(ctx2, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, bold: true, color, align: "center", maxWidth: r.w - 8 });
+  }
+  function drawBadge(ctx2, cx, cy, radius, name, seat) {
+    var _a;
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx2.fillStyle = badgeColor(seat);
+    ctx2.fill();
+    ctx2.lineWidth = 1.5;
+    ctx2.strokeStyle = C.badgeRing;
+    ctx2.stroke();
+    drawText(ctx2, (_a = [...name][0]) != null ? _a : "?", cx, cy + 1, { size: Math.round(radius * 1.05), bold: true, color: C.badgeText, align: "center" });
+  }
+  function drawCardFace(ctx2, r, kind, o = {}) {
+    const info = CARD_INFO[kind];
+    const [a, b] = CARD_GRADIENT[info.color];
+    const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+    g.addColorStop(0, a);
+    g.addColorStop(1, b);
+    if (o.dim) ctx2.globalAlpha = 0.55;
+    roundRect(ctx2, r, 7);
+    if (o.selected) {
+      ctx2.shadowColor = C.glowStrong;
+      ctx2.shadowBlur = 14;
+    }
+    ctx2.fillStyle = g;
+    ctx2.fill();
+    ctx2.shadowBlur = 0;
+    ctx2.lineWidth = o.selected ? 2 : 1;
+    ctx2.strokeStyle = C.goldLine;
+    ctx2.stroke();
+    drawText(ctx2, info.name, r.x + r.w / 2, r.y + 16, { size: 14, bold: true, color: C.cardText, align: "center" });
+    ctx2.font = font(9);
+    const lines = wrapText(info.desc, r.w - 8, (s) => ctx2.measureText(s).width).slice(0, 4);
+    lines.forEach((line, i) => drawText(ctx2, line, r.x + r.w / 2, r.y + 34 + i * 12, { size: 9, color: C.cardText, align: "center" }));
+    ctx2.globalAlpha = 1;
+  }
+  function drawTryalChip(ctx2, r, kind, revealed, scaleX = 1) {
+    const w = r.w * Math.max(0.05, scaleX);
+    const x = r.x + (r.w - w) / 2;
+    const fill = !revealed || !kind ? C.tryalHidden : kind === "witch" ? C.witch : kind === "constable" ? C.constable : C.villager;
+    roundRect(ctx2, { x, y: r.y, w, h: r.h }, 2);
+    ctx2.fillStyle = fill;
+    ctx2.fill();
+    ctx2.lineWidth = 1;
+    ctx2.strokeStyle = revealed ? C.chipRevealedLine : C.goldDark;
+    ctx2.stroke();
+    if (revealed && kind && scaleX > 0.6) {
+      drawText(ctx2, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: C.badgeText, align: "center" });
     }
   }
-  if (line) lines.push(line);
-  return lines;
-}
 
-function render() {
-  ctx.fillStyle = '#16121c';
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.fillStyle = '#e8d9b5';
-  ctx.font = 'bold 18px sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('女巫镇 · 调试', GAP, TOP);
-  ctx.font = '14px sans-serif';
-  ctx.fillStyle = '#b9a8d8';
-  ctx.fillText(`房间号：${state.code || '（无）'}`, W / 2, TOP);
-
-  for (const b of buttons) {
-    ctx.fillStyle = '#3a2d4f';
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.fillStyle = '#f2ead3';
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
-    ctx.textAlign = 'left';
+  // src/scenes/widgets.ts
+  function button(id, r, label, onTap, style = "primary") {
+    return {
+      id,
+      rect: r,
+      onTap: onTap != null ? onTap : void 0,
+      draw: (ctx2) => drawButton(ctx2, r, label, onTap ? style : "disabled")
+    };
   }
-
-  ctx.font = '11px monospace';
-  ctx.fillStyle = '#cfc6dd';
-  ctx.textBaseline = 'top';
-  let y = logTop;
-  for (const entry of state.logs) {
-    for (const line of wrap(entry, W - GAP * 2)) {
-      if (y > H - 14) break;
-      ctx.fillText(line, GAP, y);
-      y += 14;
+  var BUSY_LABEL = "\u5904\u7406\u4E2D";
+  function requestButton(id, r, label, onTap, busy, style = "primary") {
+    return busy ? button(id, r, BUSY_LABEL, null, style) : button(id, r, label, onTap, style);
+  }
+  function textNode(r, text, o = {}) {
+    var _a;
+    const align = (_a = o.align) != null ? _a : "left";
+    const x = align === "center" ? r.x + r.w / 2 : align === "right" ? r.x + r.w : r.x;
+    return { rect: r, draw: (ctx2) => drawText(ctx2, text, x, r.y + r.h / 2, __spreadValues({ maxWidth: r.w }, o)) };
+  }
+  function skyNode(screen2, darkness) {
+    return { rect: rect(0, 0, screen2.W, screen2.H), draw: (ctx2) => drawSky(ctx2, screen2.W, screen2.H, darkness) };
+  }
+  function overlay(screen2, onTap) {
+    return {
+      id: "overlay",
+      rect: rect(0, 0, screen2.W, screen2.H),
+      onTap: onTap != null ? onTap : (() => {
+      }),
+      draw: (ctx2) => {
+        ctx2.fillStyle = C.overlay;
+        ctx2.fillRect(0, 0, screen2.W, screen2.H);
+      }
+    };
+  }
+  function sheet(screen2, height, title, onClose, slide = 1, subtitle) {
+    const h = Math.min(height, screen2.H - screen2.top);
+    const y = screen2.H - h * slide;
+    const panel = rect(0, y, screen2.W, h + 16);
+    const nodes = [
+      overlay(screen2, onClose != null ? onClose : void 0),
+      {
+        id: "sheet",
+        rect: panel,
+        onTap: () => {
+        },
+        draw: (ctx2) => {
+          drawPanel(ctx2, panel, { fill: C.panelSolid, stroke: C.goldLine, radius: 16 });
+          drawText(ctx2, title, 20, y + 26, { size: 17, bold: true, color: C.gold, maxWidth: screen2.W - 120 });
+          if (subtitle) drawText(ctx2, subtitle, 20, y + 50, { size: 12, color: C.textDim, maxWidth: screen2.W - 40 });
+        }
+      }
+    ];
+    if (onClose) nodes.push(button("sheet-close", rect(screen2.W - 76, y + 10, 60, 32), "\u5173\u95ED", onClose, "secondary"));
+    const bodyTop = y + (subtitle ? 66 : 50);
+    return { nodes, body: rect(16, bodyTop, screen2.W - 32, screen2.bottom - bodyTop - 12) };
+  }
+  function clampScroll(offset, contentH, viewH) {
+    const min = Math.min(0, viewH - contentH);
+    return Math.max(min, Math.min(0, offset));
+  }
+  var ScrollBox = class {
+    constructor() {
+      __publicField(this, "offset", 0);
+      __publicField(this, "contentH", 0);
     }
-    y += 4;
+    reset() {
+      this.offset = 0;
+    }
+    node(id, r, lines) {
+      return {
+        id,
+        rect: r,
+        clip: true,
+        onScroll: (dy) => {
+          this.offset = clampScroll(this.offset + dy, this.contentH, r.h);
+        },
+        draw: (ctx2) => {
+          var _a, _b;
+          const start = r.y + 4;
+          let y = start + this.offset;
+          for (const l of lines) {
+            const size = (_a = l.size) != null ? _a : 13;
+            ctx2.font = font(size, l.bold);
+            for (const t of wrapText(l.text, r.w - 8, (s) => ctx2.measureText(s).width)) {
+              drawText(ctx2, t, r.x + 4, y + size / 2, { size, color: l.color, bold: l.bold });
+              y += size + 6;
+            }
+            y += (_b = l.gap) != null ? _b : 0;
+          }
+          this.contentH = y - this.offset - start;
+        }
+      };
+    }
+  };
+
+  // src/scenes/home.ts
+  var RULE_LINES = RULES.flatMap((s) => [
+    { text: s.title, size: 15, bold: true, color: C.gold, gap: 2 },
+    ...s.items.map((t, i) => ({ text: `\xB7 ${t}`, size: 13, gap: i === s.items.length - 1 ? 10 : 0 }))
+  ]);
+  var HomeScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+      __publicField(this, "rules", false);
+      __publicField(this, "box", new ScrollBox());
+    }
+    build(_now) {
+      var _a;
+      const { W, H, top } = this.ui.screen;
+      const ctl2 = this.ui.ctl;
+      const busy = ctl2.busy;
+      const nodes = [skyNode(this.ui.screen, 0)];
+      const titleY = top + H * 0.14;
+      nodes.push({
+        rect: rect(0, titleY - 30, W, 100),
+        draw: (ctx2) => {
+          drawText(ctx2, "\u5973\u5DEB\u9547", W / 2, titleY, { size: 46, bold: true, color: C.gold, align: "center" });
+          drawText(ctx2, "Salem 1692 \xB7 \u670B\u53CB\u5C40", W / 2, titleY + 44, { size: 14, color: C.textDim, align: "center" });
+        }
+      });
+      const nick = (_a = ctl2.nickname) != null ? _a : "\uFF08\u672A\u8BBE\u7F6E\uFF09";
+      nodes.push({
+        id: "nickname",
+        rect: rect(W - 200, top, 188, 28),
+        onTap: () => this.ui.prompt("\u4FEE\u6539\u6635\u79F0", "1\u201312 \u4E2A\u5B57", (name) => ctl2.setNickname(name)),
+        draw: (ctx2) => drawText(ctx2, `\u6635\u79F0\uFF1A${nick} \u270E`, W - 12, top + 14, { size: 13, color: C.textDim, align: "right", maxWidth: 188 })
+      });
+      const bw = Math.min(280, W - 64);
+      const bx = (W - bw) / 2;
+      const y = H * 0.5;
+      nodes.push(
+        requestButton("join", rect(bx, y, bw, 54), "\u8F93\u5165\u623F\u53F7\u52A0\u5165", () => this.ui.prompt("\u8F93\u5165\u623F\u95F4\u53F7", "4 \u4F4D\u6570\u5B57", (code) => void ctl2.joinRoom(code)), busy),
+        requestButton("create", rect(bx, y + 70, bw, 48), "\u521B\u5EFA\u623F\u95F4", () => void ctl2.createRoom(), busy, "secondary"),
+        button("rules", rect(bx, y + 132, bw, 48), "\u89C4\u5219\u901F\u67E5", () => {
+          this.rules = true;
+          this.box.reset();
+        }, "secondary")
+      );
+      if (this.rules) {
+        const { nodes: panel, body } = sheet(this.ui.screen, this.ui.screen.H - top, "\u89C4\u5219\u901F\u67E5", () => this.rules = false);
+        nodes.push(...panel, this.box.node("rules-list", body, RULE_LINES));
+      }
+      return nodes;
+    }
+  };
+
+  // src/scenes/lobby.ts
+  var MAX = 12;
+  var MIN = 4;
+  var LobbyScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+    }
+    build(_now) {
+      const { W, top, bottom } = this.ui.screen;
+      const ctl2 = this.ui.ctl;
+      const room = ctl2.room;
+      if (!room) return [];
+      const isHost = room.host === ctl2.openid;
+      const busy = ctl2.busy;
+      const seats = room.seats;
+      const nodes = [skyNode(this.ui.screen, 0)];
+      nodes.push({
+        rect: rect(0, top, W, 90),
+        draw: (ctx2) => {
+          drawText(ctx2, "\u623F\u95F4\u53F7", W / 2, top + 12, { size: 13, color: C.textDim, align: "center" });
+          drawText(ctx2, room.code, W / 2, top + 54, { size: 46, bold: true, color: C.gold, align: "center" });
+        }
+      });
+      const half = (W - 24 - 10) / 2;
+      nodes.push(
+        button("copy", rect(12, top + 92, half, 38), "\u590D\u5236\u623F\u53F7", () => this.ui.copy(room.code), "secondary"),
+        button("invite", rect(12 + half + 10, top + 92, half, 38), "\u9080\u8BF7\u670B\u53CB", () => {
+          var _a;
+          return this.ui.share(`${(_a = ctl2.nickname) != null ? _a : "\u670B\u53CB"} \u9080\u8BF7\u4F60\u6765\u5973\u5DEB\u9547 \xB7 \u623F\u95F4 ${room.code}`, `room=${room.code}`);
+        }, "secondary"),
+        textNode(rect(12, top + 136, W - 24, 20), "\u628A\u623F\u53F7\u53D1\u5230\u7FA4\u91CC\uFF0C\u670B\u53CB\u5728\u9996\u9875\u8F93\u5165\u5C31\u80FD\u52A0\u5165", { size: 12, color: C.textDim, align: "center" })
+      );
+      const startY = bottom - 12 - 48;
+      const rowY = startY - 8 - 40;
+      const listTop = top + 164;
+      const rowH = Math.min(46, (rowY - 8 - listTop) / Math.max(seats.length, 1));
+      seats.forEach((s, i) => {
+        const r = rect(12, listTop + i * rowH, W - 24, rowH - 4);
+        const tags = [
+          s.openid === room.host ? "\u623F\u4E3B" : "",
+          s.openid.startsWith("bot-") ? "\u673A\u5668\u4EBA" : "",
+          s.openid === ctl2.openid ? "\u6211" : ""
+        ].filter(Boolean);
+        nodes.push({
+          rect: r,
+          draw: (ctx2) => {
+            drawPanel(ctx2, r, { radius: 8 });
+            drawBadge(ctx2, r.x + 20, r.y + r.h / 2, Math.min(14, r.h / 2 - 3), s.name, i);
+            drawText(ctx2, `${i + 1}. ${s.name}`, r.x + 42, r.y + r.h / 2, { size: 14, maxWidth: r.w - 170 });
+            if (tags.length) drawText(ctx2, tags.join(" \xB7 "), r.x + r.w - (isHost ? 84 : 10), r.y + r.h / 2, { size: 11, color: C.gold, align: "right" });
+          }
+        });
+        if (isHost) {
+          const bh = r.h - 8;
+          if (i > 0) nodes.push(button(`seat-up:${i}`, rect(r.x + r.w - 76, r.y + 4, 34, bh), "\u2191", busy ? null : () => void ctl2.moveSeat(i, -1), "secondary"));
+          if (i < seats.length - 1) nodes.push(button(`seat-down:${i}`, rect(r.x + r.w - 38, r.y + 4, 34, bh), "\u2193", busy ? null : () => void ctl2.moveSeat(i, 1), "secondary"));
+        }
+      });
+      const leave = () => this.ui.confirm("\u79BB\u5F00\u623F\u95F4\uFF1F", "\u79BB\u5F00\u540E\u53EF\u4EE5\u7528\u623F\u53F7\u91CD\u65B0\u52A0\u5165", () => void ctl2.leaveRoom());
+      if (isHost) {
+        nodes.push(
+          requestButton("leave", rect(12, rowY, half, 40), "\u79BB\u5F00", leave, busy, "danger"),
+          requestButton("add-bot", rect(12 + half + 10, rowY, half, 40), "\u52A0\u673A\u5668\u4EBA", seats.length >= MAX ? null : () => void ctl2.addBot(), busy, "secondary"),
+          requestButton("start", rect(12, startY, W - 24, 48), `\u5F00\u59CB\u6E38\u620F\uFF08${seats.length}/${MAX}\uFF09`, seats.length < MIN ? null : () => void ctl2.startGame(), busy)
+        );
+      } else {
+        nodes.push(
+          requestButton("leave", rect(12, rowY, W - 24, 40), "\u79BB\u5F00", leave, busy, "danger"),
+          textNode(rect(12, startY, W - 24, 48), `\u7B49\u5F85\u623F\u4E3B\u5F00\u59CB\u2026\uFF08${seats.length}/${MAX}\uFF09`, { size: 14, color: C.textDim, align: "center" })
+        );
+      }
+      return nodes;
+    }
+  };
+
+  // src/scenes/result.ts
+  var ResultScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+    }
+    build(_now) {
+      var _a;
+      const { W, top, bottom } = this.ui.screen;
+      const ctl2 = this.ui.ctl;
+      const view = (_a = ctl2.room) == null ? void 0 : _a.view;
+      if (!view || view.phase.kind !== "ended") return [];
+      const village = view.phase.winner === "village";
+      const mySeat = ctl2.room.seats.findIndex((s) => s.openid === ctl2.openid);
+      const nodes = [skyNode(this.ui.screen, village ? 0 : 0.6)];
+      nodes.push({
+        rect: rect(0, top, W, 90),
+        draw: (ctx2) => {
+          drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.danger, align: "center" });
+          drawText(ctx2, village ? "\u5973\u5DEB\u9635\u8425\u5168\u90E8\u51FA\u5C40" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
+        }
+      });
+      const btnY = bottom - 12 - 48;
+      const listTop = top + 100;
+      const rowH = Math.min(52, (btnY - 10 - listTop) / Math.max(1, view.players.length));
+      view.players.forEach((p, i) => {
+        const r = rect(12, listTop + i * rowH, W - 24, rowH - 4);
+        nodes.push({
+          rect: r,
+          draw: (ctx2) => {
+            drawPanel(ctx2, r, { stroke: p.witchFaction ? C.danger : C.panelLine });
+            drawBadge(ctx2, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat);
+            drawText(ctx2, `${p.name}${i === mySeat ? "\uFF08\u4F60\uFF09" : ""}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
+            drawText(ctx2, `${p.witchFaction ? "\u5973\u5DEB\u9635\u8425" : "\u6751\u6C11\u9635\u8425"} \xB7 ${p.alive ? "\u5B58\u6D3B" : "\u51FA\u5C40"}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.danger : C.textDim });
+            const cw = 12;
+            const x0 = r.x + r.w - 10 - p.tryals.length * (cw + 3);
+            p.tryals.forEach((t, j) => drawTryalChip(ctx2, rect(x0 + j * (cw + 3), r.y + r.h / 2 - 8, cw, 16), t.kind, true));
+          }
+        });
+      });
+      nodes.push(button("result-home", rect(12, btnY, W - 24, 48), "\u56DE\u5230\u9996\u9875", () => ctl2.backHome()));
+      return nodes;
+    }
+  };
+
+  // ../engine/src/cards.ts
+  var isRed = (k) => k === "accusation" || k === "evidence" || k === "witness";
+  var isBlack = (k) => k === "night" || k === "conspiracy";
+
+  // ../engine/src/play.ts
+  function targetCount(kind) {
+    return kind === "scapegoat" || kind === "robbery" ? 2 : 1;
   }
-  ctx.textBaseline = 'middle';
-}
 
-wx.onTouchStart((e) => {
-  const t = e.touches[0];
-  const hit = buttons.find((b) => t.clientX >= b.x && t.clientX <= b.x + b.w && t.clientY >= b.y && t.clientY <= b.y + b.h);
-  if (hit) hit.run();
-});
+  // src/model/actions.ts
+  var ALIBI_CHOICES = [
+    { value: "accusation", label: "\u4E22\u5F03\u6700\u591A 3 \u5F20\u6307\u63A7" },
+    { value: "evidence", label: "\u4E22\u5F03 1 \u5F20\u8BC1\u636E" }
+  ];
+  var DOCTOR_CHOICE = { value: "witness", label: "\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\u6253\u51FA\uFF087 \u70B9\uFF09" };
+  function playableCardIds(m) {
+    var _a;
+    if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn" || !m.priv) return [];
+    return m.priv.hand.filter((c) => !isBlack(c.kind)).map((c) => c.id);
+  }
+  function cardKindOf(m, id) {
+    var _a, _b, _c;
+    return (_c = (_b = (_a = m.priv) == null ? void 0 : _a.hand.find((c) => c.id === id)) == null ? void 0 : _b.kind) != null ? _c : null;
+  }
+  function targetOptions(m, kind, chosen) {
+    const out = [];
+    for (const p of m.view.players) {
+      if (!p.alive || chosen.includes(p.seat)) continue;
+      if (chosen.length === 0) {
+        if (isRed(kind) && (p.seat === m.mySeat || p.blue.some((c) => c.kind === "piety"))) continue;
+        if (kind === "matchmaker" && p.blue.some((c) => c.kind === "matchmaker")) continue;
+        if (kind === "stocks" && p.green.some((c) => c.kind === "stocks")) continue;
+        if (kind === "curse" && p.blue.length === 0) continue;
+      }
+      out.push(p.seat);
+    }
+    return out;
+  }
+  function optionNeed(m, kind, target) {
+    var _a;
+    const p = m.view.players[target];
+    if (!p) return null;
+    if (kind === "curse") return { kind: "curse", cards: p.blue };
+    if (kind === "alibi") {
+      const doctor = ((_a = m.me) == null ? void 0 : _a.ability) === "doctor" && target !== m.mySeat && !p.blue.some((c) => c.kind === "piety");
+      const kinds = [];
+      if (p.red.some((c) => c.kind === "accusation")) kinds.push("accusation");
+      if (p.red.some((c) => c.kind === "evidence")) kinds.push("evidence");
+      if (doctor) return { kind: "alibi", doctor: true, kinds };
+      return kinds.length === 2 ? { kind: "alibi", doctor: false, kinds } : null;
+    }
+    return null;
+  }
+  function nightSteps(p) {
+    const steps = [];
+    if (p.witch) steps.push("kill");
+    if (p.constable) steps.push("protect");
+    if (steps.length === 0) steps.push("suspect");
+    return steps;
+  }
+  function nightTargets(m, step) {
+    return m.view.players.filter((p) => p.alive && (step === "kill" || p.seat !== m.mySeat)).map((p) => p.seat);
+  }
+  function dawnTargets(m) {
+    return m.view.players.filter((p) => p.alive && p.ability !== "maid").map((p) => p.seat);
+  }
+  function unrevealedTryals(m) {
+    return m.priv ? m.priv.tryals.filter((t) => !t.revealed) : [];
+  }
 
-render();
+  // src/model/changes.ts
+  var ANIM_MS = { cardIn: 300, play: 450, night: 600, death: 500, reveal: 500, turn: 1800, panel: 250 };
+  var MAX_VERSION_STEP = 1 + 2 * 12;
+  var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
+  function diffTables(prev, next) {
+    var _a, _b, _c;
+    if (!prev || prev.code !== next.code || prev.view.log.length > next.view.log.length) return [];
+    if (next.view.version - prev.view.version > MAX_VERSION_STEP) return [];
+    const out = [];
+    if (prev.priv) {
+      const before = new Set(prev.priv.hand.map((c) => c.id));
+      for (const c of (_b = (_a = next.priv) == null ? void 0 : _a.hand) != null ? _b : []) if (!before.has(c.id)) out.push({ kind: "cardIn", id: c.id });
+    }
+    next.view.log.slice(prev.view.log.length).forEach((e, k) => {
+      if (e.t === "play") out.push({ kind: "play", index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
+    });
+    const wasNight = prev.view.phase.kind === "night";
+    const isNight = next.view.phase.kind === "night";
+    if (wasNight !== isNight) out.push({ kind: "night", on: isNight });
+    next.view.players.forEach((p, i) => {
+      const q = prev.view.players[i];
+      if (!q) return;
+      if (q.alive && !p.alive) out.push({ kind: "death", seat: i });
+      if (!p.alive) return;
+      p.tryals.forEach((t, j) => {
+        if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: "reveal", seat: i, index: j });
+      });
+    });
+    const turn = dayTurn(next);
+    if (turn !== null && turn !== dayTurn(prev)) out.push({ kind: "turn", seat: turn });
+    if (next.pending && next.pending.kind !== "turn" && ((_c = prev.pending) == null ? void 0 : _c.kind) !== next.pending.kind) out.push({ kind: "panel" });
+    return out;
+  }
+
+  // src/model/log.ts
+  var REVEAL_CAUSE = { trial: "\u5BA1\u5224", cat: "\u9ED1\u732B", confess: "\u81EA\u9996", death: "\u6B7B\u4EA1" };
+  var DEATH_CAUSE = {
+    night: "\u591C\u91CC\u88AB\u5973\u5DEB\u6740\u6B7B",
+    witchRevealed: "\u7FFB\u51FA\u4E86\u5973\u5DEB\u5361",
+    allRevealed: "\u8EAB\u4EFD\u5361\u5168\u90E8\u7FFB\u5F00",
+    lover: "\u60C5\u4FA3\u6B89\u60C5"
+  };
+  function abilityLine(e, name) {
+    var _a;
+    const who = `${name(e.seat)}\uFF08${CHAR_INFO[e.ability].name}\uFF09`;
+    const card = e.kind ? CARD_INFO[e.kind].name : "";
+    switch (e.ability) {
+      case "doctor":
+        return `${who} \u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\u6253\u51FA`;
+      case "beggar":
+      case "maid":
+        return `${who}\uFF1A\u300C${card}\u300D\u5BF9 TA \u65E0\u6548\uFF0C\u76F4\u63A5\u4E22\u5F03`;
+      case "landlord":
+        return `${who} \u62BD\u5230 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u540E\u518D\u62BD\u4E00\u5F20`;
+      case "priest":
+        return `${who} \u4ECE\u5F03\u724C\u5806\u62FF\u4E86 ${(_a = e.count) != null ? _a : 0} \u5F20\u724C`;
+      case "storyteller":
+        return `${who} \u8C03\u6574\u4E86\u724C\u5806\u987A\u5E8F`;
+      case "housewife":
+        return `${who}\uFF1A\u6709\u4EBA\u7684\u8EAB\u4EFD\u5361\u88AB\u7FFB\u5F00\uFF0C\u62BD\u4E00\u5F20\u724C`;
+      case "farmer":
+        return `${who} \u83B7\u5F97\u4E86 ${e.from === void 0 ? "\u6B7B\u8005" : name(e.from)} \u7684\u624B\u724C\u548C\u84DD\u5361`;
+      case "child":
+        return `${who} \u4E22\u5F03\u4E86\u81EA\u5DF1\u9762\u524D\u7684\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D`;
+      case "minister":
+        return `${who}\uFF1A\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9`;
+      case "official":
+        return `${who} \u81EA\u9996\uFF0C\u6CA1\u6709\u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "maiden":
+        return `${who} \u53D1\u8D77\u5BA1\u5224\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C`;
+      default:
+        return `${who} \u53D1\u52A8\u4E86\u6280\u80FD`;
+    }
+  }
+  function describeEvent(e, name) {
+    switch (e.t) {
+      case "gameStart":
+        return `\u6E38\u620F\u5F00\u59CB\uFF0C\u5171 ${e.players} \u4EBA`;
+      case "catPlaced":
+        return `\u5973\u5DEB\u628A\u9ED1\u732B\u653E\u5728\u4E86 ${name(e.target)} \u9762\u524D`;
+      case "turn":
+        return `\u8F6E\u5230 ${name(e.seat)}`;
+      case "skipped":
+        return `${name(e.seat)} \u88AB\u62D8\u7559\uFF0C\u8DF3\u8FC7\u8FD9\u4E00\u56DE\u5408`;
+      case "draw":
+        return `${name(e.seat)} \u62BD\u4E86 1 \u5F20\u724C`;
+      case "blackDrawn":
+        return `${name(e.seat)} \u62BD\u5230\u4E86\u300C${CARD_INFO[e.kind].name}\u300D`;
+      case "play": {
+        const card = CARD_INFO[e.kind].name;
+        if (e.targets.length === 2) return `${name(e.seat)} \u6253\u51FA\u300C${card}\u300D\uFF1A${name(e.targets[0])} \u2192 ${name(e.targets[1])}`;
+        if (e.targets[0] === e.seat) return `${name(e.seat)} \u7ED9\u81EA\u5DF1\u6253\u51FA\u300C${card}\u300D`;
+        return `${name(e.seat)} \u5BF9 ${name(e.targets[0])} \u6253\u51FA\u300C${card}\u300D`;
+      }
+      case "trial":
+        return `${name(e.target)} \u53D7\u5230\u5BA1\u5224\uFF08\u53D1\u8D77\u8005\uFF1A${name(e.initiator)}\uFF09`;
+      case "reveal":
+        return `${name(e.seat)} \u56E0${REVEAL_CAUSE[e.cause]}\u7FFB\u5F00\u4E86\u300C${TRYAL_NAME[e.kind]}\u300D`;
+      case "death":
+        return `${name(e.seat)} \u6B7B\u4EA1\uFF1A${DEATH_CAUSE[e.cause]}`;
+      case "conspiracyDone":
+        return "\u4F20\u67D3\u7ED3\u675F\uFF0C\u6BCF\u4E2A\u4EBA\u90FD\u62FF\u5230\u4E86\u4E00\u5F20\u65B0\u7684\u8EAB\u4EFD\u5361";
+      case "nightResult":
+        return e.died ? `\u591C\u91CC\uFF0C${name(e.target)} \u906D\u5230\u5973\u5DEB\u88AD\u51FB\u8EAB\u4EA1` : `\u591C\u91CC\uFF0C\u5973\u5DEB\u88AD\u51FB\u4E86 ${name(e.target)}\uFF0C\u4F46 TA \u6D3B\u4E86\u4E0B\u6765`;
+      case "reshuffle":
+        return "\u5F03\u724C\u5806\u6D17\u56DE\u4E86\u724C\u5806";
+      case "nightReset":
+        return "\u591C\u665A\u8FC7\u540E\uFF0C\u6240\u6709\u724C\u6536\u56DE\u91CD\u6D17\uFF0C\u6BCF\u4EBA\u91CD\u65B0\u53D1 3 \u5F20";
+      case "character":
+        return `${name(e.seat)} \u7684\u89D2\u8272\u662F\u300C${CHAR_INFO[e.character].name}\u300D`;
+      case "ability":
+        return abilityLine(e, name);
+      case "gameEnd":
+        return e.winner === "village" ? "\u6751\u6C11\u80DC\u5229\uFF01" : "\u5973\u5DEB\u80DC\u5229\uFF01";
+    }
+  }
+  function visibleEvents(view) {
+    return view.log.filter((e) => !(e.t === "reveal" && e.cause === "death"));
+  }
+  function logLines(view) {
+    const name = (seat) => {
+      var _a, _b;
+      return (_b = (_a = view.players[seat]) == null ? void 0 : _a.name) != null ? _b : `\u5EA7\u4F4D ${seat + 1}`;
+    };
+    return visibleEvents(view).map((e) => describeEvent(e, name));
+  }
+
+  // src/model/table.ts
+  function currentHand(room, hand) {
+    if (!hand || !room.gameId || hand.gameId !== room.gameId || hand.roomId !== room.code) return null;
+    return hand;
+  }
+  function buildTable(room, hand, openid) {
+    var _a;
+    const view = room.view;
+    if (!view) return null;
+    const idx = room.seats.findIndex((s) => s.openid === openid);
+    const mySeat = idx >= 0 && idx < view.players.length ? idx : null;
+    const n = view.players.length;
+    const others = mySeat === null ? view.players : Array.from({ length: n - 1 }, (_, k) => view.players[(mySeat + 1 + k) % n]);
+    const h = currentHand(room, hand);
+    const priv = h && mySeat !== null && h.view.seat === mySeat ? h.view : null;
+    const me = mySeat === null ? null : view.players[mySeat];
+    return {
+      code: room.code,
+      view,
+      mySeat,
+      me,
+      priv,
+      others,
+      turnSeat: view.turn,
+      isMyTurn: view.phase.kind === "day" && view.turn === mySeat && !!(me == null ? void 0 : me.alive),
+      pending: (_a = priv == null ? void 0 : priv.pending) != null ? _a : null,
+      deadline: room.deadline,
+      winner: view.phase.kind === "ended" ? view.phase.winner : null
+    };
+  }
+  function isPartner(m, seat) {
+    var _a, _b;
+    return (_b = (_a = m.priv) == null ? void 0 : _a.witchPartners.includes(seat)) != null ? _b : false;
+  }
+  function nameOf(m, seat) {
+    var _a, _b;
+    return seat === m.mySeat ? "\u4F60" : (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.name) != null ? _b : "";
+  }
+  function phaseTitle(m) {
+    const ph = m.view.phase;
+    switch (ph.kind) {
+      case "characterPick":
+        return "\u9009\u62E9\u89D2\u8272";
+      case "storytelling":
+        return ph.seat === m.mySeat ? "\u8C03\u6574\u724C\u5806" : `${m.view.players[ph.seat].name} \u6B63\u5728\u8C03\u6574\u724C\u5806`;
+      case "dawn":
+        return "\u7B2C\u4E00\u591C\uFF1A\u5973\u5DEB\u653E\u7F6E\u9ED1\u732B";
+      case "day":
+        return m.isMyTurn ? "\u4F60\u7684\u56DE\u5408" : `${m.view.players[m.turnSeat].name} \u7684\u56DE\u5408`;
+      case "trialReveal":
+        return `\u5BA1\u5224\uFF1A${nameOf(m, ph.target)} \u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "catReveal":
+        return `\u4F20\u67D3\uFF1A${nameOf(m, ph.holder)} \u7FFB\u5F00\u8EAB\u4EFD\u5361`;
+      case "conspiracyPick":
+        return "\u4F20\u67D3\uFF1A\u5927\u5BB6\u76F2\u62BD\u8EAB\u4EFD\u5361";
+      case "night":
+        return "\u591C\u665A";
+      case "ended":
+        return ph.winner === "village" ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229";
+    }
+  }
+  function formatCountdown(deadline, now) {
+    if (deadline === null) return "";
+    const s = Math.max(0, Math.ceil((deadline - now) / 1e3));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  // src/scenes/choicePanels.ts
+  function choiceKey(m) {
+    if (!m.pending) return "";
+    if (m.pending.kind === "characterPick") return `characterPick:${m.view.phase.kind}`;
+    return `${m.pending.kind}:${m.view.phase.kind}:${m.view.log.length}`;
+  }
+  var SEAT_NORMAL = { h: 36, gap: 6 };
+  var SEAT_COMPACT = { h: 28, gap: 4 };
+  var SEAT_COLS = 4;
+  var seatGridHeight = (count, size) => Math.ceil(count / SEAT_COLS) * (size.h + size.gap);
+  function seatGrid(m, area, prefix, seats, selected, marks, onPick, size = SEAT_NORMAL) {
+    const cols = SEAT_COLS;
+    const { h, gap } = size;
+    const w = (area.w - gap * (cols - 1)) / cols;
+    const nodes = seats.map((seat, i) => {
+      var _a;
+      const r = rect(area.x + i % cols * (w + gap), area.y + Math.floor(i / cols) * (h + gap), w, h);
+      const p = m.view.players[seat];
+      const partner = isPartner(m, seat);
+      const mark = [...partner ? ["\u540C\u4F34"] : [], ...(_a = marks[seat]) != null ? _a : []].join("\u3001");
+      return {
+        id: `${prefix}:${seat}`,
+        rect: r,
+        onTap: onPick ? () => onPick(seat) : void 0,
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : partner ? C.danger : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
+          drawBadge(ctx2, r.x + 13, r.y + h / 2, 9, p.name, seat);
+          drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
+          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
+        }
+      };
+    });
+    return { nodes, height: seatGridHeight(seats.length, size) };
+  }
+  function votesToMarks(m, votes) {
+    var _a;
+    const marks = {};
+    for (const [voter, target] of Object.entries(votes != null ? votes : {})) ((_a = marks[target]) != null ? _a : marks[target] = []).push(nameOf(m, Number(voter)));
+    return marks;
+  }
+  var CHIP_GAP = 8;
+  var chipWidth = (areaW, n, maxW) => Math.min(maxW, (areaW - CHIP_GAP * (n - 1)) / Math.max(1, n));
+  var tryalRowHeight = (areaW, n, labels, maxW) => Math.round(chipWidth(areaW, n, maxW) * 1.3) + (labels ? 20 : 4);
+  function tryalRow(area, items, prefix, selected, onPick, maxW = 52) {
+    const n = items.length;
+    const gap = CHIP_GAP;
+    const w = chipWidth(area.w, n, maxW);
+    const h = Math.round(w * 1.3);
+    const x0 = area.x + (area.w - (n * w + (n - 1) * gap)) / 2;
+    const nodes = items.map((it, i) => {
+      const r = rect(x0 + i * (w + gap), area.y, w, h);
+      const sel = selected === it.id || selected === i;
+      return {
+        id: `${prefix}:${it.id}`,
+        rect: r,
+        onTap: () => onPick(it.id, i),
+        draw: (ctx2) => {
+          drawTryalChip(ctx2, r, it.kind, it.kind !== null);
+          if (sel) drawPanel(ctx2, rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6), { fill: C.transparent, stroke: C.gold, lineWidth: 2, radius: 4 });
+          if (it.kind) drawText(ctx2, TRYAL_NAME[it.kind], r.x + w / 2, r.y + h + 11, { size: 11, align: "center" });
+        }
+      };
+    });
+    return { nodes, height: tryalRowHeight(area.w, n, items.some((x) => x.kind), maxW) };
+  }
+  function choicePanel(ui2, m, st, now, slide = 1) {
+    var _a;
+    const p = m.pending;
+    if (!p || p.kind === "turn") return [];
+    const key = choiceKey(m);
+    if (st.key !== key) {
+      st.key = key;
+      st.picked = null;
+      st.suspect = null;
+    }
+    const cd = formatCountdown(m.deadline, now);
+    const busy = ui2.ctl.busy;
+    const act = ui2.ctl.act.bind(ui2.ctl);
+    if (p.kind === "storytelling") return [];
+    if (p.kind === "characterPick") return characterPanel(ui2, m, p, st, cd, slide);
+    if (p.kind === "revealTryal") {
+      const title = p.reason === "trial" ? "\u4F60\u53D7\u5230\u5BA1\u5224\uFF1A\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361" : "\u4F20\u67D3\uFF1A\u4F60\u6301\u6709\u9ED1\u732B\uFF0C\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361";
+      const { nodes, body } = sheet(ui2.screen, 320, title, null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u968F\u673A\u7FFB\u5F00`);
+      const tryals = unrevealedTryals(m);
+      const row = tryalRow(body, tryals.map((t) => ({ id: t.id, kind: t.kind })), "tryal", st.picked, (id) => st.picked = id);
+      nodes.push(...row.nodes);
+      const picked = tryals.find((t) => t.id === st.picked);
+      let y = body.y + row.height + 8;
+      if ((picked == null ? void 0 : picked.kind) === "witch") {
+        nodes.push(textNode(rect(body.x, y, body.w, 20), "\u7FFB\u5F00\u5973\u5DEB\u5361\u4F1A\u7ACB\u5373\u6B7B\u4EA1", { size: 13, color: C.danger, align: "center" }));
+      }
+      y += 28;
+      nodes.push(requestButton("confirm-reveal", rect(body.x, y, body.w, 44), "\u786E\u8BA4\u7FFB\u5F00", picked ? () => void act({ type: "revealTryal", tryalId: picked.id }) : null, busy));
+      return nodes;
+    }
+    if (p.kind === "conspiracyPick") {
+      const from = m.view.players[p.from];
+      const { nodes, body } = sheet(ui2.screen, 300, `\u4F20\u67D3\uFF1A\u4ECE ${from.name} \u7684\u8EAB\u4EFD\u5361\u91CC\u76F2\u62BD\u4E00\u5F20`, null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u968F\u673A\u62BD\u53D6`);
+      const items = Array.from({ length: p.count }, (_, i) => ({ id: String(i), kind: null }));
+      const row = tryalRow(body, items, "pick", st.picked, (_id, i) => st.picked = i);
+      nodes.push(...row.nodes);
+      const idx = typeof st.picked === "number" ? st.picked : null;
+      nodes.push(requestButton("confirm-pick", rect(body.x, body.y + row.height + 16, body.w, 44), "\u62FF\u8FD9\u5F20", idx !== null ? () => void act({ type: "conspiracyPick", index: idx }) : null, busy));
+      return nodes;
+    }
+    if (p.kind === "dawnVote") {
+      const { nodes, body } = sheet(ui2.screen, 360, "\u7B2C\u4E00\u591C\uFF1A\u548C\u540C\u4F34\u4E00\u8D77\u9009\u62E9\u9ED1\u732B\u7684\u4E3B\u4EBA", null, slide, `\u540C\u4F34\u9009\u62E9\u4E00\u81F4\u540E\u751F\u6548 \xB7 \u5269\u4F59 ${cd}`);
+      const mine = m.mySeat !== null ? (_a = p.votes[m.mySeat]) != null ? _a : null : null;
+      const grid = seatGrid(m, body, "vote", dawnTargets(m), mine, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }));
+      nodes.push(...grid.nodes);
+      return nodes;
+    }
+    return nightPanel(ui2, m, p, st, cd, slide);
+  }
+  var STEP_TITLE = {
+    kill: "\u9009\u62E9\u51FB\u6740\u76EE\u6807\uFF08\u540C\u4F34\u987B\u4E00\u81F4\uFF09",
+    protect: "\u9009\u62E9\u4FDD\u62A4\u4E00\u540D\u73A9\u5BB6\uFF08\u4E0D\u80FD\u662F\u81EA\u5DF1\uFF09",
+    suspect: "\u9009\u62E9\u4F60\u6000\u7591\u7684\u4EBA"
+  };
+  var NIGHT_LEVELS = [
+    { seat: SEAT_NORMAL, chip: 52 },
+    { seat: SEAT_COMPACT, chip: 52 },
+    { seat: SEAT_COMPACT, chip: 40 },
+    { seat: SEAT_COMPACT, chip: 30 }
+  ];
+  var NIGHT_BUTTON_H = 42;
+  function nightPanel(ui2, m, p, st, cd, slide) {
+    var _a, _b, _c, _d, _e;
+    const busy = ui2.ctl.busy;
+    const act = ui2.ctl.act.bind(ui2.ctl);
+    const sheetH = ui2.screen.H - ui2.screen.top;
+    const { nodes, body } = sheet(ui2.screen, sheetH, "\u591C\u665A", null, slide, `\u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u5C06\u81EA\u52A8\u5904\u7406`);
+    const bodyH = body.h + sheetH * (1 - slide);
+    const steps = nightSteps(p).map((step) => ({ step, seats: nightTargets(m, step) }));
+    const tryals = p.confessed ? [] : unrevealedTryals(m);
+    const silentLeft = !p.confessed && ((_a = m.me) == null ? void 0 : _a.ability) === "official" ? (_b = m.me.usesLeft) != null ? _b : 0 : 0;
+    const btnY = body.y + bodyH - NIGHT_BUTTON_H;
+    const silentY = btnY - NIGHT_BUTTON_H - 8;
+    const avail = p.confessed ? bodyH - 24 : (silentLeft > 0 ? silentY : btnY) - body.y;
+    const need = (lv2) => steps.reduce((sum, x) => sum + 24 + seatGridHeight(x.seats.length, lv2.seat) + 8, 0) + (p.confessed ? 0 : 26 + tryalRowHeight(body.w, tryals.length, tryals.length > 0, lv2.chip) + 6);
+    const lv = (_c = NIGHT_LEVELS.find((l) => need(l) <= avail)) != null ? _c : NIGHT_LEVELS[NIGHT_LEVELS.length - 1];
+    let y = body.y;
+    for (const { step, seats } of steps) {
+      nodes.push(textNode(rect(body.x, y, body.w, 20), STEP_TITLE[step], { size: 13, color: C.gold }));
+      y += 24;
+      const area = rect(body.x, y, body.w, 0);
+      const grid = step === "kill" ? seatGrid(m, area, "kill", seats, m.mySeat !== null ? (_e = (_d = p.votes) == null ? void 0 : _d[m.mySeat]) != null ? _e : null : null, votesToMarks(m, p.votes), busy ? null : (seat) => void act({ type: "witchVote", target: seat }), lv.seat) : step === "protect" ? seatGrid(m, area, "protect", seats, p.protect, {}, busy ? null : (seat) => void act({ type: "protect", target: seat }), lv.seat) : seatGrid(m, area, "suspect", seats, st.suspect, {}, (seat) => st.suspect = seat, lv.seat);
+      nodes.push(...grid.nodes);
+      y += grid.height + 8;
+    }
+    if (p.confessed) {
+      nodes.push(textNode(rect(body.x, y, body.w, 24), "\u81EA\u9996\uFF1A\u5DF2\u51B3\u5B9A\u3002\u7B49\u5F85\u5176\u4ED6\u73A9\u5BB6\u2026", { size: 13, color: C.textDim }));
+      return nodes;
+    }
+    nodes.push(textNode(rect(body.x, y, body.w, 20), "\u662F\u5426\u81EA\u9996\uFF1F\u81EA\u9996\u8981\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF0C\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740", { size: 13, color: C.gold }));
+    y += 26;
+    const row = tryalRow(rect(body.x, y, body.w, 0), tryals.map((t) => ({ id: t.id, kind: t.kind })), "confess", st.picked, (id) => st.picked = id, lv.chip);
+    nodes.push(...row.nodes);
+    const half = (body.w - 10) / 2;
+    const picked = typeof st.picked === "string" ? st.picked : null;
+    nodes.push(
+      requestButton("no-confess", rect(body.x, btnY, half, NIGHT_BUTTON_H), "\u4E0D\u81EA\u9996", () => void act({ type: "confess", tryalId: null }), busy, "secondary"),
+      requestButton("confirm-confess", rect(body.x + half + 10, btnY, half, NIGHT_BUTTON_H), "\u81EA\u9996", picked ? () => void act({ type: "confess", tryalId: picked }) : null, busy, "danger")
+    );
+    if (silentLeft > 0) {
+      nodes.push(
+        requestButton(
+          "silent-confess",
+          rect(body.x, silentY, body.w, NIGHT_BUTTON_H),
+          `\u4E0D\u7FFB\u724C\u81EA\u9996\uFF08\u5269 ${silentLeft} \u6B21\uFF09`,
+          () => void act({ type: "confess", tryalId: null, silent: true }),
+          busy,
+          "secondary"
+        )
+      );
+    }
+    return nodes;
+  }
+  function characterPanel(ui2, _m, p, st, cd, slide) {
+    const { nodes, body } = sheet(ui2.screen, 400, "\u9009\u62E9\u4F60\u7684\u89D2\u8272", null, slide, `\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00 \xB7 \u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u968F\u673A\u9009\u62E9`);
+    const gap = 10;
+    const w = (body.w - gap) / 2;
+    const h = Math.min(200, body.h - 60);
+    p.offers.forEach((c, i) => {
+      const r = rect(body.x + i * (w + gap), body.y, w, h);
+      nodes.push({
+        id: `character:${c}`,
+        rect: r,
+        onTap: () => st.picked = i,
+        draw: (ctx2) => {
+          const sel = st.picked === i;
+          drawPanel(ctx2, r, { fill: sel ? goldGlow(0.2) : C.panel, stroke: sel ? C.gold : C.panelLine, lineWidth: sel ? 2 : 1 });
+          drawText(ctx2, CHAR_INFO[c].name, r.x + r.w / 2, r.y + 28, { size: 20, bold: true, color: C.gold, align: "center" });
+          ctx2.font = font(13);
+          wrapText(CHAR_INFO[c].desc, r.w - 20, (s) => ctx2.measureText(s).width).forEach(
+            (line, k) => drawText(ctx2, line, r.x + 10, r.y + 62 + k * 20, { size: 13 })
+          );
+        }
+      });
+    });
+    const idx = typeof st.picked === "number" ? st.picked : null;
+    nodes.push(
+      requestButton(
+        "confirm-character",
+        rect(body.x, body.y + h + 16, body.w, 44),
+        "\u9009\u8FD9\u4E2A\u89D2\u8272",
+        idx !== null ? () => void ui2.ctl.act({ type: "pickCharacter", index: idx }) : null,
+        ui2.ctl.busy
+      )
+    );
+    return nodes;
+  }
+
+  // src/scenes/abilityPanels.ts
+  function priestPanel(ui2, m, picked, close) {
+    const { nodes, body } = sheet(ui2.screen, 420, "\u7267\u5E08\uFF1A\u4ECE\u5F03\u724C\u5806\u62FF\u724C", close, 1, "\u9009 1\u20132 \u5F20\u975E\u9ED1\u5361\uFF0C\u62FF\u5B8C\u56DE\u5408\u7ED3\u675F");
+    const pool = m.view.discard.filter((c) => !isBlack(c.kind));
+    const kinds = [...new Set(pool.map((c) => c.kind))];
+    const cols = 4;
+    const gap = 8;
+    const w = (body.w - gap * (cols - 1)) / cols;
+    const h = 56;
+    kinds.forEach((kind, i) => {
+      const r = rect(body.x + i % cols * (w + gap), body.y + Math.floor(i / cols) * (h + gap), w, h);
+      const ids = pool.filter((c) => c.kind === kind).map((c) => c.id);
+      const mine = picked.filter((id) => ids.includes(id)).length;
+      nodes.push({
+        id: `priest:${kind}`,
+        rect: r,
+        onTap: () => {
+          const free = ids.find((id) => !picked.includes(id));
+          if (free && picked.length < 2) {
+            picked.push(free);
+            return;
+          }
+          for (const id of ids) {
+            const k = picked.indexOf(id);
+            if (k >= 0) picked.splice(k, 1);
+          }
+        },
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: mine ? goldGlow(0.2) : C.panel, stroke: mine ? C.gold : C.panelLine, lineWidth: mine ? 2 : 1 });
+          drawText(ctx2, CARD_INFO[kind].name, r.x + r.w / 2, r.y + 20, { size: 14, align: "center" });
+          drawText(ctx2, mine ? `\u5DF2\u9009 ${mine} / ${ids.length}` : `${ids.length} \u5F20`, r.x + r.w / 2, r.y + 40, {
+            size: 11,
+            align: "center",
+            color: mine ? C.gold : C.textDim
+          });
+        }
+      });
+    });
+    const y = body.y + Math.ceil(kinds.length / cols) * (h + gap) + 8;
+    nodes.push(
+      requestButton(
+        "confirm-priest",
+        rect(body.x, y, body.w, 44),
+        picked.length ? `\u62FF\u8FD9 ${picked.length} \u5F20` : "\u9009\u62E9\u8981\u62FF\u7684\u724C",
+        picked.length ? () => void ui2.ctl.act({ type: "priestDraw", cardIds: [...picked] }) : null,
+        ui2.ctl.busy
+      )
+    );
+    return nodes;
+  }
+
+  // src/scenes/infoPanels.ts
+  function countNames(names) {
+    var _a;
+    const counts = /* @__PURE__ */ new Map();
+    for (const n of names) counts.set(n, ((_a = counts.get(n)) != null ? _a : 0) + 1);
+    return [...counts].map(([n, k]) => k > 1 ? `${n}\xD7${k}` : n).join("\u3001");
+  }
+  function characterLines(p) {
+    if (!p.character) return [];
+    const c = CHAR_INFO[p.character];
+    const lines = [`\u89D2\u8272\uFF1A${c.name}\u2014\u2014${c.desc}`];
+    if (p.character === "tailor") {
+      lines.push(p.ability ? `\u5F53\u524D\u6280\u80FD\uFF1A${CHAR_INFO[p.ability].name}\u2014\u2014${CHAR_INFO[p.ability].desc}` : "\u5F53\u524D\u6280\u80FD\uFF1A\u65E0\uFF08\u53F3\u624B\u8FB9\u7684\u4EBA\u6CA1\u6709\u89D2\u8272\uFF09");
+    }
+    if (p.usesLeft !== null) lines.push(`\u6280\u80FD\u5269\u4F59\u6B21\u6570\uFF1A${p.usesLeft}`);
+    return lines;
+  }
+  function detailPanel(ui2, m, seat, close) {
+    const p = m.view.players[seat];
+    const { nodes, body } = sheet(ui2.screen, 420, `${p.name}${seat === m.mySeat ? "\uFF08\u4F60\uFF09" : ""}${p.alive ? "" : "\uFF08\u5DF2\u51FA\u5C40\uFF09"}`, close);
+    const revealed = p.tryals.filter((t) => t.revealed && t.kind).map((t) => TRYAL_NAME[t.kind]);
+    const reds = countNames(p.red.map((c) => CARD_INFO[c.kind].name));
+    const lines = [
+      ...characterLines(p),
+      `\u6307\u63A7\uFF1A${p.redTotal} / ${p.threshold}${reds ? `\uFF08${reds}\uFF09` : ""}`,
+      `\u84DD\u5361\uFF1A${p.blue.length ? countNames(p.blue.map((c) => CARD_INFO[c.kind].name)) : "\u65E0"}`,
+      ...p.green.length ? [`\u9762\u524D\uFF1A${countNames(p.green.map((c) => CARD_INFO[c.kind].name))}`] : [],
+      `\u624B\u724C\uFF1A${p.handCount} \u5F20`,
+      `\u8EAB\u4EFD\u5361\uFF1A${p.tryals.length - revealed.length} \u5F20\u672A\u7FFB\u5F00${revealed.length ? `\uFF1B\u5DF2\u7FFB\u5F00 ${revealed.join("\u3001")}` : ""}`
+    ];
+    nodes.push({
+      id: "detail-body",
+      rect: body,
+      draw: (ctx2) => {
+        ctx2.font = font(14);
+        let y = body.y + 12;
+        for (const line of lines) {
+          for (const t of wrapText(line, body.w, (s) => ctx2.measureText(s).width)) {
+            drawText(ctx2, t, body.x, y, { size: 14 });
+            y += 22;
+          }
+          y += 6;
+        }
+      }
+    });
+    return nodes;
+  }
+  function myTryalsPanel(ui2, m, close) {
+    const { nodes, body } = sheet(ui2.screen, 320, "\u6211\u7684\u8EAB\u4EFD\u5361", close, 1, "\u53EA\u6709\u4F60\u81EA\u5DF1\u80FD\u770B\u5230");
+    const priv = m.priv;
+    if (!priv) return nodes;
+    const n = priv.tryals.length;
+    const w = Math.min(56, (body.w - 8 * (n - 1)) / Math.max(1, n));
+    const h = Math.round(w * 1.35);
+    const x0 = body.x + (body.w - (n * w + (n - 1) * 8)) / 2;
+    const partners = priv.witchPartners.map((s) => nameOf(m, s)).join("\u3001");
+    const lines = [
+      priv.witchFaction ? `\u4F60\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\u3002\u540C\u4F34\uFF1A${partners || "\u6CA1\u6709"}` : "\u4F60\u5C5E\u4E8E\u6751\u6C11\u9635\u8425\u3002",
+      ...priv.isConstable ? ["\u4F60\u6301\u6709\u8B66\u957F\u5361\uFF1A\u591C\u665A\u53EF\u4EE5\u4FDD\u62A4\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6\u3002"] : []
+    ];
+    nodes.push({
+      id: "my-tryals",
+      rect: body,
+      draw: (ctx2) => {
+        priv.tryals.forEach((t, i) => {
+          const r = rect(x0 + i * (w + 8), body.y + 6, w, h);
+          drawTryalChip(ctx2, r, t.kind, true);
+          drawText(ctx2, `${TRYAL_NAME[t.kind]}${t.revealed ? "\xB7\u5DF2\u7FFB\u5F00" : ""}`, r.x + w / 2, r.y + h + 12, { size: 11, align: "center", color: t.revealed ? C.textMuted : C.text });
+        });
+        lines.forEach((t, i) => drawText(ctx2, t, body.x, body.y + h + 44 + i * 24, { size: 13, color: C.gold, maxWidth: body.w }));
+      }
+    });
+    return nodes;
+  }
+  function logPanel(ui2, m, box, close) {
+    const { nodes, body } = sheet(ui2.screen, ui2.screen.H * 0.8, "\u4E8B\u4EF6\u8BB0\u5F55", close, 1, "\u6700\u65B0\u7684\u5728\u6700\u4E0A\u9762");
+    const lines = logLines(m.view).reverse().map((text, i) => ({ text, size: 13, color: i === 0 ? C.text : C.textDim, gap: 2 }));
+    nodes.push(box.node("log-list", body, lines));
+    return nodes;
+  }
+  var COLOR_GROUPS = [
+    ["\u7EA2\u5361", "red"],
+    ["\u84DD\u5361", "blue"],
+    ["\u7EFF\u5361", "green"],
+    ["\u9ED1\u5361", "black"]
+  ];
+  function discardPanel(ui2, m, box, close) {
+    const discard = m.view.discard;
+    const { nodes, body } = sheet(ui2.screen, ui2.screen.H * 0.6, `\u5F03\u724C\u5806\uFF08${discard.length} \u5F20\uFF09`, close, 1, "\u6240\u6709\u4EBA\u90FD\u53EF\u4EE5\u67E5\u770B");
+    const lines = COLOR_GROUPS.flatMap(([title, color]) => {
+      const names = discard.filter((c) => CARD_INFO[c.kind].color === color).map((c) => CARD_INFO[c.kind].name);
+      return names.length ? [{ text: `${title}\uFF1A${countNames(names)}`, size: 14, gap: 8 }] : [];
+    });
+    nodes.push(box.node("discard-list", body, lines.length ? lines : [{ text: "\u5F03\u724C\u5806\u662F\u7A7A\u7684", color: C.textMuted }]));
+    return nodes;
+  }
+
+  // src/scenes/storyBoard.ts
+  var ROW_H = 52;
+  var HANDLE_W = 48;
+  var EDGE = 70;
+  var MAX_SPEED = 14;
+  var StoryBoard = class {
+    constructor() {
+      __publicField(this, "key", "");
+      __publicField(this, "order", []);
+      __publicField(this, "scroll", 0);
+      __publicField(this, "drag", null);
+      __publicField(this, "list", null);
+    }
+    build(ui2, m, deck, now) {
+      const key = deck.map((c) => c.id).join(",");
+      if (key !== this.key) {
+        this.key = key;
+        this.order = deck.map((c) => c.id);
+        this.scroll = 0;
+        this.drag = null;
+      }
+      const byId = new Map(deck.map((c) => [c.id, c]));
+      const S = ui2.screen;
+      const { nodes, body } = sheet(
+        S,
+        S.H - S.top,
+        "\u8BF4\u4E66\u4EBA\uFF1A\u8C03\u6574\u724C\u5806",
+        null,
+        1,
+        `\u4E0A\u9762\u662F\u724C\u5806\u9876 \xB7 \u6309\u4F4F\u53F3\u4FA7 \u2261 \u62D6\u52A8 \xB7 \u5269\u4F59 ${formatCountdown(m.deadline, now)}`
+      );
+      const btnH = 44;
+      const list = rect(body.x, body.y, body.w, body.h - btnH - 12);
+      this.list = list;
+      const contentH = this.order.length * ROW_H;
+      this.scroll = clampScroll(this.scroll, contentH, list.h);
+      nodes.push({
+        id: "story-list",
+        rect: list,
+        clip: true,
+        onScroll: (dy) => {
+          if (!this.drag) this.scroll = clampScroll(this.scroll + dy, contentH, list.h);
+        },
+        draw: (ctx2) => {
+          this.order.forEach((id, i) => {
+            var _a;
+            const y = list.y + this.scroll + i * ROW_H;
+            if (y + ROW_H < list.y || y > list.y + list.h) return;
+            const r = rect(list.x, y, list.w, ROW_H - 6);
+            if (((_a = this.drag) == null ? void 0 : _a.id) === id) drawPanel(ctx2, r, { fill: C.transparent, stroke: C.goldDark });
+            else drawRow(ctx2, r, byId.get(id), i, false);
+          });
+        }
+      });
+      this.order.forEach((id, i) => {
+        const y = list.y + this.scroll + i * ROW_H;
+        const top = Math.max(y, list.y);
+        const bottom = Math.min(y + ROW_H - 6, list.y + list.h);
+        if (bottom <= top) return;
+        nodes.push({
+          id: `handle:${id}`,
+          rect: rect(list.x + list.w - HANDLE_W, top, HANDLE_W, bottom - top),
+          onPress: (_x, py) => this.press(id, py)
+        });
+      });
+      const d = this.drag;
+      if (d) {
+        const gy = Math.max(list.y - 20, Math.min(list.y + list.h - ROW_H + 26, d.y - d.grab));
+        const r = rect(list.x, gy, list.w, ROW_H - 6);
+        const card = byId.get(d.id);
+        const index = this.order.indexOf(d.id);
+        nodes.push({ id: "story-ghost", rect: r, draw: (ctx2) => drawRow(ctx2, r, card, index, true) });
+      }
+      const half = (body.w - 10) / 2;
+      const by = list.y + list.h + 12;
+      nodes.push(
+        button("story-reset", rect(body.x, by, half, btnH), "\u8FD8\u539F", () => {
+          this.order = deck.map((c) => c.id);
+        }, "secondary"),
+        requestButton(
+          "story-confirm",
+          rect(body.x + half + 10, by, half, btnH),
+          "\u786E\u8BA4\u987A\u5E8F",
+          () => void ui2.ctl.act({ type: "storyReorder", order: [...this.order] }),
+          ui2.ctl.busy
+        )
+      );
+      return nodes;
+    }
+    press(id, y) {
+      const list = this.list;
+      const i = this.order.indexOf(id);
+      this.drag = { id, y, grab: y - (list.y + this.scroll + i * ROW_H) };
+      return {
+        move: (_x, ny) => {
+          if (!this.drag) return;
+          this.drag.y = ny;
+          this.follow();
+        },
+        frame: () => this.autoScroll(),
+        end: () => {
+          this.drag = null;
+        }
+      };
+    }
+    /** 手指靠近列表上下边缘时滚动，越靠边越快 */
+    autoScroll() {
+      const d = this.drag;
+      const list = this.list;
+      if (!d || !list) return;
+      const contentH = this.order.length * ROW_H;
+      if (d.y < list.y + EDGE) this.scroll += Math.ceil((list.y + EDGE - d.y) / EDGE * MAX_SPEED);
+      else if (d.y > list.y + list.h - EDGE) this.scroll -= Math.ceil((d.y - (list.y + list.h - EDGE)) / EDGE * MAX_SPEED);
+      else return;
+      this.scroll = clampScroll(this.scroll, contentH, list.h);
+      this.follow();
+    }
+    /** 把被拖的牌移到手指所在的位置 */
+    follow() {
+      const d = this.drag;
+      const list = this.list;
+      const top = d.y - d.grab;
+      const target = Math.max(0, Math.min(this.order.length - 1, Math.round((top - list.y - this.scroll) / ROW_H)));
+      const cur = this.order.indexOf(d.id);
+      if (target !== cur) {
+        this.order.splice(cur, 1);
+        this.order.splice(target, 0, d.id);
+      }
+    }
+  };
+  function drawRow(ctx2, r, card, index, lifted) {
+    const info = CARD_INFO[card.kind];
+    drawPanel(ctx2, r, { fill: lifted ? C.panelSolid : C.panel, stroke: lifted ? C.gold : C.panelLine, lineWidth: lifted ? 2 : 1 });
+    drawText(ctx2, String(index + 1), r.x + 26, r.y + r.h / 2, { size: 12, color: C.textMuted, align: "right" });
+    const chip = rect(r.x + 34, r.y + 5, 28, r.h - 10);
+    const [top, bottom] = CARD_GRADIENT[info.color];
+    const g = ctx2.createLinearGradient(0, chip.y, 0, chip.y + chip.h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    roundRect(ctx2, chip, 4);
+    ctx2.fillStyle = g;
+    ctx2.fill();
+    ctx2.strokeStyle = C.goldLine;
+    ctx2.stroke();
+    drawText(ctx2, info.name.slice(0, 1), chip.x + chip.w / 2, chip.y + chip.h / 2, { size: 13, bold: true, color: C.cardText, align: "center" });
+    const black = info.color === "black";
+    drawText(ctx2, info.name, r.x + 72, r.y + r.h / 2 - 8, { size: 15, bold: black, color: black ? C.gold : C.text });
+    drawText(ctx2, info.desc, r.x + 72, r.y + r.h / 2 + 10, { size: 11, color: C.textMuted, maxWidth: r.w - 72 - HANDLE_W - 8 });
+    drawText(ctx2, "\u2261", r.x + r.w - HANDLE_W / 2, r.y + r.h / 2, { size: 20, color: C.textDim, align: "center" });
+  }
+
+  // src/scenes/tableLayout.ts
+  var PAD = 12;
+  var COLS = 4;
+  var GAP = 6;
+  function tableLayout(screen2, others) {
+    const W = screen2.W;
+    const small = screen2.bottom - screen2.top < 560;
+    const top = rect(PAD, screen2.top, W - 2 * PAD, 32);
+    const btnH = small ? 40 : 44;
+    const buttons = rect(PAD, screen2.bottom - 10 - btnH, W - 2 * PAD, btnH);
+    const handH = small ? 76 : 96;
+    const hand = rect(PAD, buttons.y - 6 - handH, W - 2 * PAD, handH);
+    const info = rect(PAD, hand.y - 20, W - 2 * PAD, 18);
+    const meH = small ? 34 : 40;
+    const me = rect(PAD, info.y - 4 - meH, W - 2 * PAD, meH);
+    const logH = small ? 40 : 58;
+    const log = rect(PAD, me.y - 6 - logH, W - 2 * PAD, logH);
+    const gridTop = top.y + top.h + 6;
+    const rows = Math.max(1, Math.ceil(others / COLS));
+    const avail = log.y - 6 - gridTop;
+    const cellH = Math.max(48, Math.min(88, (avail - GAP * (rows - 1)) / rows));
+    const cellW = (W - 2 * PAD - GAP * (COLS - 1)) / COLS;
+    const grid = Array.from(
+      { length: others },
+      (_, i) => rect(PAD + i % COLS * (cellW + GAP), gridTop + Math.floor(i / COLS) * (cellH + GAP), cellW, cellH)
+    );
+    return { top, grid, cellH, log, me, info, hand, buttons };
+  }
+
+  // src/scenes/tableParts.ts
+  function tryalRow2(ctx2, p, cx, y, h, flip) {
+    const n = p.tryals.length;
+    const cw = Math.round(h * 0.75);
+    const gap = 3;
+    const x0 = cx - (n * cw + (n - 1) * gap) / 2;
+    p.tryals.forEach((t, i) => {
+      const r = { x: x0 + i * (cw + gap), y, w: cw, h };
+      if (flip && flip.index === i && flip.p < 1) {
+        if (flip.p < 0.5) drawTryalChip(ctx2, r, null, false, 1 - flip.p * 2);
+        else drawTryalChip(ctx2, r, t.kind, true, flip.p * 2 - 1);
+      } else {
+        drawTryalChip(ctx2, r, t.kind, t.revealed);
+      }
+    });
+  }
+  function redBar(ctx2, p, x, y, w) {
+    const bar = { x, y, w, h: 4 };
+    roundRect(ctx2, bar, 2);
+    ctx2.fillStyle = C.lineDark;
+    ctx2.fill();
+    const ratio = Math.min(1, p.redTotal / Math.max(1, p.threshold));
+    if (ratio > 0) {
+      roundRect(ctx2, __spreadProps(__spreadValues({}, bar), { w: w * ratio }), 2);
+      ctx2.fillStyle = C.danger;
+      ctx2.fill();
+    }
+  }
+  function frontMarks(p) {
+    return [...p.blue, ...p.green].map((c) => CARD_INFO[c.kind].name[0]).join("");
+  }
+  function cellName(p) {
+    const label = charLabel(p);
+    return label ? `${label}\xB7${p.name}` : p.name;
+  }
+  function drawCell(ctx2, r, p, o) {
+    ctx2.globalAlpha = o.alpha;
+    drawPanel(ctx2, r, {
+      fill: o.targetable ? goldGlow(0.14) : C.panel,
+      stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : C.panelLine,
+      glow: o.turn ? o.glow : 0,
+      lineWidth: o.order ? 2 : 1
+    });
+    const cx = r.x + r.w / 2;
+    const tag = o.partner && !o.order;
+    if (r.h >= 70) {
+      drawBadge(ctx2, cx, r.y + 17, 12, p.name, p.seat);
+      drawText(ctx2, cellName(p), cx, r.y + 38, { size: 11, align: "center", maxWidth: r.w - 6 });
+      redBar(ctx2, p, r.x + 6, r.y + 47, r.w - 12);
+      tryalRow2(ctx2, p, cx, r.y + 55, 11, o.flip);
+      if (r.h >= 80) {
+        drawText(ctx2, `\u624B${p.handCount}`, r.x + 6, r.y + r.h - 9, { size: 10, color: C.textDim });
+        drawText(ctx2, frontMarks(p), r.x + r.w - 6, r.y + r.h - 9, { size: 10, color: C.gold, align: "right", maxWidth: r.w - 34 });
+      }
+    } else {
+      drawBadge(ctx2, r.x + 13, r.y + 13, 9, p.name, p.seat);
+      drawText(ctx2, cellName(p), r.x + 26, r.y + 13, { size: 11, maxWidth: r.w - (tag ? 52 : 30) });
+      redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
+      tryalRow2(ctx2, p, cx, r.y + 34, 10, o.flip);
+    }
+    if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
+    if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
+    else if (tag) drawText(ctx2, "\u540C\u4F34", r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.danger, align: "right" });
+    ctx2.globalAlpha = 1;
+  }
+  function drawMeBar(ctx2, r, m, o) {
+    drawPanel(ctx2, r, {
+      fill: o.targetable ? goldGlow(0.14) : C.panel,
+      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : C.panelLine,
+      glow: m.isMyTurn ? o.glow : 0,
+      lineWidth: o.order ? 2 : 1
+    });
+    const me = m.me;
+    const cy = r.y + r.h / 2;
+    if (!me) {
+      drawText(ctx2, "\u4F60\u5728\u89C2\u6218", r.x + 12, cy, { size: 13, color: C.textDim });
+      return;
+    }
+    drawBadge(ctx2, r.x + 20, cy, Math.min(13, r.h / 2 - 3), me.name, me.seat);
+    const status = me.alive ? `\u6307\u63A7 ${me.redTotal}/${me.threshold} \xB7 \u624B\u724C ${me.handCount}` : "\u4F60\u5DF2\u51FA\u5C40";
+    const label = charLabel(me);
+    drawText(ctx2, `\u4F60\uFF08${label ? `${label}\xB7` : ""}${me.name}\uFF09  ${status}`, r.x + 40, cy, { size: 12, maxWidth: r.w - 130 });
+    drawText(ctx2, "\u6211\u7684\u8EAB\u4EFD\u5361 \u203A", r.x + r.w - 10, cy, { size: 12, color: C.gold, align: "right" });
+    if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 96, cy, { size: 12, bold: true, color: C.gold, align: "center" });
+  }
+
+  // src/scenes/table.ts
+  var TWO_TARGET_HINT = ["\u5148\u9009\u88AB\u62FF\u8D70\u7684\u4EBA", "\u518D\u9009\u63A5\u6536\u7684\u4EBA"];
+  var LEAVE_W = 46;
+  var TableScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+      __publicField(this, "sel", null);
+      __publicField(this, "targets", []);
+      __publicField(this, "option");
+      __publicField(this, "askOption", false);
+      __publicField(this, "peek", null);
+      __publicField(this, "detail", null);
+      __publicField(this, "mine", false);
+      __publicField(this, "logOpen", false);
+      __publicField(this, "logBox", new ScrollBox());
+      __publicField(this, "discardOpen", false);
+      __publicField(this, "discardBox", new ScrollBox());
+      __publicField(this, "priestOpen", false);
+      __publicField(this, "priestPick", []);
+      __publicField(this, "layout", null);
+      __publicField(this, "choice", { key: "", picked: null, suspect: null });
+      __publicField(this, "board", new StoryBoard());
+      __publicField(this, "prev", null);
+    }
+    build(now) {
+      var _a;
+      const ctl2 = this.ui.ctl;
+      const room = ctl2.room;
+      if (!room || !ctl2.openid) return [];
+      const m = buildTable(room, ctl2.hand, ctl2.openid);
+      if (!m) return [];
+      this.sync(m);
+      const L = tableLayout(this.ui.screen, m.others.length);
+      this.layout = L;
+      const a = this.anim(m, now);
+      const choice = ((_a = m.pending) == null ? void 0 : _a.kind) === "storytelling" ? this.board.build(this.ui, m, m.pending.deck, now) : choicePanel(this.ui, m, this.choice, now, a.panelSlide);
+      const nodes = [skyNode(this.ui.screen, a.darkness)];
+      nodes.push(this.topBar(m, L.top, now));
+      const sheetOpen = this.askOption || this.priestOpen || this.detail !== null || this.mine || this.logOpen;
+      if (!choice.length && !sheetOpen) nodes.push(this.discardNode(L.top));
+      if (!choice.length) nodes.push(this.leaveButton(L.top));
+      m.others.forEach((p, i) => nodes.push(this.cell(m, p.seat, L.grid[i], a)));
+      nodes.push(this.logNode(m, L.log), this.meNode(m, L.me, a), this.infoNode(m, L.info));
+      nodes.push(...this.handNodes(m, L.hand, a), ...this.buttonNodes(m, L.buttons));
+      nodes.push(...a.overlay);
+      nodes.push(...this.panels(m, choice));
+      return nodes;
+    }
+    /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
+    anim(m, now) {
+      const A = this.ui.animator;
+      for (const c of diffTables(this.prev, m)) {
+        switch (c.kind) {
+          case "cardIn":
+            A.start(`in:${c.id}`, now, ANIM_MS.cardIn);
+            break;
+          case "play":
+            A.start(`fly:${c.index}`, now, ANIM_MS.play, c);
+            break;
+          case "night":
+            A.start("sky", now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
+            break;
+          case "death":
+            A.start(`dead:${c.seat}`, now, ANIM_MS.death);
+            break;
+          case "reveal":
+            A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
+            break;
+          case "turn":
+            A.start("turn", now, ANIM_MS.turn);
+            break;
+          case "panel":
+            A.start("panel", now, ANIM_MS.panel);
+            break;
+        }
+      }
+      this.prev = m;
+      const staticDark = m.view.phase.kind === "night" ? 1 : 0;
+      const sky = A.data("sky");
+      const darkness = sky && A.running("sky", now) ? sky.from + (sky.to - sky.from) * A.progress("sky", now) : staticDark;
+      const glow = A.running("turn", now) ? 0.6 + 0.4 * Math.abs(Math.sin(A.linear("turn", now) * Math.PI * 3)) : 0.6;
+      const overlay2 = [];
+      for (const key of A.keys()) {
+        if (!key.startsWith("fly:") || !A.running(key, now)) continue;
+        const c = A.data(key);
+        const from = this.seatRect(m, c.from);
+        const to = this.seatRect(m, c.to);
+        if (!from || !to) continue;
+        const p = A.progress(key, now);
+        const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
+        const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p;
+        const r = rect(x - 14, y - 20, 28, 40);
+        const [top, bottom] = CARD_GRADIENT[CARD_INFO[c.card].color];
+        overlay2.push({
+          rect: r,
+          draw: (ctx2) => {
+            ctx2.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+            const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+            g.addColorStop(0, top);
+            g.addColorStop(1, bottom);
+            roundRect(ctx2, r, 4);
+            ctx2.fillStyle = g;
+            ctx2.fill();
+            ctx2.strokeStyle = C.goldLine;
+            ctx2.stroke();
+            ctx2.globalAlpha = 1;
+          }
+        });
+      }
+      return {
+        darkness,
+        glow,
+        cell: (seat) => {
+          var _a, _b;
+          const alive = (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.alive) != null ? _b : true;
+          const alpha = A.running(`dead:${seat}`, now) ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
+          const f = A.data(`flip:${seat}`);
+          const flip = f && A.running(`flip:${seat}`, now) ? { index: f.index, p: A.progress(`flip:${seat}`, now) } : null;
+          return { alpha, flip };
+        },
+        cardIn: (id) => A.progress(`in:${id}`, now),
+        overlay: overlay2,
+        panelSlide: A.progress("panel", now)
+      };
+    }
+    /** 叠在最上层的面板；需要做选择时优先显示选择面板 */
+    panels(m, choice) {
+      if (choice.length) return choice;
+      if (this.askOption) return this.optionSheet(m);
+      if (this.priestOpen) return priestPanel(this.ui, m, this.priestPick, () => this.priestOpen = false);
+      if (this.detail !== null) return detailPanel(this.ui, m, this.detail, () => this.detail = null);
+      if (this.mine) return myTryalsPanel(this.ui, m, () => this.mine = false);
+      if (this.logOpen) return logPanel(this.ui, m, this.logBox, () => this.logOpen = false);
+      if (this.discardOpen) return discardPanel(this.ui, m, this.discardBox, () => this.discardOpen = false);
+      return [];
+    }
+    /** 某个座位在画面上的位置（我自己是信息栏）；给出牌飞行动画用 */
+    seatRect(m, seat) {
+      const L = this.layout;
+      if (!L) return null;
+      if (seat === m.mySeat) return L.me;
+      const i = m.others.findIndex((p) => p.seat === seat);
+      return i >= 0 ? L.grid[i] : null;
+    }
+    sync(m) {
+      var _a, _b;
+      if (this.sel && !playableCardIds(m).includes(this.sel)) this.clearSel();
+      if (this.peek && !((_a = m.priv) == null ? void 0 : _a.hand.some((c) => c.id === this.peek))) this.peek = null;
+      if (this.priestOpen && !(((_b = m.pending) == null ? void 0 : _b.kind) === "turn" && m.pending.mode === "choose")) this.priestOpen = false;
+    }
+    clearSel() {
+      this.sel = null;
+      this.targets = [];
+      this.option = void 0;
+      this.askOption = false;
+    }
+    selKind(m) {
+      return this.sel ? cardKindOf(m, this.sel) : null;
+    }
+    topBar(m, r, now) {
+      return {
+        rect: r,
+        draw: (ctx2) => {
+          const cy = r.y + r.h / 2;
+          drawText(ctx2, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
+          const cd = formatCountdown(m.deadline, now);
+          if (cd) drawText(ctx2, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: "center" });
+          const x = r.x + r.w - LEAVE_W - 8;
+          drawText(ctx2, `\u724C\u5806 ${m.view.deckCount}`, x, cy - 7, { size: 10, color: C.textDim, align: "right" });
+          drawText(ctx2, `\u5F03\u724C ${m.view.discardCount}`, x, cy + 7, { size: 10, color: C.textDim, align: "right" });
+        }
+      };
+    }
+    /** 顶栏右侧「牌堆 / 弃牌」数字的点击区域：打开弃牌堆 */
+    discardNode(r) {
+      const right = r.x + r.w - LEAVE_W - 8;
+      return {
+        id: "discard",
+        rect: rect(right - 56, r.y, 56, r.h),
+        onTap: () => {
+          this.discardOpen = true;
+          this.discardBox.reset();
+        }
+      };
+    }
+    leaveButton(r) {
+      const ui2 = this.ui;
+      const code = ui2.ctl.code;
+      const leave = () => ui2.confirm("\u79BB\u5F00\u724C\u5C40\uFF1F", `\u53EF\u4EE5\u7528\u623F\u53F7 ${code} \u56DE\u6765`, () => void ui2.ctl.leaveRoom());
+      const node = button("leave-game", rect(r.x + r.w - LEAVE_W, r.y + 4, LEAVE_W, r.h - 8), "\u79BB\u5F00", leave, "secondary");
+      return __spreadProps(__spreadValues({}, node), { rect: rect(r.x + r.w - LEAVE_W - 4, r.y, LEAVE_W + 8, r.h + 4) });
+    }
+    cell(m, seat, r, a) {
+      const p = m.view.players[seat];
+      const kind = this.selKind(m);
+      const targetable = !!kind && targetOptions(m, kind, this.targets).includes(seat);
+      const turn = m.view.phase.kind === "day" && m.turnSeat === seat;
+      const opts = __spreadValues({ turn, glow: a.glow, targetable, order: this.targets.indexOf(seat) + 1, partner: isPartner(m, seat) }, a.cell(seat));
+      return { id: `seat:${seat}`, rect: r, onTap: () => this.tapSeat(m, seat), draw: (ctx2) => drawCell(ctx2, r, p, opts) };
+    }
+    tapSeat(m, seat) {
+      const kind = this.selKind(m);
+      if (!kind) {
+        this.detail = seat;
+        return;
+      }
+      if (this.targets.includes(seat)) {
+        this.targets = this.targets.filter((t) => t !== seat);
+        this.option = void 0;
+        return;
+      }
+      const need = targetCount(kind);
+      if (this.targets.length >= need || !targetOptions(m, kind, this.targets).includes(seat)) return;
+      this.targets = [...this.targets, seat];
+      if (this.targets.length === need) this.resolveOption(m, kind);
+    }
+    resolveOption(m, kind) {
+      const need = optionNeed(m, kind, this.targets[0]);
+      if (!need) return;
+      if (need.kind === "curse" && need.cards.length === 1) {
+        this.option = need.cards[0].id;
+        return;
+      }
+      this.askOption = true;
+    }
+    ready(m) {
+      const kind = this.selKind(m);
+      if (!kind || this.targets.length !== targetCount(kind)) return false;
+      return !optionNeed(m, kind, this.targets[0]) || this.option !== void 0;
+    }
+    confirmPlay() {
+      if (!this.sel) return;
+      const action = __spreadValues({
+        type: "play",
+        cardId: this.sel,
+        targets: this.targets
+      }, this.option !== void 0 ? { option: this.option } : {});
+      this.clearSel();
+      void this.ui.ctl.act(action);
+    }
+    logNode(m, r) {
+      const count = r.h >= 54 ? 3 : 2;
+      const lines = logLines(m.view).slice(-count);
+      return {
+        id: "log",
+        rect: r,
+        onTap: () => {
+          this.logOpen = true;
+          this.logBox.reset();
+        },
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { fill: C.logBg, stroke: C.lineDark });
+          const lh = (r.h - 8) / count;
+          lines.forEach(
+            (t, i) => drawText(ctx2, t, r.x + 8, r.y + 4 + lh * (i + 0.5), { size: 11, color: i === lines.length - 1 ? C.text : C.textDim, maxWidth: r.w - 16 })
+          );
+        }
+      };
+    }
+    meNode(m, r, a) {
+      const kind = this.selKind(m);
+      const me = m.mySeat;
+      const targetable = me !== null && !!kind && targetOptions(m, kind, this.targets).includes(me);
+      const order = me === null ? 0 : this.targets.indexOf(me) + 1;
+      return {
+        id: "me",
+        rect: r,
+        onTap: () => {
+          if (kind && me !== null) this.tapSeat(m, me);
+          else if (!kind && m.priv) this.mine = true;
+        },
+        draw: (ctx2) => drawMeBar(ctx2, r, m, { targetable, order, glow: a.glow })
+      };
+    }
+    infoText(m) {
+      var _a;
+      const kind = this.selKind(m);
+      if (kind) {
+        const name = CARD_INFO[kind].name;
+        const need = targetCount(kind);
+        if (this.targets.length < need) return need === 2 ? `\u300C${name}\u300D\uFF1A${TWO_TARGET_HINT[this.targets.length]}` : `\u300C${name}\u300D\uFF1A\u9009\u62E9\u76EE\u6807`;
+        return this.ready(m) ? `\u300C${name}\u300D\uFF1A\u70B9\u300C\u786E\u8BA4\u51FA\u724C\u300D` : `\u300C${name}\u300D\uFF1A\u8BF7\u9009\u62E9\u9009\u9879`;
+      }
+      if (this.peek) {
+        const k = cardKindOf(m, this.peek);
+        if (k) return `${CARD_INFO[k].name}\uFF1A${CARD_INFO[k].desc}`;
+      }
+      if (m.me && !m.me.alive) return "\u4F60\u5DF2\u51FA\u5C40\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u89C2\u770B";
+      if (m.view.phase.kind === "characterPick") {
+        const done = m.view.players.filter((p) => p.character).length;
+        return `\u7B49\u5F85\u5176\u4ED6\u4EBA\u9009\u62E9\u89D2\u8272\uFF08${done}/${m.view.players.length}\uFF09`;
+      }
+      if (((_a = m.pending) == null ? void 0 : _a.kind) === "turn") return m.pending.mode === "choose" ? "\u4F60\u7684\u56DE\u5408\uFF1A\u62BD 2 \u5F20\uFF0C\u6216\u70B9\u4E00\u5F20\u624B\u724C\u6253\u51FA" : "\u53EF\u4EE5\u7EE7\u7EED\u51FA\u724C\uFF0C\u6216\u7ED3\u675F\u56DE\u5408";
+      if (m.view.phase.kind === "day") return `\u7B49\u5F85 ${m.view.players[m.turnSeat].name} \u884C\u52A8\u2026`;
+      return phaseTitle(m);
+    }
+    infoNode(m, r) {
+      const text = this.infoText(m);
+      return { rect: r, draw: (ctx2) => drawText(ctx2, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: "center", maxWidth: r.w }) };
+    }
+    handNodes(m, r, a) {
+      var _a, _b;
+      const hand = (_b = (_a = m.priv) == null ? void 0 : _a.hand) != null ? _b : [];
+      if (!hand.length) {
+        return [{ rect: r, draw: (ctx2) => drawText(ctx2, m.priv ? "\u6CA1\u6709\u624B\u724C" : "", r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.textMuted, align: "center" }) }];
+      }
+      const playable = playableCardIds(m);
+      const ch = r.h - 12;
+      const cw = Math.round(ch * 0.69);
+      const n = hand.length;
+      const step = n > 1 ? Math.min(cw + 6, (r.w - cw) / (n - 1)) : 0;
+      const x0 = r.x + (r.w - (cw + step * (n - 1))) / 2;
+      return hand.map((c, i) => {
+        const lifted = c.id === this.sel;
+        const p = a.cardIn(c.id);
+        const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12) + (1 - p) * 40, cw, ch);
+        return {
+          id: `card:${c.id}`,
+          rect: cr,
+          onTap: () => this.tapCard(c.id, playable),
+          draw: (ctx2) => {
+            var _a2;
+            ctx2.globalAlpha = p;
+            drawCardFace(ctx2, cr, c.kind, { selected: lifted, dim: ((_a2 = m.pending) == null ? void 0 : _a2.kind) === "turn" && !playable.includes(c.id) });
+            ctx2.globalAlpha = 1;
+          }
+        };
+      });
+    }
+    tapCard(id, playable) {
+      if (playable.includes(id)) {
+        if (this.sel === id) this.clearSel();
+        else {
+          this.clearSel();
+          this.sel = id;
+          this.peek = null;
+        }
+        return;
+      }
+      this.peek = this.peek === id ? null : id;
+    }
+    buttonNodes(m, r) {
+      var _a;
+      const ctl2 = this.ui.ctl;
+      const busy = ctl2.busy;
+      const half = (r.w - 10) / 2;
+      if (this.sel) {
+        return [
+          button("cancel", rect(r.x, r.y, half, r.h), "\u53D6\u6D88", () => this.clearSel(), "secondary"),
+          requestButton("confirm-play", rect(r.x + half + 10, r.y, half, r.h), "\u786E\u8BA4\u51FA\u724C", this.ready(m) ? () => this.confirmPlay() : null, busy)
+        ];
+      }
+      if (((_a = m.pending) == null ? void 0 : _a.kind) !== "turn") return [];
+      if (m.pending.mode === "choose") {
+        const skill = this.skillButton(m, rect(r.x + half + 10, r.y, half, r.h));
+        if (!skill) return [requestButton("draw", r, "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy)];
+        return [requestButton("draw", rect(r.x, r.y, half, r.h), "\u62BD 2 \u5F20", () => void ctl2.act({ type: "draw" }), busy), skill];
+      }
+      return [requestButton("end-turn", r, "\u7ED3\u675F\u56DE\u5408", () => void ctl2.act({ type: "endTurn" }), busy, "secondary")];
+    }
+    /** 回合开始时的技能按钮：牧师从弃牌堆拿牌、说书人调整牌堆；没有可用技能时返回 null */
+    skillButton(m, r) {
+      var _a;
+      const me = m.me;
+      const left = (_a = me == null ? void 0 : me.usesLeft) != null ? _a : 0;
+      if (!me || left <= 0) return null;
+      const busy = this.ui.ctl.busy;
+      if (me.ability === "priest") {
+        const ok = m.view.discard.some((c) => !isBlack(c.kind));
+        const open = () => {
+          this.priestOpen = true;
+          this.priestPick.length = 0;
+        };
+        return button("priest", r, `\u4ECE\u5F03\u724C\u5806\u62FF\uFF08\u5269 ${left}\uFF09`, ok && !busy ? open : null, "secondary");
+      }
+      if (me.ability === "storyteller") {
+        return requestButton("story-start", r, `\u8C03\u6574\u724C\u5806\uFF08\u5269 ${left}\uFF09`, () => void this.ui.ctl.act({ type: "storyStart" }), busy, "secondary");
+      }
+      return null;
+    }
+    optionSheet(m) {
+      const kind = this.selKind(m);
+      const target = this.targets[0];
+      const need = kind && target !== void 0 ? optionNeed(m, kind, target) : null;
+      if (!need) {
+        this.askOption = false;
+        return [];
+      }
+      const close = () => {
+        this.askOption = false;
+        this.targets = this.targets.slice(0, -1);
+      };
+      const title = need.kind === "curse" ? "\u8BC5\u5492\uFF1A\u4E22\u5F03\u54EA\u5F20\u84DD\u5361\uFF1F" : need.doctor ? "\u8FA9\u62A4\uFF1A\u600E\u4E48\u6253\u51FA\uFF1F" : "\u8FA9\u62A4\uFF1A\u4E22\u5F03\u54EA\u79CD\u7EA2\u5361\uFF1F";
+      const { nodes, body } = sheet(this.ui.screen, need.kind === "alibi" && need.doctor ? 340 : 280, title, close);
+      const choices = need.kind === "curse" ? need.cards.map((c) => ({ value: c.id, label: CARD_INFO[c.kind].name })) : [...need.doctor ? [DOCTOR_CHOICE] : [], ...ALIBI_CHOICES.filter((c) => need.kinds.includes(c.value))].map((c) => ({ value: c.value, label: c.label }));
+      choices.forEach(
+        (c, i) => nodes.push(
+          button(`option:${c.value}`, rect(body.x, body.y + i * 52, body.w, 44), c.label, () => {
+            this.option = c.value;
+            this.askOption = false;
+          }, "secondary")
+        )
+      );
+      return nodes;
+    }
+  };
+
+  // src/scenes/root.ts
+  var RootScene = class {
+    constructor(ui2) {
+      __publicField(this, "ui", ui2);
+      __publicField(this, "home");
+      __publicField(this, "lobby");
+      __publicField(this, "result");
+      __publicField(this, "table", null);
+      __publicField(this, "tableKey", "");
+      this.home = new HomeScene(ui2);
+      this.lobby = new LobbyScene(ui2);
+      this.result = new ResultScene(ui2);
+    }
+    build(now) {
+      const ctl2 = this.ui.ctl;
+      if (!ctl2.code) {
+        this.table = null;
+        this.tableKey = "";
+        return this.home.build(now);
+      }
+      const room = ctl2.room;
+      if (!room) return this.message(`\u6B63\u5728\u8FDB\u5165\u623F\u95F4 ${ctl2.code}\u2026`, "loading-home");
+      if (!room.view) return room.status === "lobby" ? this.lobby.build(now) : this.message("\u623F\u95F4\u5DF2\u5173\u95ED", "closed-home");
+      if (room.view.phase.kind === "ended") return this.ended(now);
+      return this.playing(now);
+    }
+    playing(now) {
+      const room = this.ui.ctl.room;
+      const key = `${room.code}:${room.gameId}`;
+      if (!this.table || key !== this.tableKey) {
+        this.table = new TableScene(this.ui);
+        this.tableKey = key;
+      }
+      return this.table.build(now);
+    }
+    ended(now) {
+      return this.result.build(now);
+    }
+    message(text, id) {
+      const { W, H } = this.ui.screen;
+      return [
+        skyNode(this.ui.screen, 0),
+        textNode(rect(0, H * 0.42, W, 30), text, { size: 16, color: C.text, align: "center" }),
+        button(id, rect((W - 200) / 2, H * 0.42 + 50, 200, 44), "\u8FD4\u56DE\u9996\u9875", () => this.ui.ctl.backHome(), "secondary")
+      ];
+    }
+  };
+
+  // src/main.ts
+  wx.cloud.init({ traceUser: true });
+  var { ctx, screen } = createPlatform();
+  var app = new App(ctx, screen, (cb) => requestAnimationFrame(() => cb()), () => Date.now());
+  bindTouches(app);
+  var store = new LocalStore(wx);
+  var db = wx.cloud.database();
+  var ctl = new Controller({
+    api: new Api(wx.cloud),
+    store,
+    openSession: (code, openid, onChange) => new RoomSession(db, code, openid, realTimers, onChange),
+    makeTicker: (tick) => new Ticker({ now: () => Date.now(), random: Math.random, timers: realTimers, tick }),
+    toast: (msg) => wx.showToast({ title: msg, icon: "none", duration: 2e3 }),
+    render: () => app.render()
+  });
+  var ui = {
+    screen,
+    animator: app.animator,
+    ctl,
+    render: () => app.render(),
+    prompt: (title, placeholder, cb, cancellable = true) => wx.showModal({
+      title,
+      editable: true,
+      placeholderText: placeholder,
+      showCancel: cancellable,
+      success: (r) => {
+        var _a;
+        if (r.confirm) cb(((_a = r.content) != null ? _a : "").trim());
+      }
+    }),
+    confirm: (title, content, cb) => wx.showModal({
+      title,
+      content,
+      success: (r) => {
+        if (r.confirm) cb();
+      }
+    }),
+    copy: (text) => wx.setClipboardData({ data: text }),
+    share: (title, query) => wx.shareAppMessage({ title, query })
+  };
+  app.setScene(new RootScene(ui));
+  wx.showShareMenu({ menus: ["shareAppMessage"] });
+  wx.onShareAppMessage(
+    () => ctl.code ? { title: `\u5973\u5DEB\u9547 \xB7 \u623F\u95F4 ${ctl.code}`, query: `room=${ctl.code}` } : { title: "\u4E00\u8D77\u6765\u73A9\u5973\u5DEB\u9547" }
+  );
+  setInterval(() => {
+    var _a;
+    if (((_a = ctl.room) == null ? void 0 : _a.status) === "playing") app.render();
+  }, 1e3);
+  function roomFrom(o) {
+    var _a;
+    const r = (_a = o.query) == null ? void 0 : _a.room;
+    return r && /^\d{4}$/.test(r) ? r : null;
+  }
+  function ensureNickname(then) {
+    if (ctl.nickname) {
+      then();
+      return;
+    }
+    askNickname("\u7ED9\u81EA\u5DF1\u8D77\u4E2A\u6635\u79F0", then);
+  }
+  function askNickname(title, then) {
+    ui.prompt(title, "1\u201312 \u4E2A\u5B57\uFF0C\u670B\u53CB\u4F1A\u770B\u5230", (name) => ctl.setNickname(name) ? then() : askNickname("\u6635\u79F0\u9700\u8981 1\u201312 \u4E2A\u5B57", then), false);
+  }
+  ensureNickname(() => {
+    const fromShare = roomFrom(wx.getLaunchOptionsSync());
+    if (fromShare) {
+      void ctl.joinRoom(fromShare);
+      return;
+    }
+    const last = store.lastRoom();
+    if (!last) return;
+    const stale = () => ctl.code !== null || store.lastRoom() !== last;
+    void rejoinable(db, last).then((ok) => {
+      if (stale()) return;
+      if (!ok) {
+        store.clearLastRoom();
+        return;
+      }
+      wx.showModal({
+        title: "\u56DE\u5230\u623F\u95F4\uFF1F",
+        content: `\u4E0A\u6B21\u4F60\u5728\u623F\u95F4 ${last}\uFF0C\u8981\u56DE\u53BB\u5417\uFF1F`,
+        success: (r) => {
+          if (stale()) return;
+          if (r.confirm) void ctl.joinRoom(last);
+          else store.clearLastRoom();
+        }
+      });
+    });
+  });
+  wx.onShow((o) => {
+    ctl.onShow();
+    const code = roomFrom(o);
+    if (code && code !== ctl.code && ctl.nickname) void ctl.joinRoom(code);
+  });
+})();

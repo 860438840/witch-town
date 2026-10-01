@@ -1,9 +1,12 @@
+import { canUse, hasAbility, useAbility } from './characters';
 import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
+import { proceed } from './flow';
 import { shuffle, type Rng } from './rng';
-import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, unrevealed, witchSeats } from './state';
-import { endTurn, startTurn } from './turn';
-import type { GameState } from './types';
+import { isBlack } from './cards';
+import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, toCard, unrevealed, witchSeats } from './state';
+import { startTurn } from './turn';
+import type { Card, GameState } from './types';
 
 /** 所有活着的女巫阵营都投了同一个目标时返回该目标，否则返回 null */
 function agreedTarget(s: GameState, votes: Record<number, number>): number | null {
@@ -17,6 +20,7 @@ function agreedTarget(s: GameState, votes: Record<number, number>): number | nul
 export function witchVote(s: GameState, seat: number, target: number, rng: Rng): void {
   if (!getPlayer(s, seat).witchFaction) throw new RuleError('只有女巫阵营可以投票');
   if (!getPlayer(s, target).alive) throw new RuleError('目标必须是活着的玩家');
+  if (s.phase.kind === 'dawn' && hasAbility(s, target, 'maid')) throw new RuleError('女仆：黑猫对她无效，不能选她');
   if (s.phase.kind === 'dawn') {
     s.dawnVotes[seat] = target;
     tryResolveDawn(s);
@@ -44,7 +48,7 @@ function tryResolveDawn(s: GameState): void {
 
 export function startNight(s: GameState): void {
   setPhase(s, { kind: 'night' });
-  s.night = { witchVotes: {}, protect: null, confessions: {} };
+  s.night = { witchVotes: {}, protect: null, confessions: {}, silent: [] };
 }
 
 export function protect(s: GameState, seat: number, target: number, rng: Rng): void {
@@ -56,9 +60,15 @@ export function protect(s: GameState, seat: number, target: number, rng: Rng): v
   tryResolveNight(s, rng);
 }
 
-export function confess(s: GameState, seat: number, tryalId: string | null, rng: Rng): void {
+export function confess(s: GameState, seat: number, tryalId: string | null, silent: boolean, rng: Rng): void {
   if (s.phase.kind !== 'night' || !s.night) throw new RuleError('现在不能自首');
-  if (tryalId !== null && !unrevealed(getPlayer(s, seat)).some((t) => t.id === tryalId)) {
+  if (silent) {
+    if (tryalId !== null) throw new RuleError('不翻牌自首时不能选身份卡');
+    if (seat in s.night.confessions) throw new RuleError('你已经决定过是否自首了');
+    if (!canUse(s, seat, 'official')) throw new RuleError('你不能不翻牌自首');
+    useAbility(s, seat, 'official');
+    (s.night.silent ??= []).push(seat);
+  } else if (tryalId !== null && !unrevealed(getPlayer(s, seat)).some((t) => t.id === tryalId)) {
     throw new RuleError('这张身份卡不能翻开');
   }
   s.night.confessions[seat] = tryalId;
@@ -82,6 +92,11 @@ function tryResolveNight(s: GameState, rng: Rng): void {
       confessed.add(seat);
     }
   }
+  for (const seat of isEnded(s) ? [] : night.silent ?? []) {
+    if (!getPlayer(s, seat).alive) continue;
+    confessed.add(seat);
+    s.log.push({ t: 'ability', seat, ability: 'official' });
+  }
   s.night = null;
   if (isEnded(s)) return;
 
@@ -95,8 +110,37 @@ function tryResolveNight(s: GameState, rng: Rng): void {
   if (died) killPlayer(s, target, 'night');
   if (isEnded(s)) return;
 
-  s.deck = shuffle([...s.deck, ...s.discard], rng);
+  resetCards(s, rng);
+  // 夜晚总是结束当前回合：先走完被夜晚打断的流程（如果有），再结束
+  s.endTurnAfter = true;
+  proceed(s, rng);
+}
+
+/**
+ * 夜晚过后全部重置：收回所有手牌、面前的牌（含黑猫）、弃牌堆和牌堆，
+ * 像开局一样先不放黑卡洗匀，从当前玩家的下一位起给每个活人发 3 张，再把夜晚和传染洗进剩下的牌堆。
+ * 身份卡、生死、角色技能次数不变。
+ */
+function resetCards(s: GameState, rng: Rng): void {
+  const all: Card[] = [...s.deck, ...s.discard];
+  for (const p of s.players) {
+    all.push(...p.hand, ...p.red.map(toCard), ...p.blue, ...p.green);
+    p.hand = [];
+    p.red = [];
+    p.blue = [];
+    p.green = [];
+  }
+  const deck = shuffle(all.filter((c) => !isBlack(c.kind)), rng);
+  const n = s.players.length;
+  for (let round = 0; round < 3; round++) {
+    for (let i = 1; i <= n; i++) {
+      const p = s.players[(s.turn + i) % n];
+      const card = p.alive ? deck.shift() : undefined;
+      if (card) p.hand.push(card);
+    }
+  }
+  s.deck = shuffle([...deck, ...all.filter((c) => isBlack(c.kind))], rng);
   s.discard = [];
-  s.log.push({ t: 'reshuffle' });
-  endTurn(s);
+  s.drawn = [];
+  s.log.push({ t: 'nightReset' });
 }

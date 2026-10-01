@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { killPlayer, revealTryal } from '../src/death';
 import { RuleError } from '../src/errors';
 import { countCards } from '../src/state';
-import { fixedGame, placeBlue } from './helpers';
+import { fixedGame, placeBlue, setTryals, V } from './helpers';
 
 describe('revealTryal', () => {
   it('翻开村民卡：玩家存活，记录日志', () => {
@@ -56,6 +56,19 @@ describe('killPlayer', () => {
     placeBlue(s, 2, 'matchmaker');
     killPlayer(s, 2, 'night');
     expect(s.players.filter((p) => !p.alive)).toHaveLength(1);
+  });
+
+  it('女巫卡全部翻开但交出女巫卡的原女巫还活着：游戏继续，原女巫死后村民获胜', () => {
+    const s = fixedGame();
+    // 模拟传染：0 号把女巫卡交给了 4 号，但 0 号仍属女巫阵营
+    setTryals(s, 0, [V, V, V, V, V]);
+    s.players[0].witchFaction = true;
+    setTryals(s, 4, ['witch', V, V, V, V]);
+    revealTryal(s, 4, s.players[4].tryals[0].id, 'trial');
+    expect(s.players[4].alive).toBe(false);
+    expect(s.phase.kind).not.toBe('ended');
+    killPlayer(s, 0, 'night');
+    expect(s.phase).toEqual({ kind: 'ended', winner: 'village' });
   });
 
   it('活着的玩家全是女巫阵营时女巫获胜', () => {

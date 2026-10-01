@@ -5,6 +5,13 @@ import { projectPrivate, projectPublic } from '../src/view';
 import { fixedGame, newGame, setTryals, V } from './helpers';
 
 describe('projectPublic', () => {
+  it('弃牌堆内容公开（牧师技能和查看弃牌堆用）', () => {
+    const s = fixedGame();
+    const c = s.players[2].hand.pop()!;
+    s.discard.push(c);
+    expect(projectPublic(s).discard).toEqual([c]);
+  });
+
   it('未翻开的身份卡不显示种类，翻开后显示', () => {
     const s = fixedGame();
     revealTryal(s, 3, s.players[3].tryals[1].id, 'trial');

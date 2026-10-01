@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { RuleError, seededRng, targetCount, type GameState } from '../../engine/src/index';
-import { BOT_TURN_MS, CHOICE_MS, TURN_MS } from '../src/deadlines';
+import { BOT_TURN_MS, CHOICE_MS, PICK_MS, STORY_MS, TURN_MS } from '../src/deadlines';
 import { act, startGame, tick } from '../src/game';
 import { addBots } from '../src/lobby';
 import { MemoryStore } from '../src/memoryStore';
 import { GAMES, handId, HANDS, ROOMS, type GameDoc, type HandDoc, type RoomDoc } from '../src/types';
-import { lobbyWith, NOW, run } from './helpers';
+import { lobbyWith, mutateGame, NOW, run, skipCharacters } from './helpers';
 
 const rng = () => seededRng(5);
 const room = (store: MemoryStore, code: string) => store.read<RoomDoc>(ROOMS, code) as RoomDoc;
@@ -14,6 +14,7 @@ const game = (store: MemoryStore, code: string) => store.read<GameDoc>(GAMES, co
 async function started(n = 5) {
   const { store, code } = await lobbyWith(n);
   await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+  await skipCharacters(store, code);
   return { store, code };
 }
 
@@ -22,6 +23,17 @@ function witchOpenid(s: GameState): string {
 }
 
 describe('startGame', () => {
+  it('不到 7 人时先选角色：限时 30 秒，每人的手牌文档里有自己的 2 个候选', async () => {
+    const { store, code } = await lobbyWith(5);
+    await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+    const r = room(store, code);
+    expect(r.view!.phase).toEqual({ kind: 'characterPick' });
+    expect(r.deadline).toBe(NOW + PICK_MS);
+    const offers = game(store, code).state.characterOffers;
+    const hand = store.read<HandDoc>(HANDS, handId(code, 'u0'))!;
+    expect(hand.view.pending).toEqual({ kind: 'characterPick', offers: offers[0] });
+  });
+
   it('只有房主能开始，且至少 4 人', async () => {
     const small = await lobbyWith(3);
     await expect(run(small.store, (tx) => startGame(tx, small.code, 'u0', NOW, rng()))).rejects.toThrow('至少需要 4 名玩家');
@@ -178,7 +190,8 @@ describe('tick', () => {
     const { store, code } = await lobbyWith(1);
     await run(store, (tx) => addBots(tx, code, 'u0', 4, NOW));
     await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
-    const t = NOW + CHOICE_MS;
+    await run(store, (tx) => tick(tx, code, NOW + PICK_MS, rng()));
+    const t = NOW + PICK_MS + CHOICE_MS;
     await run(store, (tx) => tick(tx, code, t, rng()));
     const s = game(store, code).state;
     const expected = s.players[s.turn].openid.startsWith('bot-') ? BOT_TURN_MS : TURN_MS;
@@ -225,5 +238,55 @@ describe('隐私（F13）', () => {
         }
       }
     }
+  });
+});
+
+describe('说书人', () => {
+  it('调整牌堆限时 2 分钟；牌堆顺序只写进说书人自己的手牌文档；回到回合后重新计 90 秒', async () => {
+    const { store, code } = await started(5);
+    const witch = witchOpenid(game(store, code).state);
+    await run(store, (tx) => act(tx, code, witch, { type: 'witchVote', target: 2 }, undefined, NOW, rng()));
+    await mutateGame(store, code, (s) => {
+      s.players[s.turn].character = 'storyteller';
+    });
+    const s0 = game(store, code).state;
+    const teller = s0.players[s0.turn];
+    const t1 = NOW + 1000;
+    await run(store, (tx) => act(tx, code, teller.openid, { type: 'storyStart' }, undefined, t1, rng()));
+    expect(room(store, code).view!.phase).toEqual({ kind: 'storytelling', seat: teller.seat });
+    expect(room(store, code).deadline).toBe(t1 + STORY_MS);
+
+    const deckIds = game(store, code).state.deck.map((c) => c.id);
+    const mine = JSON.stringify(store.read<HandDoc>(HANDS, handId(code, teller.openid)));
+    for (const id of deckIds) expect(mine).toContain(`"${id}"`);
+    const pub = JSON.stringify(room(store, code));
+    for (const id of deckIds) expect(pub).not.toContain(`"${id}"`);
+    for (const p of game(store, code).state.players) {
+      if (p.seat === teller.seat) continue;
+      const other = JSON.stringify(store.read<HandDoc>(HANDS, handId(code, p.openid)));
+      for (const id of deckIds) expect(other).not.toContain(`"${id}"`);
+    }
+
+    const t2 = t1 + 100_000;
+    const order = [...deckIds].reverse();
+    await run(store, (tx) => act(tx, code, teller.openid, { type: 'storyReorder', order }, undefined, t2, rng()));
+    expect(room(store, code).view!.phase).toEqual({ kind: 'day', mode: 'choose' });
+    expect(room(store, code).deadline).toBe(t2 + TURN_MS);
+    expect(game(store, code).state.deck.map((c) => c.id)).toEqual(order);
+  });
+});
+
+describe('机器人选角色（F5）', () => {
+  it('开局时机器人立刻选好角色，真人选完后进入黎明', async () => {
+    const { store, code } = await lobbyWith(1);
+    await run(store, (tx) => addBots(tx, code, 'u0', 4, NOW));
+    await run(store, (tx) => startGame(tx, code, 'u0', NOW, rng()));
+    const s = game(store, code).state;
+    expect(s.phase.kind).toBe('characterPick');
+    for (const p of s.players) expect(p.character !== null).toBe(p.openid.startsWith('bot-'));
+    const me = s.players.findIndex((p) => p.openid === 'u0');
+    await run(store, (tx) => act(tx, code, 'u0', { type: 'pickCharacter', index: 0 }, undefined, NOW + 1, rng()));
+    expect(game(store, code).state.phase.kind).toBe('dawn');
+    expect(game(store, code).state.players[me].character).not.toBeNull();
   });
 });

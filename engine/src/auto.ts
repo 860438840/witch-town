@@ -1,3 +1,4 @@
+import { hasAbility } from './characters';
 import { conspiracyPickers } from './conspiracy';
 import { pick, type Rng } from './rng';
 import { aliveSeats, constableSeat, getPlayer, leftOf, unrevealed, witchSeats } from './state';
@@ -24,6 +25,12 @@ function majority(votes: Record<number, number>): number | null {
 export function autoActions(s: GameState, rng: Rng): Action[] {
   const ph = s.phase;
   switch (ph.kind) {
+    case 'characterPick':
+      return s.players
+        .filter((p) => p.character === null && s.characterOffers[p.seat])
+        .map((p): Action => ({ type: 'pickCharacter', seat: p.seat, index: rng.next() < 0.5 ? 0 : 1 }));
+    case 'storytelling':
+      return [{ type: 'storyReorder', seat: ph.seat, order: s.deck.map((c) => c.id) }];
     case 'day':
       if (ph.mode === 'choose') return [{ type: 'draw', seat: s.turn }];
       if (ph.mode === 'playing') return [{ type: 'endTurn', seat: s.turn }];
@@ -40,7 +47,8 @@ export function autoActions(s: GameState, rng: Rng): Action[] {
           return { type: 'conspiracyPick', seat, index: Math.floor(rng.next() * count) };
         });
     case 'dawn': {
-      const target = majority(s.dawnVotes) ?? pick(aliveSeats(s), rng);
+      const allowed = aliveSeats(s).filter((seat) => !hasAbility(s, seat, 'maid'));
+      const target = majority(s.dawnVotes) ?? pick(allowed, rng);
       return witchSeats(s).map((seat): Action => ({ type: 'witchVote', seat, target }));
     }
     case 'night': {

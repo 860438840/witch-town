@@ -1,11 +1,13 @@
+import { priestDraw, storyReorder, storyStart } from './abilities';
+import { pickCharacter } from './characters';
 import { catReveal, conspiracyPick } from './conspiracy';
 import { revealTryal } from './death';
 import { RuleError } from './errors';
+import { proceed, pushHousewifeDraws } from './flow';
 import { confess, protect, witchVote } from './night';
 import { playCard } from './play';
 import type { Rng } from './rng';
 import { getPlayer } from './state';
-import { finishTrial } from './trial';
 import { endTurn, startDrawing } from './turn';
 import type { Action, GameState } from './types';
 
@@ -16,7 +18,7 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
 
   switch (action.type) {
     case 'play':
-      playCard(s, action.seat, action.cardId, action.targets, action.option);
+      playCard(s, action.seat, action.cardId, action.targets, action.option, rng);
       break;
     case 'endTurn':
       if (s.phase.kind !== 'day' || s.phase.mode !== 'playing' || s.turn !== action.seat) {
@@ -34,7 +36,7 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       protect(s, action.seat, action.target, rng);
       break;
     case 'confess':
-      confess(s, action.seat, action.tryalId, rng);
+      confess(s, action.seat, action.tryalId, action.silent === true, rng);
       break;
     case 'draw':
       if (s.phase.kind !== 'day' || s.phase.mode !== 'choose' || s.turn !== action.seat) {
@@ -44,6 +46,18 @@ export function apply(state: GameState, action: Action, rng: Rng): GameState {
       break;
     case 'conspiracyPick':
       conspiracyPick(s, action.seat, action.index, rng);
+      break;
+    case 'pickCharacter':
+      pickCharacter(s, action.seat, action.index);
+      break;
+    case 'priestDraw':
+      priestDraw(s, action.seat, action.cardIds);
+      break;
+    case 'storyStart':
+      storyStart(s, action.seat);
+      break;
+    case 'storyReorder':
+      storyReorder(s, action.seat, action.order);
       break;
     default:
       throw new RuleError('现在不能执行这个操作');
@@ -57,7 +71,9 @@ function handleReveal(s: GameState, seat: number, tryalId: string, rng: Rng): vo
   const ph = s.phase;
   if (ph.kind === 'trialReveal' && ph.target === seat) {
     revealTryal(s, seat, tryalId, 'trial');
-    finishTrial(s, seat);
+    s.steps.push({ kind: 'finishTrial', target: seat, initiator: ph.initiator });
+    pushHousewifeDraws(s, seat);
+    proceed(s, rng);
     return;
   }
   if (ph.kind === 'catReveal') {

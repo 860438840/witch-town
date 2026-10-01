@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { apply } from '../src/apply';
 import { autoActions } from '../src/auto';
-import { TOTAL_GAME_CARDS, TRYALS_PER_PLAYER } from '../src/cards';
+import { TOTAL_GAME_CARDS, TRYALS_PER_PLAYER, isBlack } from '../src/cards';
 import { RuleError } from '../src/errors';
-import { pick, seededRng } from '../src/rng';
+import { pick, seededRng, shuffle } from '../src/rng';
 import { createGame } from '../src/setup';
 import { aliveSeats, constableSeat, countCards, getPlayer, unrevealed, witchSeats } from '../src/state';
 import type { Action, GameState } from '../src/types';
@@ -32,6 +32,10 @@ function nightBotActions(s: GameState, rng: ReturnType<typeof seededRng>): GameS
     if (seat in s.night.confessions) continue;
     if (rng.next() >= 0.5) continue;
     const opts = unrevealed(getPlayer(s, seat));
+    if (rng.next() < 0.2) {
+      s = tryApply(s, { type: 'confess', seat, tryalId: null, silent: true }, rng);
+      continue;
+    }
     const tid = opts.length > 0 && rng.next() < 0.3 ? pick(opts, rng).id : null;
     s = tryApply(s, { type: 'confess', seat, tryalId: tid }, rng);
   }
@@ -56,6 +60,9 @@ function checkInvariants(s: GameState, n: number, seed: number): void {
   if (countCards(s) !== TOTAL_GAME_CARDS) throw new Error(`第 ${seed} 局：卡牌总数变为 ${countCards(s)}`);
   const tryals = s.players.reduce((k, p) => k + p.tryals.length, 0);
   if (tryals !== n * TRYALS_PER_PLAYER) throw new Error(`第 ${seed} 局：身份卡总数变为 ${tryals}`);
+  if (s.phase.kind === 'day' && s.phase.mode !== 'drawing' && (s.steps.length > 0 || s.endTurnAfter)) {
+    throw new Error(`第 ${seed} 局：回到白天时还有没走完的流程`);
+  }
   if (s.phase.kind === 'ended') return;
   const view = projectPublic(s);
   for (const p of s.players) {
@@ -85,6 +92,24 @@ function checkInvariants(s: GameState, n: number, seed: number): void {
   }
 }
 
+/** 回合开始时有一定概率尝试牧师拿牌或说书人调整牌堆（没有这个技能时会被拒绝，局面不变） */
+function abilityMoves(s: GameState, rng: ReturnType<typeof seededRng>): GameState {
+  const ph = s.phase;
+  if (ph.kind !== 'day' || ph.mode !== 'choose' || rng.next() >= 0.2) return s;
+  const seat = s.turn;
+  const pool = s.discard.filter((c) => !isBlack(c.kind));
+  if (pool.length > 0) {
+    const ids = shuffle(pool, rng)
+      .slice(0, 1 + Math.floor(rng.next() * 2))
+      .map((c) => c.id);
+    const next = tryApply(s, { type: 'priestDraw', seat, cardIds: ids }, rng);
+    if (next !== s) return next;
+  }
+  const started = tryApply(s, { type: 'storyStart', seat }, rng);
+  if (started === s) return s;
+  return tryApply(started, { type: 'storyReorder', seat, order: shuffle(started.deck, rng).map((c) => c.id) }, rng);
+}
+
 function runGame(seed: number): GameState {
   const n = 4 + (seed % 9);
   const rng = seededRng(seed);
@@ -94,16 +119,23 @@ function runGame(seed: number): GameState {
   );
   for (let step = 0; step < MAX_STEPS; step++) {
     if (s.phase.kind === 'ended') return s;
+    const moved = abilityMoves(s, rng);
+    let acted = moved !== s;
+    s = moved;
     const ph = s.phase;
-    let acted = false;
-    if (ph.kind === 'day' && ph.mode !== 'drawing' && rng.next() < 0.5) {
+    if (!acted && ph.kind === 'day' && ph.mode !== 'drawing' && rng.next() < 0.5) {
       const p = s.players[s.turn];
       if (p.hand.length > 0) {
         const card = pick(p.hand, rng);
         const alive = aliveSeats(s);
         const count = card.kind === 'scapegoat' || card.kind === 'robbery' ? 2 : 1;
         const targets = Array.from({ length: count }, () => pick(alive, rng));
-        const option = card.kind === 'curse' ? getPlayer(s, targets[0]).blue[0]?.id : undefined;
+        const option =
+          card.kind === 'curse'
+            ? getPlayer(s, targets[0]).blue[0]?.id
+            : card.kind === 'alibi' && rng.next() < 0.5
+              ? 'witness'
+              : undefined;
         const next = tryApply(s, { type: 'play', seat: s.turn, cardId: card.id, targets, option }, rng);
         acted = next !== s;
         s = next;

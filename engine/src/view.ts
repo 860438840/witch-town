@@ -1,12 +1,17 @@
+import { abilityOf, limitedLeft } from './characters';
 import { conspiracyPickers } from './conspiracy';
 import { constableSeat, getPlayer, leftOf, redTotal, unrevealed } from './state';
 import { trialThreshold } from './trial';
-import type { Card, GameEvent, GameState, Phase, RedKind, Tryal, TryalKind } from './types';
+import type { Card, CharacterId, GameEvent, GameState, Phase, RedKind, Tryal, TryalKind } from './types';
 
 export interface PublicPlayer {
   seat: number;
   name: string;
-  character: string | null;
+  character: CharacterId | null;
+  /** 此刻生效的技能（裁缝为右手边玩家的角色） */
+  ability: CharacterId | null;
+  /** 此刻生效的技能如果限次，还剩几次；不限次时为 null */
+  usesLeft: number | null;
   alive: boolean;
   handCount: number;
   tryals: { revealed: boolean; kind: TryalKind | null }[];
@@ -23,6 +28,8 @@ export interface PublicView {
   players: PublicPlayer[];
   deckCount: number;
   discardCount: number;
+  /** 弃牌堆内容（实体游戏里可以查看） */
+  discard: Card[];
   turn: number;
   phase: Phase;
   log: GameEvent[];
@@ -36,6 +43,8 @@ export function projectPublic(s: GameState): PublicView {
       seat: p.seat,
       name: p.name,
       character: p.character,
+      ability: abilityOf(s, p.seat),
+      usesLeft: limitedLeft(s, p.seat),
       alive: p.alive,
       handCount: p.hand.length,
       tryals: p.tryals.map((t) => ({ revealed: t.revealed, kind: t.revealed || ended ? t.kind : null })),
@@ -48,6 +57,7 @@ export function projectPublic(s: GameState): PublicView {
     })),
     deckCount: s.deck.length,
     discardCount: s.discard.length,
+    discard: s.discard,
     turn: s.turn,
     phase: s.phase,
     log: s.log,
@@ -57,6 +67,8 @@ export function projectPublic(s: GameState): PublicView {
 
 export type PendingChoice =
   | { kind: 'turn'; mode: 'choose' | 'playing' }
+  | { kind: 'characterPick'; offers: CharacterId[] }
+  | { kind: 'storytelling'; deck: Card[] }
   | { kind: 'revealTryal'; reason: 'trial' | 'cat' }
   | { kind: 'conspiracyPick'; from: number; count: number }
   | { kind: 'dawnVote'; votes: Record<number, number> }
@@ -110,6 +122,12 @@ function pendingFor(s: GameState, seat: number): PendingChoice | null {
       const from = leftOf(s, seat) as number;
       return { kind: 'conspiracyPick', from, count: unrevealed(getPlayer(s, from)).length };
     }
+    case 'characterPick': {
+      const offers = s.characterOffers[seat];
+      return offers && p.character === null ? { kind: 'characterPick', offers } : null;
+    }
+    case 'storytelling':
+      return ph.seat === seat ? { kind: 'storytelling', deck: s.deck } : null;
     case 'dawn':
       return p.witchFaction ? { kind: 'dawnVote', votes: s.dawnVotes } : null;
     case 'night': {
