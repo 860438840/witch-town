@@ -86,11 +86,13 @@ export function stackDeck(s: GameState, kinds: CardKind[]): void {
   s.deck.unshift(...top);
 }
 
-/** 平静的夜晚（fixedGame 专用）：0 号女巫和 1 号警长都选 4 号，所有人不自首，没有人死亡 */
-export function quietNight(s: GameState): GameState {
+/** 平静的夜晚：女巫阵营和警长都选同一个目标（默认 4 号；4 号是警长时换成另一个活人），所有人不自首，没有人死亡 */
+export function quietNight(s: GameState, target = 4): GameState {
   const rng = seededRng(7);
-  s = apply(s, { type: 'witchVote', seat: 0, target: 4 }, rng);
-  s = apply(s, { type: 'protect', seat: 1, target: 4 }, rng);
+  const constable = s.players.find((p) => p.alive && p.tryals.some((t) => t.kind === 'constable' && !t.revealed));
+  if (constable?.seat === target) target = s.players.find((p) => p.alive && p.seat !== target)!.seat;
+  for (const p of s.players) if (p.alive && p.witchFaction) s = apply(s, { type: 'witchVote', seat: p.seat, target }, rng);
+  if (constable) s = apply(s, { type: 'protect', seat: constable.seat, target }, rng);
   for (const p of s.players) {
     if (p.alive && s.phase.kind === 'night') s = apply(s, { type: 'confess', seat: p.seat, tryalId: null }, rng);
   }

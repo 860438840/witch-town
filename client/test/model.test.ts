@@ -33,6 +33,7 @@ describe('日志', () => {
     expect(describeEvent({ t: 'death', seat: 3, cause: 'lover' }, name)).toBe('P3 死亡：情侣殉情');
     expect(describeEvent({ t: 'reveal', seat: 1, kind: 'witch', cause: 'trial' }, name)).toBe('P1 因审判翻开了「女巫」');
     expect(describeEvent({ t: 'nightResult', target: 2, died: false }, name)).toBe('夜里，女巫袭击了 P2，但 TA 活了下来');
+    expect(describeEvent({ t: 'nightReset' }, name)).toBe('夜晚过后，所有牌收回重洗，每人重新发 3 张');
     expect(describeEvent({ t: 'gameEnd', winner: 'witch' }, name)).toBe('女巫胜利！');
   });
   it('死亡时自动翻开的身份卡不单独显示', () => {

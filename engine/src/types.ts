@@ -100,6 +100,8 @@ export type GameEvent =
   | { t: 'conspiracyDone' }
   | { t: 'nightResult'; target: number; died: boolean }
   | { t: 'reshuffle' }
+  /** 夜晚过后全部重置：所有牌收回重洗，每个活人重新发 3 张 */
+  | { t: 'nightReset' }
   | { t: 'character'; seat: number; character: CharacterId }
   /** 技能生效。kind：被挡下的卡（乞丐、女仆）；from：死者（农民）；count：拿了几张（牧师） */
   | { t: 'ability'; seat: number; ability: CharacterId; kind?: CardKind; from?: number; count?: number }
@@ -116,7 +118,9 @@ export type Step =
   /** 传染：黑猫翻牌之后开始盲抽 */
   | { kind: 'picks' }
   /** 传染结算完后，当前玩家继续正常抽牌 */
-  | { kind: 'drawing' };
+  | { kind: 'drawing' }
+  /** 回合外摸到的夜晚：排在最底下，等当前流程走完再进入 */
+  | { kind: 'night' };
 
 export interface GameState {
   players: Player[];

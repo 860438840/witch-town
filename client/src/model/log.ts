@@ -74,6 +74,8 @@ export function describeEvent(e: GameEvent, name: (seat: number) => string): str
       return e.died ? `夜里，${name(e.target)} 遭到女巫袭击身亡` : `夜里，女巫袭击了 ${name(e.target)}，但 TA 活了下来`;
     case 'reshuffle':
       return '弃牌堆洗回了牌堆';
+    case 'nightReset':
+      return '夜晚过后，所有牌收回重洗，每人重新发 3 张';
     case 'character':
       return `${name(e.seat)} 的角色是「${CHAR_INFO[e.character].name}」`;
     case 'ability':

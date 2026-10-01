@@ -3,9 +3,10 @@ import { killPlayer, revealTryal } from './death';
 import { RuleError } from './errors';
 import { proceed } from './flow';
 import { shuffle, type Rng } from './rng';
-import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, unrevealed, witchSeats } from './state';
+import { isBlack } from './cards';
+import { aliveSeats, constableSeat, getPlayer, isEnded, setPhase, toCard, unrevealed, witchSeats } from './state';
 import { startTurn } from './turn';
-import type { GameState } from './types';
+import type { Card, GameState } from './types';
 
 /** 所有活着的女巫阵营都投了同一个目标时返回该目标，否则返回 null */
 function agreedTarget(s: GameState, votes: Record<number, number>): number | null {
@@ -109,10 +110,37 @@ function tryResolveNight(s: GameState, rng: Rng): void {
   if (died) killPlayer(s, target, 'night');
   if (isEnded(s)) return;
 
-  s.deck = shuffle([...s.deck, ...s.discard], rng);
-  s.discard = [];
-  s.log.push({ t: 'reshuffle' });
+  resetCards(s, rng);
   // 夜晚总是结束当前回合：先走完被夜晚打断的流程（如果有），再结束
   s.endTurnAfter = true;
   proceed(s, rng);
+}
+
+/**
+ * 夜晚过后全部重置：收回所有手牌、面前的牌（含黑猫）、弃牌堆和牌堆，
+ * 像开局一样先不放黑卡洗匀，从当前玩家的下一位起给每个活人发 3 张，再把夜晚和传染洗进剩下的牌堆。
+ * 身份卡、生死、角色技能次数不变。
+ */
+function resetCards(s: GameState, rng: Rng): void {
+  const all: Card[] = [...s.deck, ...s.discard];
+  for (const p of s.players) {
+    all.push(...p.hand, ...p.red.map(toCard), ...p.blue, ...p.green);
+    p.hand = [];
+    p.red = [];
+    p.blue = [];
+    p.green = [];
+  }
+  const deck = shuffle(all.filter((c) => !isBlack(c.kind)), rng);
+  const n = s.players.length;
+  for (let round = 0; round < 3; round++) {
+    for (let i = 1; i <= n; i++) {
+      const p = s.players[(s.turn + i) % n];
+      const card = p.alive ? deck.shift() : undefined;
+      if (card) p.hand.push(card);
+    }
+  }
+  s.deck = shuffle([...deck, ...all.filter((c) => isBlack(c.kind))], rng);
+  s.discard = [];
+  s.drawn = [];
+  s.log.push({ t: 'nightReset' });
 }

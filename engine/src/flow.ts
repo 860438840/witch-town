@@ -49,16 +49,20 @@ function runStep(s: GameState, step: Step, rng: Rng): StepResult {
       return beginPicks(s);
     case 'drawing':
       return resumeDrawing(s, rng);
+    case 'night':
+      startNight(s);
+      return 'paused';
   }
 }
 
-/** 回合外摸到的一张牌：黑卡立即结算，其余加入手牌 */
+/** 回合外摸到的一张牌：夜晚等当前流程（例如审判）全部走完再进入，之后回合结束；传染立即结算；其余加入手牌 */
 export function takeCard(s: GameState, seat: number, card: Card, rng: Rng): StepResult {
   if (card.kind === 'night') {
     s.log.push({ t: 'blackDrawn', seat, kind: 'night' });
     s.discard.push(card);
-    startNight(s);
-    return 'paused';
+    s.steps.unshift({ kind: 'night' });
+    s.endTurnAfter = true;
+    return 'done';
   }
   if (card.kind === 'conspiracy') {
     s.log.push({ t: 'blackDrawn', seat, kind: 'conspiracy' });

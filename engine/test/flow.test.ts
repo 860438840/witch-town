@@ -46,16 +46,18 @@ describe('流程栈', () => {
     expect(s.steps).toEqual([]);
   });
 
-  it('回合外摸到夜晚：立即进入夜晚；夜晚后回来走完剩下的流程，再结束当前回合', () => {
+  it('回合外摸到夜晚：先走完剩下的流程，再进入夜晚；夜晚后结束当前回合', () => {
     let s = fixedGame();
     s.players[3].red = [{ id: 'r1', kind: 'accusation', points: 1 }];
     stackDeck(s, ['night']);
     s.steps.push({ kind: 'finishTrial', target: 3, initiator: 2 }, { kind: 'draw', seat: 4 });
     proceed(s, seededRng(1));
     expect(s.phase).toEqual({ kind: 'night' });
-    expect(s.players[3].red).toHaveLength(1);
-    s = quietNight(s);
+    // 审判收尾已经先做完：被审判者的红卡在夜晚开始前就进了弃牌堆
     expect(s.players[3].red).toEqual([]);
+    expect(s.discard.map((c) => c.id)).toContain('r1');
+    expect(s.steps).toEqual([]);
+    s = quietNight(s);
     expect(s.turn).toBe(3);
     expect(s.phase).toEqual({ kind: 'day', mode: 'choose' });
     expect(s.steps).toEqual([]);
