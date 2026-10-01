@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, seededRng } from '../../engine/src/index';
+import { createGame, seededRng, type GameState } from '../../engine/src/index';
 import { BOT_TURN_MS, CHOICE_MS, deadlineKey, phaseDuration, PICK_MS, STORY_MS, TURN_MS } from '../src/deadlines';
 
 function game(openids = ['u0', 'u1', 'u2', 'u3', 'u4']) {
@@ -84,5 +84,52 @@ describe('phaseDuration', () => {
     s.turn = 1;
     expect(phaseDuration(s)).toBe(BOT_TURN_MS);
     expect([TURN_MS, BOT_TURN_MS, CHOICE_MS, PICK_MS]).toEqual([90_000, 3_000, 45_000, 30_000]);
+  });
+});
+
+describe('只等机器人时只等 3 秒', () => {
+  // 0 号是真人，其余是机器人
+  const mixed = () => game(['u0', 'bot-1', 'bot-2', 'bot-3', 'bot-4']);
+  const night = (s: GameState) => {
+    s.phase = { kind: 'night' };
+    s.night = { witchVotes: {}, protect: null, confessions: {}, silent: [] };
+    return s;
+  };
+
+  it('黑猫持有者、受审者是机器人：3 秒；是真人：45 秒', () => {
+    const s = mixed();
+    s.phase = { kind: 'catReveal', holder: 1 };
+    expect(phaseDuration(s)).toBe(BOT_TURN_MS);
+    s.phase = { kind: 'trialReveal', target: 2, initiator: 0 };
+    expect(phaseDuration(s)).toBe(BOT_TURN_MS);
+    s.phase = { kind: 'catReveal', holder: 0 };
+    expect(phaseDuration(s)).toBe(CHOICE_MS);
+  });
+
+  it('传染盲抽：真人还没抽时 45 秒；真人抽完只剩机器人时 key 变化、改为 3 秒', () => {
+    const s = mixed();
+    s.phase = { kind: 'conspiracyPick' };
+    s.conspiracyPicks = {};
+    expect(phaseDuration(s)).toBe(CHOICE_MS);
+    const before = deadlineKey(s);
+    s.conspiracyPicks = { 0: 0 };
+    expect(phaseDuration(s)).toBe(BOT_TURN_MS);
+    expect(deadlineKey(s)).not.toBe(before);
+  });
+
+  it('夜晚：真人还没自首时 45 秒；真人做完（女巫也投了票）只剩机器人时 3 秒', () => {
+    const s = night(mixed());
+    expect(phaseDuration(s)).toBe(CHOICE_MS);
+    s.night!.confessions[0] = null;
+    if (s.players[0].witchFaction) s.night!.witchVotes[0] = 2;
+    if (s.players[0].tryals.some((t) => t.kind === 'constable')) s.night!.protect = 2;
+    expect(phaseDuration(s)).toBe(BOT_TURN_MS);
+  });
+
+  it('全是真人的局不受影响', () => {
+    const s = game();
+    s.phase = { kind: 'catReveal', holder: 1 };
+    expect(phaseDuration(s)).toBe(CHOICE_MS);
+    expect(deadlineKey(s)).toBe('cat:1');
   });
 });
