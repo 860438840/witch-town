@@ -427,11 +427,32 @@ function tryResolveNight(s, rng) {
   s.log.push({ t: "nightResult", target, died });
   if (died) killPlayer(s, target, "night");
   if (isEnded(s)) return;
-  s.deck = shuffle([...s.deck, ...s.discard], rng);
-  s.discard = [];
-  s.log.push({ t: "reshuffle" });
+  resetCards(s, rng);
   s.endTurnAfter = true;
   proceed(s, rng);
+}
+function resetCards(s, rng) {
+  const all = [...s.deck, ...s.discard];
+  for (const p of s.players) {
+    all.push(...p.hand, ...p.red.map(toCard), ...p.blue, ...p.green);
+    p.hand = [];
+    p.red = [];
+    p.blue = [];
+    p.green = [];
+  }
+  const deck = shuffle(all.filter((c) => !isBlack(c.kind)), rng);
+  const n = s.players.length;
+  for (let round = 0; round < 3; round++) {
+    for (let i = 1; i <= n; i++) {
+      const p = s.players[(s.turn + i) % n];
+      const card = p.alive ? deck.shift() : void 0;
+      if (card) p.hand.push(card);
+    }
+  }
+  s.deck = shuffle([...deck, ...all.filter((c) => isBlack(c.kind))], rng);
+  s.discard = [];
+  s.drawn = [];
+  s.log.push({ t: "nightReset" });
 }
 
 // ../engine/src/trial.ts
@@ -507,14 +528,18 @@ function runStep(s, step, rng) {
       return beginPicks(s);
     case "drawing":
       return resumeDrawing(s, rng);
+    case "night":
+      startNight(s);
+      return "paused";
   }
 }
 function takeCard(s, seat, card, rng) {
   if (card.kind === "night") {
     s.log.push({ t: "blackDrawn", seat, kind: "night" });
     s.discard.push(card);
-    startNight(s);
-    return "paused";
+    s.steps.unshift({ kind: "night" });
+    s.endTurnAfter = true;
+    return "done";
   }
   if (card.kind === "conspiracy") {
     s.log.push({ t: "blackDrawn", seat, kind: "conspiracy" });
