@@ -1,0 +1,656 @@
+<title>女巫镇代码插画试验</title>
+<style>
+  /* Layout: single dark column like the game itself; each section is one canvas sample with a short caption */
+  :root {
+    --bg: #0d0a14;
+    --panel: #1a1326;
+    --line: #4a3a6c;
+    --gold: #e8c774;
+    --text: #e9dcb8;
+    --dim: #bfb2d6;
+    --muted: #8a7fa3;
+    --serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", serif;
+    --sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; }
+  .wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; display: grid; gap: 36px; }
+  header { display: grid; gap: 8px; }
+  h1 { font-family: var(--serif); color: var(--gold); font-size: 1.9rem; margin: 0; letter-spacing: .08em; text-wrap: balance; }
+  h2 { font-family: var(--serif); color: var(--gold); font-size: 1.2rem; margin: 0; letter-spacing: .05em; }
+  p { margin: 0; color: var(--dim); max-width: 65ch; }
+  .note { font-size: .85rem; color: var(--muted); }
+  section { display: grid; gap: 12px; }
+  canvas { display: block; width: 100%; height: auto; }
+  .phone { max-width: 320px; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; justify-self: center; width: 100%; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .chars { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .chars canvas { justify-self: center; }
+  ul { margin: 0; padding-left: 1.2em; color: var(--dim); display: grid; gap: 4px; }
+  b { color: var(--text); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>代码绘制插画 · 试验品</h1>
+    <p>下面所有画面都是 Canvas 现场画出来的，页面里没有一张图片。小游戏用的是同一套画图接口，所以搬进游戏就是这个样子。配色直接取自游戏现在的调色板。</p>
+    <p class="note">这页的绘图代码约 42KB（26 个图标、角色卡模板和一个场景，没压缩）。全部做完估计 60–80KB，大约是 AI 图片方案（约 2MB）的三十分之一。</p>
+  </header>
+
+  <section>
+    <h2>首页场景</h2>
+    <p>月亮、星空、小镇剪影、教堂、远处的绞刑架、低处的雾。按钮和标题是示意。</p>
+    <div class="phone"><canvas id="scene"></canvas></div>
+  </section>
+
+  <section>
+    <h2>卡牌（放大看）</h2>
+    <p>一张牌 = 颜色底 + 金边 + 中间的版画式图标 + 牌名。图标用剪影加排线，模仿木刻版画。</p>
+    <div class="stage"><canvas id="cards"></canvas></div>
+  </section>
+
+  <section>
+    <h2>三种红卡</h2>
+    <p>指控 1 点是羽毛笔，证据 3 点是盖了蜡封的文书，目击 7 点是一只眼睛。左上角的数字是点数，越大的红卡边框光越亮，第二排是手牌的实际大小。</p>
+    <div class="stage"><canvas id="reds"></canvas></div>
+  </section>
+
+  <section>
+    <h2>身份卡和角色</h2>
+    <p>三种身份、一个角色头像（法官），最后是卡背。</p>
+    <div class="stage"><canvas id="ids"></canvas></div>
+  </section>
+
+  <section>
+    <h2>15 个角色卡</h2>
+    <p>统一模板：圆形头像、名字绶带、技能说明。有次数限制的角色在右上角标出「限 n 次」。技能文字和游戏里现在用的完全一样。</p>
+    <div class="chars" id="chars"></div>
+  </section>
+
+  <section>
+    <h2>实际大小</h2>
+    <p>游戏里手牌和格子上的真实尺寸。小尺寸下图标能不能认出来，比放大后好不好看更重要。</p>
+    <div class="stage"><canvas id="real"></canvas></div>
+  </section>
+
+  <section>
+    <h2>和 AI 图片比</h2>
+    <ul>
+      <li><b>优点</b>：风格完全统一；体积几乎为零；以后加新牌、改颜色只要改代码；高分屏下也不会糊。</li>
+      <li><b>缺点</b>：只能画剪影、几何形状这类简单图形，画不出人物表情、光影细节；整体偏「图标」而不是「插画」。</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const P = {
+  skyTop: '#3a2a5c', skyMid: '#1a1326', skyBottom: '#0d0a14',
+  gold: '#e8c774', goldDark: '#b8913e', goldLine: '#d6a44a',
+  text: '#e9dcb8', moon: '#f1e3b3', ink: '#0d0a14', ink2: '#160f22',
+  cardText: '#f3d9a0', witch: '#b3263a', danger: '#c0394d',
+};
+const GRAD = {
+  red: ['#7a1428', '#4a0a18'], blue: ['#233d6e', '#142546'],
+  green: ['#265a45', '#143528'], black: ['#2b2b2b', '#0e0e0e'],
+  witch: ['#6e1424', '#2a0710'], constable: ['#6b5320', '#2e220a'],
+  villager: ['#4a4560', '#221f30'], character: ['#3a2a5c', '#1a1326'],
+  back: ['#2a1d44', '#120c1e'],
+};
+const TITLE_FONT = (px) => `bold ${px}px "Songti SC", "STSong", "Noto Serif SC", serif`;
+
+function rng(seed) {
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function setup(id, w, h) {
+  const c = document.getElementById(id);
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  c.style.maxWidth = w + 'px'; c.style.aspectRatio = `${w} / ${h}`;
+  const ctx = c.getContext('2d'); ctx.scale(dpr, dpr); return ctx;
+}
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+/** 版画排线：在当前裁剪区域里画一组平行线 */
+function hatch(ctx, x, y, w, h, angle, gap, color, lw) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+  const d = Math.hypot(w, h), cx = x + w / 2, cy = y + h / 2, ca = Math.cos(angle), sa = Math.sin(angle);
+  for (let o = -d; o <= d; o += gap) {
+    ctx.moveTo(cx + ca * -d - sa * o, cy + sa * -d + ca * o); ctx.lineTo(cx + ca * d - sa * o, cy + sa * d + ca * o);
+  }
+  ctx.stroke(); ctx.restore();
+}
+function glow(ctx, x, y, r, color) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+}
+function star4(ctx, x, y, r, color) {
+  ctx.fillStyle = color; ctx.beginPath();
+  ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r); ctx.fill();
+}
+function crescent(ctx, x, y, r, dx, dy, color) {
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.arc(x + dx, y + dy, r * 0.88, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill('evenodd'); ctx.restore();
+}
+
+/* ---------- 图标：都以 (cx, cy) 为中心、s 为画框边长 ---------- */
+const ART = {
+  blackCat(ctx, cx, cy, s) {
+    glow(ctx, cx, cy - s * .05, s * .45, 'rgba(241,227,179,.25)');
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy - s * .05, s * .3, 0, Math.PI * 2); ctx.fillStyle = P.moon; ctx.fill(); ctx.clip();
+    hatch(ctx, cx - s * .3, cy - s * .35, s * .25, s * .6, -0.9, s * .03, 'rgba(120,96,60,.35)', s * .008); ctx.restore();
+    ctx.fillStyle = P.ink;
+    ctx.beginPath(); ctx.ellipse(cx, cy + s * .14, s * .15, s * .19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + s * .01, cy - s * .1, s * .095, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - s * .085, cy - s * .13); ctx.lineTo(cx - s * .07, cy - s * .25); ctx.lineTo(cx - s * .01, cy - s * .18); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx + s * .1, cy - s * .13); ctx.lineTo(cx + s * .09, cy - s * .25); ctx.lineTo(cx + s * .03, cy - s * .18); ctx.fill();
+    ctx.strokeStyle = P.ink; ctx.lineWidth = s * .045; ctx.lineCap = 'round'; ctx.beginPath();
+    ctx.moveTo(cx + s * .12, cy + s * .3); ctx.bezierCurveTo(cx + s * .32, cy + s * .3, cx + s * .3, cy + s * .05, cx + s * .2, cy - s * .02); ctx.stroke();
+    ctx.fillStyle = P.gold;
+    ctx.beginPath(); ctx.ellipse(cx - s * .03, cy - s * .1, s * .02, s * .011, -.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + s * .05, cy - s * .1, s * .02, s * .011, .2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = P.ink; ctx.fillRect(cx - s * .4, cy + s * .32, s * .8, s * .2);
+  },
+  night(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .45, 'rgba(232,199,116,.18)');
+    crescent(ctx, cx - s * .03, cy - s * .02, s * .26, s * .12, -s * .07, P.moon);
+    const r = rng(7);
+    for (let i = 0; i < 9; i++) star4(ctx, cx + (r() - .5) * s * .8, cy + (r() - .5) * s * .8, s * (.015 + r() * .025), 'rgba(255,255,255,.85)');
+    ctx.fillStyle = 'rgba(191,178,214,.18)';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(cx + (i - 1) * s * .2, cy + s * .3 + i * s * .03, s * .28, s * .04, 0, 0, Math.PI * 2); ctx.fill(); }
+  },
+  evidence(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .45, 'rgba(232,199,116,.15)');
+    const w = s * .42, h = s * .56, x = cx - w / 2, y = cy - h / 2;
+    ctx.fillStyle = '#e3d3a8'; ctx.fillRect(x, y, w, h);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    hatch(ctx, x, y, w, h, .8, s * .035, 'rgba(110,80,40,.18)', s * .006); ctx.restore();
+    ctx.fillStyle = '#cdb98a';
+    rr(ctx, x - s * .03, y - s * .04, w + s * .06, s * .07, s * .035); ctx.fill();
+    rr(ctx, x - s * .03, y + h - s * .03, w + s * .06, s * .07, s * .035); ctx.fill();
+    ctx.strokeStyle = 'rgba(40,25,10,.7)'; ctx.lineWidth = s * .012; ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const ly = y + s * .09 + i * s * .065, len = w * (i === 5 ? .45 : .75);
+      ctx.moveTo(x + w * .12, ly);
+      for (let t = 0; t <= len; t += s * .03) ctx.lineTo(x + w * .12 + t, ly + Math.sin(t * 40 / s + i) * s * .006);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#8e1a2c'; ctx.beginPath(); ctx.arc(x + w * .78, y + h * .82, s * .07, 0, Math.PI * 2); ctx.fill();
+    star4(ctx, x + w * .78, y + h * .82, s * .04, 'rgba(243,217,160,.8)');
+  },
+  accusation(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .42, 'rgba(232,199,116,.12)');
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-.7);
+    ctx.fillStyle = '#e3d3a8'; ctx.beginPath(); ctx.moveTo(0, s * .3);
+    ctx.bezierCurveTo(-s * .13, s * .1, -s * .12, -s * .2, s * .02, -s * .36);
+    ctx.bezierCurveTo(s * .08, -s * .15, s * .06, s * .1, 0, s * .3); ctx.fill();
+    ctx.save(); ctx.clip(); hatch(ctx, -s * .15, -s * .4, s * .3, s * .7, .9, s * .028, 'rgba(90,60,30,.45)', s * .007); ctx.restore();
+    ctx.strokeStyle = '#5a4020'; ctx.lineWidth = s * .012; ctx.beginPath(); ctx.moveTo(0, s * .42); ctx.quadraticCurveTo(-s * .01, 0, s * .02, -s * .34); ctx.stroke();
+    ctx.fillStyle = P.ink; ctx.beginPath(); ctx.moveTo(-s * .015, s * .38); ctx.lineTo(s * .015, s * .38); ctx.lineTo(0, s * .46); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = P.ink;
+    for (const [dx, dy, r] of [[-.24, .3, .03], [-.17, .34, .018], [-.29, .25, .014]]) { ctx.beginPath(); ctx.arc(cx + dx * s, cy + dy * s, r * s, 0, Math.PI * 2); ctx.fill(); }
+  },
+  witness(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .5, 'rgba(241,227,179,.35)');
+    ctx.strokeStyle = 'rgba(232,199,116,.75)'; ctx.lineWidth = s * .014; ctx.lineCap = 'round'; ctx.beginPath();
+    for (let i = 0; i < 16; i++) { const t = i * Math.PI / 8, r1 = s * .3, r2 = s * (i % 2 ? .36 : .42);
+      ctx.moveTo(cx + Math.cos(t) * r1, cy + Math.sin(t) * r1 * .8); ctx.lineTo(cx + Math.cos(t) * r2, cy + Math.sin(t) * r2 * .8); }
+    ctx.stroke();
+    const eye = () => { ctx.beginPath(); ctx.moveTo(cx - s * .3, cy); ctx.quadraticCurveTo(cx, cy - s * .26, cx + s * .3, cy); ctx.quadraticCurveTo(cx, cy + s * .26, cx - s * .3, cy); ctx.closePath(); };
+    eye(); ctx.fillStyle = P.moon; ctx.fill();
+    ctx.save(); eye(); ctx.clip();
+    hatch(ctx, cx - s * .3, cy - s * .15, s * .6, s * .09, 0, s * .022, 'rgba(90,60,30,.4)', s * .006);
+    const g = ctx.createRadialGradient(cx, cy, s * .02, cx, cy, s * .12); g.addColorStop(0, P.gold); g.addColorStop(1, '#7a1428');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, s * .12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(cx, cy, s * .055, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx + s * .035, cy - s * .035, s * .02, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    eye(); ctx.strokeStyle = P.ink; ctx.lineWidth = s * .022; ctx.stroke();
+  },
+  arson(ctx, cx, cy, s) {
+    glow(ctx, cx, cy - s * .15, s * .5, 'rgba(232,150,80,.35)');
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(.18);
+    ctx.fillStyle = '#3a2614'; ctx.beginPath();
+    ctx.moveTo(-s * .045, -s * .02); ctx.lineTo(s * .045, -s * .02); ctx.lineTo(s * .03, s * .42); ctx.lineTo(-s * .03, s * .42); ctx.fill();
+    ctx.save(); ctx.clip(); hatch(ctx, -s * .05, -s * .02, s * .1, s * .44, 1.4, s * .03, 'rgba(0,0,0,.4)', s * .008); ctx.restore();
+    ctx.fillStyle = P.goldDark; ctx.fillRect(-s * .06, -s * .02, s * .12, s * .04); ctx.fillRect(-s * .055, s * .06, s * .11, s * .025);
+    const flame = (h, w, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -s * .02);
+      ctx.bezierCurveTo(-w, -s * .05, -w * .6, -h * .6, 0, -h); ctx.bezierCurveTo(w * .6, -h * .6, w, -s * .05, 0, -s * .02); ctx.fill(); };
+    flame(s * .42, s * .17, P.danger); flame(s * .34, s * .12, P.goldLine); flame(s * .22, s * .07, '#fff1c4');
+    ctx.restore();
+  },
+  witch(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .45, 'rgba(179,38,58,.35)');
+    crescent(ctx, cx + s * .2, cy - s * .22, s * .1, s * .05, -s * .03, P.moon);
+    ctx.fillStyle = P.ink; ctx.strokeStyle = P.goldLine; ctx.lineWidth = s * .01;
+    ctx.beginPath(); ctx.moveTo(cx - s * .17, cy + s * .14);
+    ctx.quadraticCurveTo(cx - s * .05, cy - s * .1, cx + s * .02, cy - s * .32);
+    ctx.quadraticCurveTo(cx + s * .06, cy - s * .2, cx + s * .2, cy - s * .26);
+    ctx.quadraticCurveTo(cx + s * .07, cy - s * .12, cx + s * .17, cy + s * .14); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy + s * .16, s * .36, s * .07, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = P.witch; ctx.beginPath(); ctx.moveTo(cx - s * .165, cy + s * .08); ctx.lineTo(cx + s * .165, cy + s * .08);
+    ctx.lineTo(cx + s * .17, cy + s * .14); ctx.lineTo(cx - s * .17, cy + s * .14); ctx.fill();
+    ctx.strokeStyle = P.gold; ctx.lineWidth = s * .014; ctx.strokeRect(cx - s * .035, cy + s * .075, s * .07, s * .07);
+  },
+  constable(ctx, cx, cy, s) {
+    glow(ctx, cx, cy + s * .05, s * .45, 'rgba(232,199,116,.35)');
+    ctx.strokeStyle = P.ink; ctx.lineWidth = s * .025; ctx.beginPath(); ctx.arc(cx, cy - s * .3, s * .05, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = P.ink; ctx.beginPath();
+    ctx.moveTo(cx - s * .05, cy - s * .3); ctx.lineTo(cx + s * .05, cy - s * .3); ctx.lineTo(cx + s * .17, cy - s * .18); ctx.lineTo(cx - s * .17, cy - s * .18); ctx.fill();
+    ctx.fillStyle = 'rgba(255,214,120,.55)'; ctx.fillRect(cx - s * .13, cy - s * .18, s * .26, s * .32);
+    glow(ctx, cx, cy - s * .02, s * .15, 'rgba(255,240,190,.9)');
+    ctx.fillStyle = '#fff1c4'; ctx.beginPath(); ctx.moveTo(cx, cy - s * .1);
+    ctx.quadraticCurveTo(cx + s * .04, cy, cx, cy + s * .04); ctx.quadraticCurveTo(cx - s * .04, cy, cx, cy - s * .1); ctx.fill();
+    ctx.strokeStyle = P.ink; ctx.lineWidth = s * .022; ctx.strokeRect(cx - s * .13, cy - s * .18, s * .26, s * .32);
+    ctx.beginPath(); ctx.moveTo(cx - s * .045, cy - s * .18); ctx.lineTo(cx - s * .045, cy + s * .14);
+    ctx.moveTo(cx + s * .045, cy - s * .18); ctx.lineTo(cx + s * .045, cy + s * .14); ctx.stroke();
+    ctx.fillStyle = P.ink; ctx.fillRect(cx - s * .17, cy + s * .14, s * .34, s * .06);
+    star4(ctx, cx, cy + s * .32, s * .07, P.gold);
+  },
+  villager(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .45, 'rgba(191,178,214,.2)');
+    ctx.fillStyle = 'rgba(191,178,214,.25)';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(cx + s * .13 + i * s * .03, cy - s * .3 - i * s * .06, s * (.03 + i * .012), 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = P.ink; ctx.fillRect(cx + s * .1, cy - s * .27, s * .06, s * .14);
+    ctx.beginPath(); ctx.moveTo(cx - s * .27, cy - s * .02); ctx.lineTo(cx, cy - s * .24); ctx.lineTo(cx + s * .27, cy - s * .02); ctx.fill();
+    ctx.save(); ctx.clip(); ctx.restore();
+    ctx.fillRect(cx - s * .21, cy - s * .03, s * .42, s * .3);
+    ctx.save(); ctx.beginPath(); ctx.moveTo(cx - s * .27, cy - s * .02); ctx.lineTo(cx, cy - s * .24); ctx.lineTo(cx + s * .27, cy - s * .02); ctx.clip();
+    hatch(ctx, cx - s * .3, cy - s * .25, s * .6, s * .25, 0, s * .035, 'rgba(191,178,214,.25)', s * .007); ctx.restore();
+    glow(ctx, cx - s * .1, cy + s * .08, s * .12, 'rgba(232,199,116,.5)');
+    ctx.fillStyle = P.gold; ctx.fillRect(cx - s * .14, cy + s * .04, s * .08, s * .08);
+    ctx.fillStyle = P.ink; ctx.fillRect(cx - s * .102, cy + s * .04, s * .006, s * .08); ctx.fillRect(cx - s * .14, cy + s * .077, s * .08, s * .006);
+    ctx.fillStyle = '#2b1d12'; ctx.fillRect(cx + s * .05, cy + s * .1, s * .09, s * .17);
+    ctx.fillStyle = P.ink; ctx.fillRect(cx - s * .4, cy + s * .27, s * .8, s * .2);
+  },
+  judge(ctx, cx, cy, s) {
+    glow(ctx, cx, cy, s * .45, 'rgba(232,199,116,.25)');
+    ctx.fillStyle = P.ink; rr(ctx, cx - s * .24, cy + s * .2, s * .48, s * .08, s * .02); ctx.fill();
+    ctx.strokeStyle = P.goldDark; ctx.lineWidth = s * .01; ctx.stroke();
+    ctx.save(); ctx.translate(cx + s * .02, cy - s * .02); ctx.rotate(-.6);
+    ctx.fillStyle = '#3a2614'; rr(ctx, -s * .025, -s * .02, s * .05, s * .38, s * .02); ctx.fill();
+    ctx.fillStyle = P.ink; rr(ctx, -s * .16, -s * .12, s * .32, s * .13, s * .03); ctx.fill();
+    ctx.fillStyle = P.goldDark; ctx.fillRect(-s * .12, -s * .12, s * .025, s * .13); ctx.fillRect(s * .095, -s * .12, s * .025, s * .13);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(232,199,116,.6)'; ctx.lineWidth = s * .012; ctx.beginPath();
+    ctx.arc(cx - s * .02, cy + s * .19, s * .1, Math.PI * 1.1, Math.PI * 1.35); ctx.moveTo(cx - s * .18, cy + s * .1); ctx.lineTo(cx - s * .24, cy + s * .06); ctx.stroke();
+  },
+};
+
+/* ---------- 卡牌外框 ---------- */
+function card(ctx, x, y, w, h, color, title, art) {
+  const [a, b] = GRAD[color];
+  const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, a); g.addColorStop(1, b);
+  const r = Math.max(3, w * .07);
+  rr(ctx, x, y, w, h, r); ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = P.goldDark; ctx.lineWidth = Math.max(1, w * .012); ctx.stroke();
+  const small = w < 80, pad = small ? w * .07 : w * .065;
+  const ax = x + pad, ay = y + pad, aw = w - pad * 2, ah = h * (small ? .7 : .66);
+  ctx.save(); rr(ctx, ax, ay, aw, ah, r * .6); ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(ax, ay, aw, ah);
+  if (!small) hatch(ctx, ax, ay, aw, ah, -.7, w * .03, 'rgba(255,255,255,.04)', 1);
+  art(ctx, ax + aw / 2, ay + ah / 2, Math.min(aw, ah * 1.05));
+  ctx.restore();
+  rr(ctx, ax, ay, aw, ah, r * .6); ctx.strokeStyle = 'rgba(214,164,74,.55)'; ctx.lineWidth = Math.max(.75, w * .008); ctx.stroke();
+  if (!small) {
+    ctx.fillStyle = P.goldLine;
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const px = x + w * (dx ? .93 : .07), py = y + h * (dy ? .955 : .035) + (dy ? 0 : 0);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI / 4); ctx.fillRect(-w * .015, -w * .015, w * .03, w * .03); ctx.restore();
+    }
+  }
+  const fs = Math.max(9, Math.round(w * (small ? .19 : .115)));
+  ctx.fillStyle = P.cardText; ctx.font = TITLE_FONT(fs); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(title, x + w / 2, ay + ah + (y + h - ay - ah) / 2);
+}
+function cardBack(ctx, x, y, w, h) {
+  const [a, b] = GRAD.back; const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, a); g.addColorStop(1, b);
+  const r = Math.max(3, w * .07); rr(ctx, x, y, w, h, r); ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  hatch(ctx, x, y, w, h, Math.PI / 4, w * .09, 'rgba(232,199,116,.12)', 1); hatch(ctx, x, y, w, h, -Math.PI / 4, w * .09, 'rgba(232,199,116,.12)', 1);
+  ctx.restore();
+  ctx.strokeStyle = P.goldDark; ctx.lineWidth = Math.max(1, w * .012); rr(ctx, x, y, w, h, r); ctx.stroke();
+  rr(ctx, x + w * .06, y + w * .06, w * .88, h - w * .12, r * .6); ctx.strokeStyle = 'rgba(214,164,74,.6)'; ctx.stroke();
+  const cx = x + w / 2, cy = y + h / 2, R = w * .3;
+  ctx.fillStyle = b; ctx.beginPath(); ctx.arc(cx, cy, R * 1.1, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = P.goldLine; ctx.lineWidth = Math.max(1, w * .012);
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.arc(cx, cy, R * .78, 0, Math.PI * 2); ctx.stroke();
+  for (let i = 0; i < 12; i++) { const t = i * Math.PI / 6; ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(t) * R, cy + Math.sin(t) * R); ctx.lineTo(cx + Math.cos(t) * R * 1.25, cy + Math.sin(t) * R * 1.25); ctx.stroke(); }
+  crescent(ctx, cx - R * .1, cy, R * .55, R * .25, -R * .12, P.gold);
+  star4(ctx, cx + R * .32, cy - R * .25, R * .12, P.gold);
+}
+function portrait(ctx, cx, cy, R, art, name) {
+  const g = ctx.createRadialGradient(cx, cy - R * .3, R * .1, cx, cy, R); g.addColorStop(0, GRAD.character[0]); g.addColorStop(1, GRAD.character[1]);
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); ctx.clip();
+  art(ctx, cx, cy + R * .05, R * 1.7); ctx.restore();
+  ctx.strokeStyle = P.goldLine; ctx.lineWidth = Math.max(1.2, R * .05); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  if (name) { ctx.fillStyle = P.cardText; ctx.font = TITLE_FONT(Math.max(10, R * .32)); ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(name, cx, cy + R + 8); }
+}
+
+/* ---------- 首页场景 ---------- */
+function scene() {
+  const W = 320, H = 600, ctx = setup('scene', W, H), r = rng(1692);
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, P.skyTop); sky.addColorStop(.55, P.skyMid); sky.addColorStop(1, P.skyBottom);
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 110; i++) { ctx.globalAlpha = .3 + r() * .7; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(r() * W, r() * H * .6, .4 + r() * 1.1, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1; star4(ctx, 60, 70, 6, 'rgba(255,255,255,.9)'); star4(ctx, 270, 250, 4, 'rgba(255,255,255,.7)');
+  const mx = W * .72, my = H * .17, mr = W * .13;
+  glow(ctx, mx, my, mr * 3.2, 'rgba(241,227,179,.22)');
+  ctx.save(); ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fillStyle = P.moon; ctx.fill(); ctx.clip();
+  ctx.fillStyle = 'rgba(170,150,105,.35)';
+  for (const [dx, dy, cr] of [[-.3, -.2, .22], [.25, .1, .16], [-.05, .4, .12], [.35, -.35, .09]]) { ctx.beginPath(); ctx.arc(mx + dx * mr, my + dy * mr, cr * mr, 0, Math.PI * 2); ctx.fill(); }
+  hatch(ctx, mx - mr, my - mr, mr * .9, mr * 2, -1, 3, 'rgba(120,96,60,.25)', .8); ctx.restore();
+  // 远山
+  ctx.fillStyle = '#251a3a'; ctx.beginPath(); ctx.moveTo(0, H * .62);
+  for (let x = 0; x <= W; x += 10) ctx.lineTo(x, H * .6 - Math.sin(x / 45) * 10 - Math.sin(x / 17) * 4 - (x < 110 ? (110 - x) * .35 : 0));
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+  // 绞刑架
+  ctx.strokeStyle = '#120c1c'; ctx.lineWidth = 4; ctx.lineCap = 'square'; ctx.beginPath();
+  ctx.moveTo(40, H * .56); ctx.lineTo(40, H * .46); ctx.lineTo(78, H * .46); ctx.moveTo(40, H * .485); ctx.lineTo(55, H * .46); ctx.stroke();
+  ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(72, H * .46); ctx.lineTo(72, H * .495); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(72, H * .502, 3.5, 5, 0, 0, Math.PI * 2); ctx.stroke();
+  // 雾（远）
+  for (let i = 0; i < 4; i++) { const g = ctx.createRadialGradient(W * (.2 + i * .25), H * .66, 0, W * (.2 + i * .25), H * .66, 90);
+    g.addColorStop(0, 'rgba(191,178,214,.12)'); g.addColorStop(1, 'rgba(191,178,214,0)'); ctx.fillStyle = g; ctx.fillRect(0, H * .55, W, H * .2); }
+  // 小镇剪影
+  const base = H * .74; ctx.fillStyle = '#0f0a18';
+  const lit = [];
+  let x = -10;
+  while (x < W) {
+    const w = 34 + r() * 30, h = 26 + r() * 30;
+    if (x > W * .5 && x < W * .62) { // 教堂
+      const cw = 40, ch = 54; ctx.fillRect(x, base - ch, cw, ch);
+      ctx.beginPath(); ctx.moveTo(x - 3, base - ch); ctx.lineTo(x + cw / 2, base - ch - 18); ctx.lineTo(x + cw + 3, base - ch); ctx.fill();
+      ctx.fillRect(x + cw / 2 - 8, base - ch - 40, 16, 30);
+      ctx.beginPath(); ctx.moveTo(x + cw / 2 - 10, base - ch - 40); ctx.lineTo(x + cw / 2, base - ch - 82); ctx.lineTo(x + cw / 2 + 10, base - ch - 40); ctx.fill();
+      ctx.fillRect(x + cw / 2 - .8, base - ch - 94, 1.6, 14); ctx.fillRect(x + cw / 2 - 5, base - ch - 89, 10, 1.6);
+      lit.push([x + cw / 2 - 3, base - ch - 32, 6, 9]); x += cw + 4; continue;
+    }
+    ctx.fillRect(x, base - h, w, h);
+    ctx.beginPath(); ctx.moveTo(x - 4, base - h); ctx.lineTo(x + w / 2, base - h - 16 - r() * 10); ctx.lineTo(x + w + 4, base - h); ctx.fill();
+    if (r() > .4) ctx.fillRect(x + w * .7, base - h - 20, 6, 14);
+    if (r() > .35) lit.push([x + w * (.2 + r() * .45), base - h + 8 + r() * (h - 18), 5, 7]);
+    x += w + 2 + r() * 6;
+  }
+  for (const [lx, ly, lw, lh] of lit) { glow(ctx, lx + lw / 2, ly + lh / 2, 14, 'rgba(232,199,116,.35)'); ctx.fillStyle = P.gold; ctx.fillRect(lx, ly, lw, lh); }
+  ctx.fillStyle = '#0b0811'; ctx.fillRect(0, base, W, H - base);
+  // 雾（近）
+  for (let i = 0; i < 5; i++) { const fx = W * (i / 4), g = ctx.createRadialGradient(fx, base + 4, 0, fx, base + 4, 110);
+    g.addColorStop(0, 'rgba(191,178,214,.16)'); g.addColorStop(1, 'rgba(191,178,214,0)'); ctx.fillStyle = g; ctx.fillRect(0, base - 50, W, 110); }
+  // 标题与按钮（示意）
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(232,199,116,.6)'; ctx.shadowBlur = 16; ctx.fillStyle = P.gold; ctx.font = TITLE_FONT(46); ctx.fillText('女巫镇', W / 2, H * .36);
+  ctx.shadowBlur = 0; ctx.fillStyle = '#bfb2d6'; ctx.font = '13px sans-serif'; ctx.fillText('塞 勒 姆  ·  1 6 9 2', W / 2, H * .36 + 36);
+  for (const [i, label] of ['创建房间', '加入房间'].entries()) {
+    const by = H * .82 + i * 52, bw = 190, bx = (W - bw) / 2;
+    rr(ctx, bx, by, bw, 40, 8); ctx.fillStyle = i ? 'rgba(0,0,0,.35)' : 'rgba(232,199,116,.16)'; ctx.fill();
+    ctx.strokeStyle = P.goldLine; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = P.text; ctx.font = TITLE_FONT(16); ctx.fillText(label, W / 2, by + 20);
+  }
+}
+
+/* ---------- 卡牌陈列 ---------- */
+function cards() {
+  const list = [['blue', '黑猫', ART.blackCat], ['black', '夜晚', ART.night], ['red', '证据', ART.evidence], ['green', '纵火', ART.arson]];
+  const W = 640, cw = 140, ch = 196, gap = (W - cw * 4) / 3, ctx = setup('cards', W, ch + 4);
+  list.forEach(([c, t, a], i) => card(ctx, i * (cw + gap), 2, cw, ch, c, t, a));
+}
+function points(ctx, x, y, w, n, strength) {
+  const R = Math.max(6, w * .11), px = x + w * .14, py = y + w * .14;
+  if (strength) glow(ctx, px, py, R * 2.6, `rgba(232,199,116,${.25 * strength})`);
+  ctx.fillStyle = '#4a0a18'; ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = P.gold; ctx.lineWidth = Math.max(1, R * .14); ctx.stroke();
+  ctx.fillStyle = P.cardText; ctx.font = TITLE_FONT(Math.round(R * 1.25)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(n), px, py + R * .05);
+}
+function reds() {
+  const list = [['指控', ART.accusation, 1, 0], ['证据', ART.evidence, 3, .5], ['目击', ART.witness, 7, 1]];
+  const W = 640, cw = 150, ch = 210, gap = (W - cw * 3) / 2, ctx = setup('reds', W, ch + 130);
+  list.forEach(([t, a, n, k], i) => {
+    const x = i * (cw + gap);
+    if (k) glow(ctx, x + cw / 2, 2 + ch / 2, cw * (.7 + k * .2), `rgba(192,57,77,${.18 + k * .2})`);
+    card(ctx, x, 2, cw, ch, 'red', t, a); points(ctx, x, 2, cw, n, k);
+    const sx = x + (cw - 58) / 2;
+    card(ctx, sx, ch + 30, 58, 84, 'red', t, a); points(ctx, sx, ch + 30, 58, n, 0);
+  });
+}
+function ids() {
+  const W = 640, cw = 120, ch = 168, gap = (W - cw * 5) / 4, ctx = setup('ids', W, ch + 4);
+  [['witch', '女巫', ART.witch], ['constable', '警长', ART.constable], ['villager', '村民', ART.villager]]
+    .forEach(([c, t, a], i) => card(ctx, i * (cw + gap), 2, cw, ch, c, t, a));
+  portrait(ctx, 3 * (cw + gap) + cw / 2, 2 + ch * .4, cw * .42, ART.judge, '法官');
+  cardBack(ctx, 4 * (cw + gap), 2, cw, ch);
+}
+function real() {
+  // 按 375 宽的手机：格子 83×70，手牌 58×84（取自游戏现在的布局）
+  const W = 351, H = 210, ctx = setup('real', W, H);
+  const people = [['法官·P2', ART.judge], ['女仆·P3', CHAR_ART.maid], ['牧师·P4', CHAR_ART.priest], ['农民·P5', CHAR_ART.farmer]];
+  people.forEach(([name, art], i) => {
+    const x = i * 89, y = 0;
+    rr(ctx, x, y, 83, 70, 6); ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fill(); ctx.strokeStyle = '#4a3a6c'; ctx.lineWidth = 1; ctx.stroke();
+    portrait(ctx, x + 14, y + 14, 10, art);
+    ctx.fillStyle = P.text; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(name, x + 28, y + 14);
+    for (let k = 0; k < 3; k++) cardBack(ctx, x + 6 + k * 16, y + 30, 14, 19);
+    if (i === 0) card(ctx, x + 56, y + 30, 14, 19, 'red', '', ART.evidence);
+    if (i === 1) card(ctx, x + 56, y + 30, 14, 19, 'blue', '', ART.blackCat);
+    ctx.fillStyle = '#bfb2d6'; ctx.font = '10px sans-serif'; ctx.fillText(`手${3 + i}`, x + 6, y + 61);
+  });
+  const hand = [['blue', '黑猫', ART.blackCat], ['red', '证据', ART.evidence], ['green', '纵火', ART.arson], ['black', '夜晚', ART.night], ['red', '证据', ART.evidence]];
+  hand.forEach(([c, t, a], i) => card(ctx, 18 + i * 64, 98, 58, 84, c, t, a));
+  ctx.fillStyle = '#8a7fa3'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('上：玩家格子 83×70　下：手牌 58×84', W / 2, 200);
+}
+
+/* ---------- 15 个角色的图标 ---------- */
+const INK = P.ink;
+function line(ctx, pts, lw, color) { ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
+  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+const CHAR_ART = {
+  doctor(ctx, cx, cy, s) {
+    ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.ellipse(cx - s * .04, cy - s * .2, s * .26, s * .05, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(cx - s * .16, cy - s * .36, s * .24, s * .17);
+    ctx.beginPath(); ctx.arc(cx - s * .05, cy - s * .02, s * .16, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx + s * .06, cy - s * .1); ctx.quadraticCurveTo(cx + s * .3, cy - s * .02, cx + s * .36, cy + s * .22);
+    ctx.quadraticCurveTo(cx + s * .2, cy + s * .1, cx + s * .03, cy + s * .08); ctx.fill();
+    ctx.fillRect(cx - s * .2, cy + s * .1, s * .3, s * .3);
+    ctx.fillStyle = P.gold; ctx.beginPath(); ctx.arc(cx - s * .02, cy - s * .05, s * .045, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(cx - s * .02, cy - s * .05, s * .02, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = P.goldDark; ctx.lineWidth = s * .01; ctx.beginPath(); ctx.ellipse(cx - s * .04, cy - s * .2, s * .26, s * .05, 0, 0, Math.PI * 2); ctx.stroke();
+  },
+  beggar(ctx, cx, cy, s) {
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(cx, cy + s * .08, s * .28, s * .2, 0, 0, Math.PI); ctx.fill();
+    ctx.strokeStyle = P.goldDark; ctx.lineWidth = s * .02; ctx.beginPath(); ctx.ellipse(cx, cy + s * .08, s * .28, s * .06, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = P.gold;
+    for (const [dx, dy, r] of [[-.06, -.08, .06], [.1, -.2, .05], [.02, -.32, .04]]) {
+      ctx.beginPath(); ctx.ellipse(cx + dx * s, cy + dy * s, r * s, r * s * .75, .4, 0, Math.PI * 2); ctx.fill(); }
+    line(ctx, [[cx + s * .1, cy + s * .14], [cx + s * .14, cy + s * .2], [cx + s * .11, cy + s * .26]], s * .012, 'rgba(232,199,116,.5)');
+  },
+  landlord(ctx, cx, cy, s) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-.75);
+    ctx.strokeStyle = P.gold; ctx.lineWidth = s * .05; ctx.beginPath(); ctx.arc(0, -s * .22, s * .1, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = P.gold; ctx.fillRect(-s * .025, -s * .12, s * .05, s * .44);
+    ctx.fillRect(s * .02, s * .2, s * .1, s * .04); ctx.fillRect(s * .02, s * .27, s * .07, s * .04);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, -s * .22, s * .035, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
+  priest(ctx, cx, cy, s) {
+    glow(ctx, cx, cy - s * .1, s * .3, 'rgba(255,240,190,.5)');
+    ctx.fillStyle = P.gold; ctx.fillRect(cx - s * .03, cy - s * .36, s * .06, s * .36); ctx.fillRect(cx - s * .12, cy - s * .26, s * .24, s * .055);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(cx - s * .3, cy + s * .06); ctx.quadraticCurveTo(cx - s * .15, cy, cx, cy + s * .07);
+    ctx.quadraticCurveTo(cx + s * .15, cy, cx + s * .3, cy + s * .06); ctx.lineTo(cx + s * .3, cy + s * .26);
+    ctx.quadraticCurveTo(cx + s * .15, cy + s * .2, cx, cy + s * .27); ctx.quadraticCurveTo(cx - s * .15, cy + s * .2, cx - s * .3, cy + s * .26); ctx.fill();
+    line(ctx, [[cx, cy + s * .07], [cx, cy + s * .27]], s * .012, P.goldDark);
+    for (let i = 0; i < 3; i++) { line(ctx, [[cx - s * .25, cy + s * (.1 + i * .045)], [cx - s * .05, cy + s * (.12 + i * .045)]], s * .008, 'rgba(232,199,116,.45)');
+      line(ctx, [[cx + s * .05, cy + s * (.12 + i * .045)], [cx + s * .25, cy + s * (.1 + i * .045)]], s * .008, 'rgba(232,199,116,.45)'); }
+  },
+  storyteller(ctx, cx, cy, s) {
+    for (let i = 0; i < 5; i++) {
+      ctx.save(); ctx.translate(cx, cy + s * .28); ctx.rotate((i - 2) * .28);
+      const w = s * .2, h = s * .3; rr(ctx, -w / 2, -h - s * .12, w, h, s * .025);
+      ctx.fillStyle = i === 2 ? '#7a1428' : GRAD.back[0]; ctx.fill(); ctx.strokeStyle = P.goldLine; ctx.lineWidth = s * .01; ctx.stroke();
+      if (i === 2) star4(ctx, 0, -h / 2 - s * .12, s * .05, P.gold); else crescent(ctx, 0, -h / 2 - s * .12, s * .04, s * .02, -s * .01, 'rgba(232,199,116,.7)');
+      ctx.restore();
+    }
+  },
+  tailor(ctx, cx, cy, s) {
+    ctx.save(); ctx.translate(cx, cy);
+    for (const sgn of [-1, 1]) { ctx.save(); ctx.rotate(sgn * .35);
+      ctx.fillStyle = '#cfc6dc'; ctx.beginPath(); ctx.moveTo(-s * .02, 0); ctx.lineTo(s * .02, 0); ctx.lineTo(s * .005, -s * .36); ctx.fill();
+      ctx.strokeStyle = P.gold; ctx.lineWidth = s * .035; ctx.beginPath(); ctx.arc(0, s * .17, s * .08, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = P.gold; ctx.fillRect(-s * .015, 0, s * .03, s * .1); ctx.restore(); }
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, 0, s * .025, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    line(ctx, [[cx - s * .32, cy - s * .3], [cx - s * .2, cy - s * .12], [cx - s * .3, cy + s * .05], [cx - s * .22, cy + s * .3]], s * .012, P.danger);
+  },
+  housewife(ctx, cx, cy, s) {
+    ctx.strokeStyle = 'rgba(191,178,214,.45)'; ctx.lineWidth = s * .018; ctx.lineCap = 'round';
+    for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(cx - s * .02 + i * s * .08, cy - s * .2);
+      ctx.bezierCurveTo(cx - s * .08 + i * s * .08, cy - s * .27, cx + s * .04 + i * s * .08, cy - s * .32, cx - s * .02 + i * s * .08, cy - s * .4); ctx.stroke(); }
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(cx, cy + s * .06, s * .22, s * .2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx + s * .16, cy); ctx.quadraticCurveTo(cx + s * .32, cy - s * .02, cx + s * .36, cy - s * .14);
+    ctx.lineTo(cx + s * .3, cy - s * .12); ctx.quadraticCurveTo(cx + s * .26, cy + s * .04, cx + s * .16, cy + s * .1); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = s * .035; ctx.beginPath(); ctx.arc(cx, cy - s * .1, s * .15, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    ctx.fillStyle = P.goldDark; ctx.beginPath(); ctx.ellipse(cx, cy - s * .13, s * .1, s * .025, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(cx - s * .2, cy + s * .1, s * .4, s * .02);
+  },
+  farmer(ctx, cx, cy, s) {
+    for (const [ang, len] of [[-.35, .55], [0, .62], [.35, .55]]) {
+      ctx.save(); ctx.translate(cx, cy + s * .32); ctx.rotate(ang);
+      line(ctx, [[0, 0], [0, -s * len]], s * .02, P.goldDark);
+      ctx.fillStyle = P.gold;
+      for (let k = 0; k < 5; k++) { const y = -s * len + s * (.04 + k * .05);
+        for (const sg of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sg * s * .03, y, s * .022, s * .045, sg * .5, 0, Math.PI * 2); ctx.fill(); } }
+      ctx.restore();
+    }
+    ctx.fillStyle = P.danger; ctx.fillRect(cx - s * .07, cy + s * .14, s * .14, s * .04);
+  },
+  child(ctx, cx, cy, s) {
+    ctx.strokeStyle = 'rgba(232,199,116,.5)'; ctx.lineWidth = s * .012;
+    for (const r of [.3, .36]) { ctx.beginPath(); ctx.ellipse(cx, cy + s * .26, s * r, s * r * .2, 0, Math.PI * .1, Math.PI * .9); ctx.stroke(); }
+    ctx.save(); ctx.beginPath(); ctx.moveTo(cx - s * .24, cy - s * .08); ctx.quadraticCurveTo(cx, cy - s * .2, cx + s * .24, cy - s * .08);
+    ctx.lineTo(cx, cy + s * .3); ctx.closePath(); ctx.fillStyle = '#7a1428'; ctx.fill(); ctx.clip();
+    for (let i = 0; i < 4; i++) { ctx.fillStyle = i % 2 ? P.gold : INK; ctx.fillRect(cx - s * .3, cy - s * .04 + i * s * .07, s * .6, s * .03); }
+    ctx.restore();
+    ctx.fillStyle = INK; ctx.fillRect(cx - s * .02, cy - s * .3, s * .04, s * .16);
+    ctx.beginPath(); ctx.arc(cx, cy - s * .31, s * .035, 0, Math.PI * 2); ctx.fill();
+  },
+  minister(ctx, cx, cy, s) {
+    ctx.fillStyle = 'rgba(192,57,77,.85)'; ctx.fillRect(cx - s * .3, cy + s * .2, s * .26, s * .14);
+    ctx.strokeStyle = 'rgba(243,217,160,.6)'; ctx.lineWidth = s * .01; ctx.strokeRect(cx - s * .28, cy + s * .22, s * .22, s * .1);
+    ctx.save(); ctx.translate(cx + s * .08, cy); ctx.rotate(.2);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, -s * .28, s * .08, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(-s * .035, -s * .24, s * .07, s * .22);
+    rr(ctx, -s * .16, -s * .04, s * .32, s * .14, s * .02); ctx.fill();
+    ctx.fillStyle = P.goldDark; ctx.fillRect(-s * .16, s * .08, s * .32, s * .04);
+    ctx.restore();
+  },
+  official(ctx, cx, cy, s) {
+    ctx.fillStyle = INK; ctx.beginPath();
+    ctx.moveTo(cx - s * .36, cy + s * .02); ctx.quadraticCurveTo(cx - s * .2, cy - s * .28, cx, cy - s * .2);
+    ctx.quadraticCurveTo(cx + s * .2, cy - s * .28, cx + s * .36, cy + s * .02);
+    ctx.quadraticCurveTo(cx + s * .15, cy - s * .02, cx, cy + s * .14); ctx.quadraticCurveTo(cx - s * .15, cy - s * .02, cx - s * .36, cy + s * .02); ctx.fill();
+    ctx.strokeStyle = P.gold; ctx.lineWidth = s * .018; ctx.stroke();
+    ctx.fillStyle = P.danger; ctx.beginPath(); ctx.arc(cx + s * .14, cy - s * .1, s * .05, 0, Math.PI * 2); ctx.fill();
+    star4(ctx, cx + s * .14, cy - s * .1, s * .035, P.gold);
+  },
+  strongman(ctx, cx, cy, s) {
+    ctx.fillStyle = '#9b93ad'; ctx.fillRect(cx - s * .36, cy - s * .02, s * .72, s * .04);
+    ctx.fillStyle = INK;
+    for (const sg of [-1, 1]) { rr(ctx, cx + sg * s * .25 - s * .045, cy - s * .2, s * .09, s * .4, s * .02); ctx.fill();
+      rr(ctx, cx + sg * s * .16 - s * .035, cy - s * .14, s * .07, s * .28, s * .02); ctx.fill(); }
+    ctx.strokeStyle = P.goldDark; ctx.lineWidth = s * .01;
+    for (const sg of [-1, 1]) { rr(ctx, cx + sg * s * .25 - s * .045, cy - s * .2, s * .09, s * .4, s * .02); ctx.stroke(); }
+    ctx.fillStyle = P.gold; ctx.font = TITLE_FONT(Math.round(s * .14)); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('8', cx, cy + s * .22);
+  },
+  maid(ctx, cx, cy, s) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(.45);
+    ctx.fillStyle = '#3a2614'; ctx.fillRect(-s * .018, -s * .42, s * .036, s * .5);
+    ctx.fillStyle = '#b8913e'; ctx.beginPath(); ctx.moveTo(-s * .06, s * .06); ctx.lineTo(s * .06, s * .06); ctx.lineTo(s * .15, s * .38); ctx.lineTo(-s * .15, s * .38); ctx.fill();
+    ctx.save(); ctx.clip(); hatch(ctx, -s * .15, s * .06, s * .3, s * .32, Math.PI / 2, s * .025, 'rgba(60,40,15,.6)', s * .008); ctx.restore();
+    ctx.fillStyle = P.danger; ctx.fillRect(-s * .07, s * .06, s * .14, s * .04);
+    ctx.restore();
+  },
+  maiden(ctx, cx, cy, s) {
+    line(ctx, [[cx, cy + s * .02], [cx - s * .02, cy + s * .2], [cx + s * .01, cy + s * .38]], s * .025, '#3f6b4f');
+    ctx.fillStyle = '#3f6b4f';
+    for (const sg of [-1, 1]) { ctx.beginPath(); ctx.ellipse(cx + sg * s * .08, cy + s * .22, s * .07, s * .03, sg * -.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = P.danger;
+    for (let i = 0; i < 5; i++) { const t = i * Math.PI * 2 / 5 - Math.PI / 2;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(t) * s * .09, cy - s * .1 + Math.sin(t) * s * .09, s * .09, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#7a1428'; ctx.beginPath(); ctx.arc(cx, cy - s * .1, s * .07, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = P.gold; ctx.beginPath(); ctx.arc(cx, cy - s * .1, s * .03, 0, Math.PI * 2); ctx.fill();
+  },
+  judge: ART.judge,
+};
+const CHARS = [
+  ['doctor', '医生', '可以把「辩护」当作「目击」（7 点）打出', 0],
+  ['beggar', '乞丐', '对你打出的「抢劫」「纵火」无效，并立刻丢弃', 0],
+  ['landlord', '地主', '抽牌时如果抽出 2 张「指控」，展示这 2 张，再抽一张', 0],
+  ['judge', '法官', '你打出的红卡使目标累计达到 6 点，即可审判该玩家', 0],
+  ['priest', '牧师', '游戏中两次：抽牌时可以改为从弃牌堆选最多 2 张非黑卡加入手牌', 2],
+  ['storyteller', '说书人', '游戏中一次：你的回合抽牌前，可以任意调整牌堆顺序，限时 2 分钟', 1],
+  ['tailor', '裁缝', '技能与右手边第一名活着的玩家一致', 0],
+  ['housewife', '家庭主妇', '其他玩家的身份卡因审判或黑猫被翻开时，你从牌堆抽一张牌', 0],
+  ['farmer', '农民', '有玩家死亡时，你获得他的所有手牌和面前的蓝卡', 0],
+  ['child', '小孩', '你发起的审判结束后，丢弃你自己面前所有「指控」和「证据」', 0],
+  ['minister', '部长', '对你打出的「证据」只算 1 点', 0],
+  ['official', '官员', '游戏中一次：你自首时无需翻开身份卡', 1],
+  ['strongman', '大力士', '对你的审判线为 8 点', 0],
+  ['maid', '女仆', '「黑猫」和「情侣」对你无效', 0],
+  ['maiden', '少女', '你发起审判时，审判前先抽 2 张牌，本回合可以立即使用', 0],
+];
+function wrapText(ctx, text, x, y, maxW, lh) {
+  let lineStr = '', yy = y;
+  for (const ch of text) {
+    if (ctx.measureText(lineStr + ch).width > maxW && lineStr) { ctx.fillText(lineStr, x, yy); lineStr = ch; yy += lh; }
+    else lineStr += ch;
+  }
+  if (lineStr) ctx.fillText(lineStr, x, yy);
+}
+function charCard(ctx, w, h, [id, name, desc, limit]) {
+  const [a, b] = GRAD.character; const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, a); g.addColorStop(1, b);
+  rr(ctx, 1, 1, w - 2, h - 2, 10); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = P.goldDark; ctx.lineWidth = 1.5; ctx.stroke();
+  rr(ctx, 6, 6, w - 12, h - 12, 7); ctx.strokeStyle = 'rgba(214,164,74,.45)'; ctx.lineWidth = 1; ctx.stroke();
+  const R = w * .3, cx = w / 2, cy = h * .27;
+  glow(ctx, cx, cy, R * 1.6, 'rgba(232,199,116,.18)');
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  const pg = ctx.createRadialGradient(cx, cy - R * .4, R * .1, cx, cy, R); pg.addColorStop(0, '#5a4585'); pg.addColorStop(1, '#241a38');
+  ctx.fillStyle = pg; ctx.fill(); ctx.clip();
+  hatch(ctx, cx - R, cy - R, R * 2, R * 2, -.7, 4, 'rgba(255,255,255,.04)', 1);
+  CHAR_ART[id](ctx, cx, cy + R * .05, R * 1.75); ctx.restore();
+  ctx.strokeStyle = P.goldLine; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  // 名字绶带
+  const by = h * .52, bw = w * .78, bh = 24;
+  ctx.fillStyle = '#5a1020'; ctx.beginPath();
+  ctx.moveTo(cx - bw / 2 - 8, by); ctx.lineTo(cx - bw / 2 + 4, by + bh / 2); ctx.lineTo(cx - bw / 2 - 8, by + bh);
+  ctx.lineTo(cx + bw / 2 + 8, by + bh); ctx.lineTo(cx + bw / 2 - 4, by + bh / 2); ctx.lineTo(cx + bw / 2 + 8, by); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#7a1428'; ctx.fillRect(cx - bw / 2 + 4, by - 2, bw - 8, bh + 4);
+  ctx.strokeStyle = P.goldLine; ctx.lineWidth = 1; ctx.strokeRect(cx - bw / 2 + 4, by - 2, bw - 8, bh + 4);
+  ctx.fillStyle = P.cardText; ctx.font = TITLE_FONT(15); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(name, cx, by + bh / 2 + 1);
+  // 技能
+  ctx.fillStyle = '#d8cce8'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  wrapText(ctx, desc, 14, by + bh + 12, w - 28, 16);
+  if (limit) {
+    const t = `限 ${limit} 次`; ctx.font = 'bold 10px sans-serif'; const tw = ctx.measureText(t).width + 12;
+    rr(ctx, w - tw - 10, 10, tw, 18, 9); ctx.fillStyle = 'rgba(192,57,77,.85)'; ctx.fill(); ctx.strokeStyle = P.gold; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, w - tw / 2 - 10, 19.5);
+  }
+}
+function chars() {
+  const box = document.getElementById('chars');
+  CHARS.forEach((c, i) => {
+    const el = document.createElement('canvas'); el.id = `char-${i}`; box.appendChild(el);
+    charCard(setup(el.id, 160, 240), 160, 240, c);
+  });
+}
+
+function drawAll() { scene(); cards(); reds(); ids(); chars(); real(); }
+drawAll();
+</script>
