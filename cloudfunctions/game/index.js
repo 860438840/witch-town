@@ -45,6 +45,18 @@ var RuleError = class extends Error {
 };
 
 // ../engine/src/rng.ts
+function seededRng(seed) {
+  let a = seed >>> 0;
+  return {
+    next() {
+      a = a + 1831565813 >>> 0;
+      let t = a;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+  };
+}
 var mathRng = { next: () => Math.random() };
 function shuffle(arr, rng) {
   const a = arr.slice();
@@ -1125,7 +1137,22 @@ var BOT_TURN_MS = 3e3;
 var CHOICE_MS = 45e3;
 var PICK_MS = 3e4;
 var STORY_MS = 12e4;
+function waitingSeats(s) {
+  var _a;
+  const votes = s.phase.kind === "night" ? ((_a = s.night) == null ? void 0 : _a.witchVotes) ?? {} : s.phase.kind === "dawn" ? s.dawnVotes : {};
+  const seats = autoActions(s, seededRng(0)).filter((a) => !(a.type === "witchVote" && a.seat in votes)).map((a) => a.seat);
+  return [...new Set(seats)];
+}
+function botsOnly(s) {
+  if (s.phase.kind === "day") return false;
+  const seats = waitingSeats(s);
+  return seats.length > 0 && seats.every((seat) => isBot(s.players[seat].openid));
+}
 function deadlineKey(s) {
+  const key = phaseKey(s);
+  return botsOnly(s) ? `${key}:bots` : key;
+}
+function phaseKey(s) {
   const ph = s.phase;
   switch (ph.kind) {
     case "day": {
@@ -1146,7 +1173,7 @@ function deadlineKey(s) {
 function phaseDuration(s) {
   if (s.phase.kind === "characterPick") return PICK_MS;
   if (s.phase.kind === "storytelling") return STORY_MS;
-  if (s.phase.kind !== "day") return CHOICE_MS;
+  if (s.phase.kind !== "day") return botsOnly(s) ? BOT_TURN_MS : CHOICE_MS;
   return isBot(s.players[s.turn].openid) ? BOT_TURN_MS : TURN_MS;
 }
 
