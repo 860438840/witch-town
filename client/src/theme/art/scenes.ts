@@ -145,7 +145,7 @@ function homeScene(ctx: Ctx, W: number, H: number): void {
   stars(ctx, W, H, 110, 1692, 0.6);
   star4(ctx, W * 0.19, H * 0.12, 6, alpha(INK.white, 0.9));
   star4(ctx, W * 0.84, H * 0.42, 4, alpha(INK.white, 0.7));
-  moon(ctx, W * 0.72, H * 0.17, W * 0.13, C.moon, alpha(C.moon, 0.22), alpha(INK.straw, 0.35));
+  moon(ctx, W * 0.82, H * 0.2, W * 0.1, C.moon, alpha(C.moon, 0.22), alpha(INK.straw, 0.35));
   hills(ctx, W, H, H * 0.62, INK.townFar);
   gallows(ctx, 40, H * 0.56, 1, INK.inkSoft);
   fog(ctx, W, H * 0.66, INK.lilac, 0.12, 4, 90);
@@ -187,7 +187,7 @@ function villageScene(ctx: Ctx, W: number, H: number): void {
 function witchScene(ctx: Ctx, W: number, H: number): void {
   sky(ctx, W, H, [[0, INK.bloodTop], [0.55, INK.bloodMid], [1, INK.ink]]);
   stars(ctx, W, H, 60, 1694, 0.5);
-  moon(ctx, W * 0.5, H * 0.24, W * 0.2, INK.bloodMoon, alpha(C.danger, 0.45), alpha(INK.wineDark, 0.5));
+  moon(ctx, W * 0.82, H * 0.14, W * 0.1, INK.bloodMoon, alpha(C.danger, 0.45), alpha(INK.wineDark, 0.5));
   hills(ctx, W, H, H * 0.64, INK.bloodTop);
   gallows(ctx, W * 0.12, H * 0.6, 1.6, INK.ink);
   const base = H * 0.76;

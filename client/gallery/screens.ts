@@ -1,0 +1,157 @@
+import type { GameState } from '../../engine/src/index';
+import type { Screen } from '../src/core/app';
+import { drawNodes, findNode, type Node } from '../src/core/node';
+import { Animator } from '../src/core/tween';
+import type { Controller } from '../src/controller';
+import { HomeScene } from '../src/scenes/home';
+import { LobbyScene } from '../src/scenes/lobby';
+import { ResultScene } from '../src/scenes/result';
+import { TableScene } from '../src/scenes/table';
+import type { Ui } from '../src/scenes/ui';
+import { setSurfaceFactory } from '../src/theme/art/cache';
+import { giveCard, handOf, lobbyRoom, newState, roomOf, setDay } from '../test/fixtures';
+
+/** 把真实的界面场景（用假的控制器和假数据）画在网页上，检查插画接进各界面后的排版 */
+
+const dpr = Math.min(3, window.devicePixelRatio || 1);
+const SIZES: Screen[] = [
+  { W: 375, H: 667, top: 60, bottom: 667 },
+  { W: 320, H: 568, top: 64, bottom: 568 },
+];
+
+// 和小游戏里一样走「画一次、再贴图」的缓存路径
+setSurfaceFactory((w, h) => {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return { canvas: c, ctx: c.getContext('2d') as CanvasRenderingContext2D };
+}, dpr);
+
+function ctlFor(over: Record<string, unknown>): Controller {
+  return {
+    code: '1234',
+    openid: 'u0',
+    busy: false,
+    room: null,
+    hand: null,
+    nickname: '小明',
+    setNickname: () => true,
+    act: async () => {},
+    ...over,
+  } as unknown as Controller;
+}
+
+function uiFor(ctl: Controller, screen: Screen): Ui {
+  return {
+    screen,
+    animator: new Animator(),
+    ctl,
+    render: () => {},
+    prompt: () => {},
+    confirm: () => {},
+    copy: () => {},
+    share: () => {},
+  };
+}
+
+function shot(title: string, size: Screen, build: (ui: Ui) => Node[], ctl: Controller): void {
+  const ui = uiFor(ctl, size);
+  const fig = document.createElement('figure');
+  const c = document.createElement('canvas');
+  c.width = Math.round(size.W * dpr);
+  c.height = Math.round(size.H * dpr);
+  c.style.width = `${size.W}px`;
+  c.style.height = `${size.H}px`;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.scale(dpr, dpr);
+  drawNodes(ctx, build(ui));
+  const cap = document.createElement('figcaption');
+  cap.textContent = `${title} ${size.W}×${size.H}`;
+  fig.append(c, cap);
+  document.getElementById('screens')?.append(fig);
+}
+
+function table(s: GameState, seat = 0, over: Record<string, unknown> = {}): { ctl: Controller; scene: (ui: Ui) => TableScene } {
+  const ctl = ctlFor({ room: roomOf(s), hand: handOf(s, seat), openid: `u${seat}`, ...over });
+  return { ctl, scene: (ui) => new TableScene(ui) };
+}
+
+/** 6 人局：每人有角色，几个人面前有蓝卡，我有各种手牌 */
+function busy(): GameState {
+  const s = newState(6);
+  setDay(s, 0);
+  const chars = ['judge', 'priest', 'tailor', 'farmer', 'maid', 'strongman'] as const;
+  s.players.forEach((p, i) => (p.character = chars[i]));
+  for (const k of ['night', 'conspiracy', 'matchmaker', 'alibi'] as const) giveCard(s, 0, k === 'night' || k === 'conspiracy' ? 'accusation' : k);
+  giveCard(s, 0, 'witness');
+  giveCard(s, 0, 'blackCat');
+  s.players[2].blue.push({ id: 'b1', kind: 'blackCat' }, { id: 'b2', kind: 'asylum' });
+  s.players[3].green.push({ id: 'g1', kind: 'stocks' });
+  s.players[1].red.push({ id: 'r1', kind: 'evidence', points: 3 });
+  s.discard.push(...s.players[4].hand.splice(0, 3), ...s.players[5].hand.splice(0, 2));
+  return s;
+}
+
+for (const size of SIZES) {
+  const home = ctlFor({});
+  shot('首页', size, (ui) => new HomeScene(ui).build(0), home);
+  shot('首页·规则页', size, (ui) => {
+    const sc = new HomeScene(ui);
+    findNode(sc.build(0), 'rules')?.onTap?.();
+    return sc.build(0);
+  }, home);
+
+  const lobby = ctlFor({ room: lobbyRoom(6) });
+  shot('大厅', size, (ui) => new LobbyScene(ui).build(0), lobby);
+
+  const t = table(busy());
+  shot('牌桌', size, (ui) => t.scene(ui).build(0), t.ctl);
+  shot('牌桌·点格子详情', size, (ui) => {
+    const sc = t.scene(ui);
+    findNode(sc.build(0), 'seat:2')?.onTap?.();
+    return sc.build(0);
+  }, t.ctl);
+  shot('牌桌·我的身份卡', size, (ui) => {
+    const sc = t.scene(ui);
+    findNode(sc.build(0), 'me')?.onTap?.();
+    return sc.build(0);
+  }, t.ctl);
+  shot('牌桌·弃牌堆', size, (ui) => {
+    const sc = t.scene(ui);
+    findNode(sc.build(0), 'discard')?.onTap?.();
+    return sc.build(0);
+  }, t.ctl);
+
+  const priest = busy();
+  priest.players[0].character = 'priest';
+  const tp = table(priest);
+  shot('牧师拿牌', size, (ui) => {
+    const sc = tp.scene(ui);
+    findNode(sc.build(0), 'priest')?.onTap?.();
+    return sc.build(0);
+  }, tp.ctl);
+
+  const pick = newState(5);
+  pick.phase = { kind: 'characterPick' };
+  pick.characterOffers = { 0: ['judge', 'maid'], 1: ['priest', 'child'], 2: ['farmer', 'beggar'], 3: ['doctor', 'maiden'], 4: ['official', 'tailor'] };
+  const tc = table(pick);
+  shot('选角色', size, (ui) => {
+    const sc = tc.scene(ui);
+    findNode(sc.build(0), 'character:maid')?.onTap?.();
+    return sc.build(0);
+  }, tc.ctl);
+
+  const tell = newState(5);
+  tell.players[0].character = 'storyteller';
+  tell.phase = { kind: 'storytelling', seat: 0 };
+  const ts = table(tell);
+  shot('说书人', size, (ui) => ts.scene(ui).build(0), ts.ctl);
+
+  for (const winner of ['village', 'witch'] as const) {
+    const end = newState(6);
+    end.players.forEach((p, i) => (p.character = (['judge', 'priest', 'tailor', 'farmer', 'maid', 'strongman'] as const)[i]));
+    end.phase = { kind: 'ended', winner };
+    const ctl = ctlFor({ room: roomOf(end) });
+    shot(winner === 'village' ? '结算·村民胜利' : '结算·女巫胜利', size, (ui) => new ResultScene(ui).build(0), ctl);
+  }
+}
