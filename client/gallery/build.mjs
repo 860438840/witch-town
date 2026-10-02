@@ -18,6 +18,7 @@ const html = `<title>女巫镇图鉴</title>
   figure { margin: 0; display: grid; gap: 2px; justify-items: center; }
   figcaption { font-size: 11px; color: #8a7fa3; }
 </style>
+<main></main>
 <script>${gallery}</script>
 <h2>真实界面（手机尺寸）</h2>
 <div id="screens" class="row"></div>
