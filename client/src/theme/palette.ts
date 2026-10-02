@@ -27,9 +27,20 @@ export const C = {
   badgeRing: 'rgba(232,199,116,0.7)',
   chipRevealedLine: 'rgba(255,255,255,0.4)',
   buttonDangerFill: 'rgba(192,57,77,0.25)',
-  buttonFill: 'rgba(0,0,0,0.25)',
+  buttonFill: 'rgba(60,10,24,0.45)',
   glowStrong: 'rgba(232,199,116,0.9)',
   lineDark: '#3b2d57',
+  // 酒红金线：大面板、普通面板、主按钮的上下渐变色
+  panelBigTop: '#3a0d1c',
+  panelBigBottom: '#1e0a14',
+  panelTop: 'rgba(92,14,32,0.6)',
+  panelBottom: 'rgba(34,6,16,0.78)',
+  buttonTop: '#8a1c34',
+  buttonBottom: '#4a0a18',
+  /** 危险按钮的文字（比 danger 亮，压得住深色底） */
+  dangerText: '#e5677a',
+  /** 出局格子、不可用按钮的灰线 */
+  greyLine: '#6b6378',
   transparent: 'rgba(0,0,0,0)',
 } as const;
 
