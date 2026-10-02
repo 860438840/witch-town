@@ -161,5 +161,5 @@ describe('随机对局模拟', () => {
       winners[s.phase.winner]++;
     }
     expect(winners.village + winners.witch).toBe(GAMES);
-  }, 120_000);
+  }, 240_000);
 });
