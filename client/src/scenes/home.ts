@@ -9,7 +9,7 @@ import { button, requestButton, ScrollBox, sheet, skyNode, type Line } from './w
 
 const RULE_LINES: Line[] = RULES.flatMap((s) => [
   { text: s.title, size: 15, bold: true, color: C.gold, gap: 2 },
-  ...s.items.map((t, i) => ({ text: `· ${t}`, size: 13, gap: i === s.items.length - 1 ? 10 : 0 })),
+  ...s.items.map((it, i) => ({ text: it.icon ? it.text : `· ${it.text}`, icon: it.icon, size: 13, gap: i === s.items.length - 1 ? 10 : 2 })),
 ]);
 
 export class HomeScene implements Scene {

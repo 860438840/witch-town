@@ -1,9 +1,8 @@
 import { isBlack } from '../../../engine/src/index';
 import { rect } from '../core/geom';
 import type { Node } from '../core/node';
-import { CARD_INFO } from '../model/cards';
 import type { TableModel } from '../model/table';
-import { drawPanel, drawText } from '../theme/draw';
+import { drawCardFace, drawPanel, drawText } from '../theme/draw';
 import { C, goldGlow } from '../theme/palette';
 import type { Ui } from './ui';
 import { requestButton, sheet } from './widgets';
@@ -16,7 +15,7 @@ export function priestPanel(ui: Ui, m: TableModel, picked: string[], close: () =
   const cols = 4;
   const gap = 8;
   const w = (body.w - gap * (cols - 1)) / cols;
-  const h = 56;
+  const h = 78;
   kinds.forEach((kind, i) => {
     const r = rect(body.x + (i % cols) * (w + gap), body.y + Math.floor(i / cols) * (h + gap), w, h);
     const ids = pool.filter((c) => c.kind === kind).map((c) => c.id);
@@ -37,8 +36,8 @@ export function priestPanel(ui: Ui, m: TableModel, picked: string[], close: () =
       },
       draw: (ctx) => {
         drawPanel(ctx, r, { fill: mine ? goldGlow(0.2) : C.panel, stroke: mine ? C.gold : C.panelLine, lineWidth: mine ? 2 : 1 });
-        drawText(ctx, CARD_INFO[kind].name, r.x + r.w / 2, r.y + 20, { size: 14, align: 'center' });
-        drawText(ctx, mine ? `已选 ${mine} / ${ids.length}` : `${ids.length} 张`, r.x + r.w / 2, r.y + 40, {
+        drawCardFace(ctx, rect(r.x + (r.w - 40) / 2, r.y + 4, 40, 56), kind);
+        drawText(ctx, mine ? `已选 ${mine} / ${ids.length}` : `${ids.length} 张`, r.x + r.w / 2, r.y + 69, {
           size: 11,
           align: 'center',
           color: mine ? C.gold : C.textDim,

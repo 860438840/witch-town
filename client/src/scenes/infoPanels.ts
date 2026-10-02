@@ -6,10 +6,10 @@ import { CARD_INFO, TRYAL_NAME, type CardColor } from '../model/cards';
 import { CHAR_INFO } from '../model/characters';
 import { logLines } from '../model/log';
 import { nameOf, type TableModel } from '../model/table';
-import { drawText, drawTryalChip } from '../theme/draw';
+import { drawCharCard, drawText, drawTryalChip } from '../theme/draw';
 import { C, font } from '../theme/palette';
 import type { Ui } from './ui';
-import { sheet, type ScrollBox } from './widgets';
+import { sheet, type Line, type ScrollBox } from './widgets';
 
 function countNames(names: string[]): string {
   const counts = new Map<string, number>();
@@ -30,7 +30,7 @@ function characterLines(p: PublicPlayer): string[] {
 
 export function detailPanel(ui: Ui, m: TableModel, seat: number, close: () => void): Node[] {
   const p = m.view.players[seat];
-  const { nodes, body } = sheet(ui.screen, 420, `${p.name}${seat === m.mySeat ? '（你）' : ''}${p.alive ? '' : '（已出局）'}`, close);
+  const { nodes, body } = sheet(ui.screen, 560, `${p.name}${seat === m.mySeat ? '（你）' : ''}${p.alive ? '' : '（已出局）'}`, close);
   const revealed = p.tryals.filter((t) => t.revealed && t.kind).map((t) => TRYAL_NAME[t.kind!]);
   const reds = countNames(p.red.map((c) => CARD_INFO[c.kind].name));
   const lines = [
@@ -41,12 +41,14 @@ export function detailPanel(ui: Ui, m: TableModel, seat: number, close: () => vo
     `手牌：${p.handCount} 张`,
     `身份卡：${p.tryals.length - revealed.length} 张未翻开${revealed.length ? `；已翻开 ${revealed.join('、')}` : ''}`,
   ];
+  const card = p.character ? rect(body.x + (body.w - 96) / 2, body.y + 4, 96, 144) : null;
   nodes.push({
     id: 'detail-body',
     rect: body,
     draw: (ctx) => {
+      if (card && p.character) drawCharCard(ctx, card, p.character);
       ctx.font = font(14);
-      let y = body.y + 12;
+      let y = body.y + 12 + (card ? card.h + 10 : 0);
       for (const line of lines) {
         for (const t of wrapText(line, body.w, (s) => ctx.measureText(s).width)) {
           drawText(ctx, t, body.x, y, { size: 14 });
@@ -106,9 +108,14 @@ const COLOR_GROUPS: [string, CardColor][] = [
 export function discardPanel(ui: Ui, m: TableModel, box: ScrollBox, close: () => void): Node[] {
   const discard = m.view.discard;
   const { nodes, body } = sheet(ui.screen, ui.screen.H * 0.6, `弃牌堆（${discard.length} 张）`, close, 1, '所有人都可以查看');
-  const lines = COLOR_GROUPS.flatMap(([title, color]) => {
-    const names = discard.filter((c) => CARD_INFO[c.kind].color === color).map((c) => CARD_INFO[c.kind].name);
-    return names.length ? [{ text: `${title}：${countNames(names)}`, size: 14, gap: 8 }] : [];
+  const lines = COLOR_GROUPS.flatMap(([title, color]): Line[] => {
+    const kinds = [...new Set(discard.filter((c) => CARD_INFO[c.kind].color === color).map((c) => c.kind))];
+    if (!kinds.length) return [];
+    return [
+      { text: title, size: 14, bold: true, color: C.gold, gap: 2 },
+      ...kinds.map((k) => ({ text: `${CARD_INFO[k].name} ×${discard.filter((c) => c.kind === k).length}`, icon: { card: k }, size: 14, gap: 2 })),
+      { text: '', size: 4, gap: 4 },
+    ];
   });
   nodes.push(box.node('discard-list', body, lines.length ? lines : [{ text: '弃牌堆是空的', color: C.textMuted }]));
   return nodes;

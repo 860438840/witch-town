@@ -15,6 +15,8 @@ import { drawBadge, drawCardFace, drawTryalChip } from '../src/theme/draw';
 import { drawCell } from '../src/scenes/tableParts';
 import { projectPublic } from '../../engine/src/index';
 import { newState } from './fixtures';
+import { RULES } from '../src/model/rules';
+import { ScrollBox } from '../src/scenes/widgets';
 
 afterEach(() => setSurfaceFactory(null));
 
@@ -211,5 +213,24 @@ describe('接入游戏的绘制函数', () => {
     const { ctx, texts } = fakeCtx();
     drawCell(ctx, rect(0, 0, 83, 88), p, { turn: false, glow: 0, targetable: false, order: 0, alpha: 1, flip: null, partner: false });
     expect(texts).not.toContain('黑');
+  });
+});
+
+
+describe('面板里的图标', () => {
+  it('规则页：每种牌、每个角色的条目带图标', () => {
+    const items = RULES.flatMap((s) => s.items);
+    const cards = items.filter((i) => i.icon && 'card' in i.icon);
+    const chars = items.filter((i) => i.icon && 'char' in i.icon);
+    expect(cards).toHaveLength(15);
+    expect(chars).toHaveLength(15);
+  });
+
+  it('带图标的行：文字往右缩进，内容照常画出', () => {
+    const box = new ScrollBox();
+    const node = box.node('x', rect(0, 0, 200, 300), [{ text: '黑猫：说明', icon: { card: 'blackCat' } }, { text: '法官：说明', icon: { char: 'judge' } }]);
+    const { ctx, texts } = fakeCtx();
+    node.draw!(ctx);
+    expect(texts).toEqual(['黑猫：说明', '法官：说明']);
   });
 });

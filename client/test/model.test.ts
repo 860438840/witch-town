@@ -191,7 +191,8 @@ describe('角色相关', () => {
 
   it('规则页有「角色」一节，列出 15 个角色', () => {
     const sec = RULES.find((r) => r.title.startsWith('角色'))!;
-    expect(sec.items.filter((t) => t.includes('：'))).toHaveLength(15);
-    expect(sec.items.join('')).toContain('裁缝');
+    const texts = sec.items.map((i) => i.text);
+    expect(texts.filter((t) => t.includes('：'))).toHaveLength(15);
+    expect(texts.join('')).toContain('裁缝');
   });
 });

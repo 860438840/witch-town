@@ -3,8 +3,8 @@ import { rect, type Rect } from '../core/geom';
 import type { Ctx, Drag, Node } from '../core/node';
 import { CARD_INFO } from '../model/cards';
 import { formatCountdown, type TableModel } from '../model/table';
-import { drawPanel, drawText, roundRect } from '../theme/draw';
-import { C, CARD_GRADIENT } from '../theme/palette';
+import { drawCardFace, drawPanel, drawText } from '../theme/draw';
+import { C } from '../theme/palette';
 import type { Ui } from './ui';
 import { button, clampScroll, requestButton, sheet } from './widgets';
 
@@ -164,16 +164,7 @@ function drawRow(ctx: Ctx, r: Rect, card: Card, index: number, lifted: boolean):
   drawPanel(ctx, r, { fill: lifted ? C.panelSolid : C.panel, stroke: lifted ? C.gold : C.panelLine, lineWidth: lifted ? 2 : 1 });
   drawText(ctx, String(index + 1), r.x + 26, r.y + r.h / 2, { size: 12, color: C.textMuted, align: 'right' });
   const chip = rect(r.x + 34, r.y + 5, 28, r.h - 10);
-  const [top, bottom] = CARD_GRADIENT[info.color];
-  const g = ctx.createLinearGradient(0, chip.y, 0, chip.y + chip.h);
-  g.addColorStop(0, top);
-  g.addColorStop(1, bottom);
-  roundRect(ctx, chip, 4);
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = C.goldLine;
-  ctx.stroke();
-  drawText(ctx, info.name.slice(0, 1), chip.x + chip.w / 2, chip.y + chip.h / 2, { size: 13, bold: true, color: C.cardText, align: 'center' });
+  drawCardFace(ctx, chip, card.kind);
   const black = info.color === 'black';
   drawText(ctx, info.name, r.x + 72, r.y + r.h / 2 - 8, { size: 15, bold: black, color: black ? C.gold : C.text });
   drawText(ctx, info.desc, r.x + 72, r.y + r.h / 2 + 10, { size: 11, color: C.textMuted, maxWidth: r.w - 72 - HANDLE_W - 8 });

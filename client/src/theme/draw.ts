@@ -176,3 +176,16 @@ export function drawTryalChip(ctx: Ctx, r: Rect, kind: TryalKind | null, reveale
     drawText(ctx, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: C.badgeText, align: 'center' });
   }
 }
+
+export type IconRef = { card: CardKind } | { char: CharacterId };
+
+/** 列表里的小图标：牌画迷你卡面（宽 = 0.72 × 高），角色画圆头像。返回占用的宽度 */
+export function drawIconRef(ctx: Ctx, ref: IconRef, x: number, y: number, h: number): number {
+  if ('card' in ref) {
+    const w = Math.round(h * 0.72);
+    drawCardFace(ctx, { x, y, w, h }, ref.card);
+    return w;
+  }
+  drawBadge(ctx, x + h / 2, y + h / 2, h / 2, '', 0, ref.char);
+  return h;
+}
