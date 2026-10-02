@@ -3,6 +3,11 @@ import { blit, setSurfaceFactory } from '../src/theme/art/cache';
 import { crescent, ellipse, hatch, seeded } from '../src/theme/art/shapes';
 import { alpha } from '../src/theme/palette';
 import { fakeCtx, fakeSurfaces } from './fakes';
+import { CHARACTERS, type CardKind, type TryalKind } from '../../engine/src/index';
+import { CARD_INFO } from '../src/model/cards';
+import { CHAR_INFO } from '../src/model/characters';
+import { cardBack, cardFace, charCard, portrait, tryalFace } from '../src/theme/art/frames';
+import { CARD_ICONS, CHAR_ICONS, TRYAL_ICONS } from '../src/theme/art/icons';
 
 afterEach(() => setSurfaceFactory(null));
 
@@ -63,5 +68,69 @@ describe('隐藏画布缓存', () => {
     expect(created).toHaveLength(4);
     blit(ctx, 'a', 375, 667, () => {}, 0, 0);
     expect(created).toHaveLength(4);
+  });
+});
+
+
+const KINDS = Object.keys(CARD_INFO) as CardKind[];
+const TRYALS: TryalKind[] = ['witch', 'constable', 'villager'];
+
+describe('图标', () => {
+  it('每种牌、身份、角色都有图标', () => {
+    expect(Object.keys(CARD_ICONS).sort()).toEqual([...KINDS].sort());
+    expect(Object.keys(TRYAL_ICONS).sort()).toEqual([...TRYALS].sort());
+    expect(Object.keys(CHAR_ICONS).sort()).toEqual([...CHARACTERS].sort());
+  });
+
+  it('所有图标在各种尺寸下都能画完', () => {
+    const { ctx } = fakeCtx();
+    for (const s of [10, 40, 120]) {
+      for (const f of [...Object.values(CARD_ICONS), ...Object.values(TRYAL_ICONS), ...Object.values(CHAR_ICONS)]) {
+        expect(() => f(ctx, s / 2, s / 2, s)).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('卡框模板', () => {
+  it('大卡面写牌名，迷你卡面（宽 < 40）不写字', () => {
+    const big = fakeCtx();
+    cardFace(big.ctx, 120, 168, 'blackCat');
+    expect(big.texts).toContain('黑猫');
+    const tiny = fakeCtx();
+    cardFace(tiny.ctx, 28, 40, 'blackCat');
+    expect(tiny.texts).toEqual([]);
+  });
+
+  it('红卡带点数，其他颜色不带', () => {
+    const w = fakeCtx();
+    cardFace(w.ctx, 58, 84, 'witness');
+    expect(w.texts).toEqual(['目击', '7']);
+    const b = fakeCtx();
+    cardFace(b.ctx, 58, 84, 'asylum');
+    expect(b.texts).toEqual(['避难']);
+  });
+
+  it('卡背、身份卡面、头像能画完', () => {
+    const { ctx, texts } = fakeCtx();
+    cardBack(ctx, 52, 68);
+    cardBack(ctx, 14, 19);
+    for (const t of TRYALS) tryalFace(ctx, 52, 68, t);
+    for (const id of CHARACTERS) portrait(ctx, 24, id, '#8e3b5a');
+    // 大力士的杠铃上画了「8」，所以头像里会有这一个字
+    expect(texts).toEqual(['女巫', '警长', '村民', '8']);
+  });
+
+  it('角色卡写名字、技能说明；限次角色有「限 n 次」', () => {
+    const p = fakeCtx();
+    charCard(p.ctx, 160, 240, 'priest');
+    const text = p.texts.join('');
+    expect(text).toContain('牧师');
+    expect(text).toContain('弃牌堆');
+    expect(text).toContain('限 2 次');
+    const j = fakeCtx();
+    charCard(j.ctx, 160, 240, 'judge');
+    expect(j.texts.join('')).not.toContain('限');
+    expect(j.texts[0]).toBe(CHAR_INFO.judge.name);
   });
 });
