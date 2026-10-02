@@ -52,26 +52,62 @@ export function drawSky(ctx: Ctx, W: number, H: number, darkness: number, backdr
   }
 }
 
+export type PanelTier = 'big' | 'normal' | 'strip';
+
 export interface PanelOpts {
-  fill?: string;
-  stroke?: string;
+  /** 档位：big 大面板（弹窗、事件记录），normal 普通（默认），strip 信息条（外观同 normal） */
+  tier?: PanelTier;
+  /** 整个替换底色（选中框这类只要线条的用 C.transparent） */
+  fill?: string | undefined;
+  /** 叠在底色上的一层颜色（可选目标、选中的淡金） */
+  tint?: string | undefined;
+  stroke?: string | undefined;
   radius?: number;
   glow?: number;
   lineWidth?: number;
 }
 
+function diamond(ctx: Ctx, x: number, y: number, r: number, color: string): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
 export function drawPanel(ctx: Ctx, r: Rect, o: PanelOpts = {}): void {
-  roundRect(ctx, r, o.radius ?? 8);
+  const big = o.tier === 'big';
+  const radius = o.radius ?? 8;
+  roundRect(ctx, r, radius);
   if (o.glow) {
     ctx.shadowColor = goldGlow(o.glow);
     ctx.shadowBlur = 12;
   }
-  ctx.fillStyle = o.fill ?? C.panel;
+  if (o.fill !== undefined) ctx.fillStyle = o.fill;
+  else {
+    const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+    g.addColorStop(0, big ? C.panelBigTop : C.panelTop);
+    g.addColorStop(1, big ? C.panelBigBottom : C.panelBottom);
+    ctx.fillStyle = g;
+  }
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.lineWidth = o.lineWidth ?? 1;
-  ctx.strokeStyle = o.stroke ?? C.panelLine;
+  if (o.tint !== undefined) {
+    ctx.fillStyle = o.tint;
+    ctx.fill();
+  }
+  ctx.lineWidth = o.lineWidth ?? (big ? 1.5 : 1);
+  ctx.strokeStyle = o.stroke ?? (big ? C.goldLine : C.goldDark);
   ctx.stroke();
+  if (!big) return;
+  roundRect(ctx, { x: r.x + 4, y: r.y + 4, w: r.w - 8, h: r.h - 8 }, Math.max(2, radius - 3));
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = alpha(C.gold, 0.28);
+  ctx.stroke();
+  if (r.w >= 120) diamond(ctx, r.x + r.w / 2, r.y + 0.5, 4, C.gold);
 }
 
 export type ButtonStyle = 'primary' | 'secondary' | 'danger' | 'disabled';

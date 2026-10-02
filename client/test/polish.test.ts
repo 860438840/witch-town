@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { C } from '../src/theme/palette';
+import { alpha, C } from '../src/theme/palette';
 import { rect } from '../src/core/geom';
-import { drawText } from '../src/theme/draw';
+import { drawPanel, drawText } from '../src/theme/draw';
 import { ScrollBox } from '../src/scenes/widgets';
 import { fakeCtx } from './fakes';
 
@@ -44,5 +44,54 @@ describe('文字：衬线选项', () => {
     expect(fonts.length).toBeGreaterThan(0);
     expect(new Set(fonts)).toEqual(new Set(['font=bold 15px serif']));
     expect(fontsOf(ops, '小标题')).toEqual(['bold 15px serif']);
+  });
+});
+
+const count = (ops: string[], name: string): number => ops.filter((o) => o === name).length;
+
+describe('面板分档', () => {
+  it('普通面板：一次填充、一条 1px 暗金线', () => {
+    const { ctx, ops } = fakeCtx();
+    drawPanel(ctx, rect(0, 0, 200, 80));
+    expect(count(ops, 'fill')).toBe(1);
+    expect(count(ops, 'stroke')).toBe(1);
+    expect(ops).toContain(`strokeStyle=${C.goldDark}`);
+    expect(ops).toContain('lineWidth=1');
+    expect(ops).toContain('fillStyle=[object]');
+  });
+  it('信息条外观同普通面板', () => {
+    const a = fakeCtx();
+    const b = fakeCtx();
+    drawPanel(a.ctx, rect(0, 0, 200, 40));
+    drawPanel(b.ctx, rect(0, 0, 200, 40), { tier: 'strip' });
+    expect(b.ops).toEqual(a.ops);
+  });
+  it('大面板：1.5px 金线、内金线、顶部菱形', () => {
+    const { ctx, ops } = fakeCtx();
+    drawPanel(ctx, rect(0, 0, 200, 80), { tier: 'big' });
+    expect(count(ops, 'stroke')).toBe(2);
+    expect(ops).toContain(`strokeStyle=${C.goldLine}`);
+    expect(ops).toContain('lineWidth=1.5');
+    expect(ops).toContain(`strokeStyle=${alpha(C.gold, 0.28)}`);
+    expect(count(ops, 'fill')).toBe(2);
+    expect(ops).toContain(`fillStyle=${C.gold}`);
+  });
+  it('窄于 120 的大面板不画菱形', () => {
+    const { ctx, ops } = fakeCtx();
+    drawPanel(ctx, rect(0, 0, 100, 80), { tier: 'big' });
+    expect(count(ops, 'fill')).toBe(1);
+    expect(count(ops, 'stroke')).toBe(2);
+  });
+  it('tint 叠在底色上，fill 整个替换底色，stroke 和 lineWidth 覆盖默认', () => {
+    const t = fakeCtx();
+    drawPanel(t.ctx, rect(0, 0, 200, 80), { tint: 'rgba(1,2,3,0.5)' });
+    expect(count(t.ops, 'fill')).toBe(2);
+    expect(t.ops).toContain('fillStyle=rgba(1,2,3,0.5)');
+    const f = fakeCtx();
+    drawPanel(f.ctx, rect(0, 0, 200, 80), { fill: C.transparent, stroke: C.danger, lineWidth: 2 });
+    expect(f.ops).toContain(`fillStyle=${C.transparent}`);
+    expect(f.ops).not.toContain('fillStyle=[object]');
+    expect(f.ops).toContain(`strokeStyle=${C.danger}`);
+    expect(f.ops).toContain('lineWidth=2');
   });
 });
