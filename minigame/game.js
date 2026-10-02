@@ -3238,7 +3238,7 @@
           }
         },
         draw: (ctx2) => {
-          drawPanel(ctx2, r, { tint: mine ? goldGlow(0.2) : void 0, stroke: mine ? C.gold : void 0, lineWidth: mine ? 2 : 1 });
+          drawPanel(ctx2, r, { tint: mine ? goldGlow(0.2) : void 0, stroke: mine ? C.gold : void 0, glow: mine ? 0.6 : 0, lineWidth: mine ? 2 : 1 });
           drawCardFace(ctx2, rect(r.x + (r.w - 40) / 2, r.y + 4, 40, 56), kind);
           drawText(ctx2, mine ? `\u5DF2\u9009 ${mine} / ${ids.length}` : `${ids.length} \u5F20`, r.x + r.w / 2, r.y + 69, {
             size: 11,
@@ -3607,7 +3607,7 @@
     drawPanel(ctx2, r, {
       tier: "strip",
       tint: o.targetable ? goldGlow(0.14) : void 0,
-      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : void 0,
+      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : m.me && !m.me.alive ? C.greyLine : void 0,
       glow: m.isMyTurn ? o.glow : 0,
       lineWidth: o.order || m.isMyTurn ? 2 : 1
     });
@@ -3923,7 +3923,13 @@
     }
     infoNode(m, r) {
       const text = this.infoText(m);
-      return { rect: r, draw: (ctx2) => drawText(ctx2, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: "center", maxWidth: r.w }) };
+      return {
+        rect: r,
+        draw: (ctx2) => {
+          drawPanel(ctx2, r, { tier: "strip" });
+          drawText(ctx2, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: "center", maxWidth: r.w });
+        }
+      };
     }
     handNodes(m, r, a) {
       var _a, _b;
