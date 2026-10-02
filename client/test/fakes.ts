@@ -2,26 +2,32 @@ import type { Ctx } from '../src/core/node';
 import type { Timers } from '../src/net/timers';
 import type { DbLike } from '../src/net/session';
 
-/** 假的 Canvas 上下文：所有方法都是空函数，measureText 按每字 10px 计算，fillText 记录文字 */
-export function fakeCtx(): { ctx: Ctx; texts: string[] } {
+/**
+ * 假的 Canvas 上下文：measureText 按每字 10px 计算，fillText 记录文字。
+ * ops 按顺序记录属性赋值（`属性=值`）、方法调用（方法名）和 `fillText:文字`。
+ */
+export function fakeCtx(): { ctx: Ctx; texts: string[]; ops: string[] } {
   const texts: string[] = [];
+  const ops: string[] = [];
   const gradient = { addColorStop() {} };
   const base: Record<string, unknown> = {
     measureText: (s: string) => ({ width: [...s].length * 10 }),
     fillText: (s: string) => {
       texts.push(s);
+      ops.push(`fillText:${s}`);
     },
     createLinearGradient: () => gradient,
     createRadialGradient: () => gradient,
   };
   const ctx = new Proxy(base, {
-    get: (t, k) => (k in t ? t[k as string] : () => {}),
+    get: (t, k) => (k in t ? t[k as string] : () => ops.push(String(k))),
     set: (t, k, v) => {
       t[k as string] = v;
+      ops.push(`${String(k)}=${typeof v === 'string' || typeof v === 'number' ? v : '[object]'}`);
       return true;
     },
   });
-  return { ctx: ctx as unknown as Ctx, texts };
+  return { ctx: ctx as unknown as Ctx, texts, ops };
 }
 
 /** 等待已排队的 Promise 回调执行完 */
