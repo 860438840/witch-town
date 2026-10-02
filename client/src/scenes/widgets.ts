@@ -4,7 +4,7 @@ import type { Node } from '../core/node';
 import { wrapText } from '../core/text';
 import type { Backdrop } from '../theme/art/scenes';
 import { drawButton, drawIconRef, drawPanel, drawSky, drawText, type IconRef, type TextOpts } from '../theme/draw';
-import { C, font } from '../theme/palette';
+import { C, font, titleFont } from '../theme/palette';
 
 export type WidgetButtonStyle = 'primary' | 'secondary' | 'danger';
 
@@ -95,6 +95,8 @@ export interface Line {
   size?: number;
   color?: string;
   bold?: boolean;
+  /** 小标题用衬线体 */
+  serif?: boolean;
   /** 本行之后额外空出的高度 */
   gap?: number;
   /** 行首的小图标（牌或角色） */
@@ -125,10 +127,10 @@ export class ScrollBox {
           const size = l.size ?? 13;
           const iconH = l.icon ? size + 6 : 0;
           const indent = l.icon ? drawIconRef(ctx, l.icon, r.x + 4, y - 2, iconH) + 6 : 0;
-          ctx.font = font(size, l.bold);
+          ctx.font = l.serif ? titleFont(size) : font(size, l.bold);
           const top = y;
           for (const t of wrapText(l.text, r.w - 8 - indent, (s) => ctx.measureText(s).width)) {
-            drawText(ctx, t, r.x + 4 + indent, y + size / 2, { size, color: l.color, bold: l.bold });
+            drawText(ctx, t, r.x + 4 + indent, y + size / 2, { size, color: l.color, bold: l.bold, serif: l.serif });
             y += size + 6;
           }
           y = Math.max(y, top + iconH + 2);

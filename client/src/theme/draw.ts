@@ -7,7 +7,7 @@ import { blit } from './art/cache';
 import { cardBack, cardFace, charCard, portrait, tryalFace } from './art/frames';
 import { paintBackdrop, tableMoon, type Backdrop } from './art/scenes';
 import { glow } from './art/shapes';
-import { alpha, badgeColor, C, font, goldGlow, nightShade } from './palette';
+import { alpha, badgeColor, C, font, goldGlow, nightShade, titleFont } from './palette';
 
 export function roundRect(ctx: Ctx, r: Rect, radius: number): void {
   const rr = Math.max(0, Math.min(radius, r.w / 2, r.h / 2));
@@ -27,10 +27,12 @@ export interface TextOpts {
   align?: CanvasTextAlign;
   baseline?: CanvasTextBaseline;
   maxWidth?: number;
+  /** 标题体：衬线、加粗（只用于标题、按钮、房间号） */
+  serif?: boolean;
 }
 
 export function drawText(ctx: Ctx, text: string, x: number, y: number, o: TextOpts = {}): void {
-  ctx.font = font(o.size ?? 14, o.bold);
+  ctx.font = o.serif ? titleFont(o.size ?? 14) : font(o.size ?? 14, o.bold);
   ctx.fillStyle = o.color ?? C.text;
   ctx.textAlign = o.align ?? 'left';
   ctx.textBaseline = o.baseline ?? 'middle';
