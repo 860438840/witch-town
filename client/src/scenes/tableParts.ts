@@ -93,7 +93,7 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
   }
   if (!p.alive) drawText(ctx, '出局', cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: 'center' });
   if (o.order) drawText(ctx, o.order === 1 ? '①' : '②', r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: 'center' });
-  else if (tag) drawText(ctx, '同伴', r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.danger, align: 'right' });
+  else if (tag) drawText(ctx, '同伴', r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.dangerText, align: 'right' });
   ctx.globalAlpha = 1;
 }
 

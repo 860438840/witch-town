@@ -61,7 +61,7 @@ function seatGrid(
         drawPanel(ctx, r, { tint: selected === seat ? goldGlow(0.25) : undefined, stroke: selected === seat ? C.gold : partner ? C.danger : undefined, lineWidth: selected === seat ? 2 : 1, glow: selected === seat ? 0.6 : 0 });
         drawBadge(ctx, r.x + 13, r.y + h / 2, 9, p.name, seat, p.character);
         drawText(ctx, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
-        if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
+        if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.dangerText : C.gold, maxWidth: r.w - 30 });
       },
     } satisfies Node;
   });
@@ -134,7 +134,7 @@ export function choicePanel(ui: Ui, m: TableModel, st: ChoiceState, now: number,
     const picked = tryals.find((t) => t.id === st.picked);
     let y = body.y + row.height + 8;
     if (picked?.kind === 'witch') {
-      nodes.push(textNode(rect(body.x, y, body.w, 20), '翻开女巫卡会立即死亡', { size: 13, color: C.danger, align: 'center' }));
+      nodes.push(textNode(rect(body.x, y, body.w, 20), '翻开女巫卡会立即死亡', { size: 13, color: C.dangerText, align: 'center' }));
     }
     y += 28;
     nodes.push(requestButton('confirm-reveal', rect(body.x, y, body.w, 44), '确认翻开', picked ? () => void act({ type: 'revealTryal', tryalId: picked.id }) : null, busy));

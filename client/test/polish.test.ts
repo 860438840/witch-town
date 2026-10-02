@@ -226,3 +226,21 @@ describe('衬线标题的位置', () => {
     expect(ops.some((o) => o === 'font=bold 36px serif')).toBe(true);
   });
 });
+
+describe('酒红底上的红字用亮红', () => {
+  it('结算页女巫阵营那行', () => {
+    const s = newState(6);
+    s.phase = { kind: 'ended', winner: 'village' };
+    const ui = fakeUi(fakeCtl({ room: roomOf(s) }));
+    const ops = opsOf(new ResultScene(ui).build(0));
+    const line = ops.find((o) => o.startsWith('fillText:女巫阵营 · '));
+    expect(line).toBeDefined();
+    expect(colorOf(ops, line!.slice(9))).toBe(C.dangerText);
+  });
+  it('格子上的同伴标签', () => {
+    const s = newState(5);
+    const { ctx, ops } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), projectPublic(s).players[1], { ...CELL, partner: true });
+    expect(colorOf(ops, '同伴')).toBe(C.dangerText);
+  });
+});
