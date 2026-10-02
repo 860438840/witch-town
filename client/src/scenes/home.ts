@@ -22,7 +22,7 @@ export class HomeScene implements Scene {
     const { W, H, top } = this.ui.screen;
     const ctl = this.ui.ctl;
     const busy = ctl.busy;
-    const nodes: Node[] = [skyNode(this.ui.screen, 0)];
+    const nodes: Node[] = [skyNode(this.ui.screen, 0, 'home')];
     const titleY = top + H * 0.14;
     nodes.push({
       rect: rect(0, titleY - 30, W, 100),

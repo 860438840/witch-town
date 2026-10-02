@@ -2,6 +2,7 @@ import type { Screen } from '../core/app';
 import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
 import { wrapText } from '../core/text';
+import type { Backdrop } from '../theme/art/scenes';
 import { drawButton, drawPanel, drawSky, drawText, type TextOpts } from '../theme/draw';
 import { C, font } from '../theme/palette';
 
@@ -37,8 +38,8 @@ export function textNode(r: Rect, text: string, o: TextOpts = {}): Node {
   return { rect: r, draw: (ctx) => drawText(ctx, text, x, r.y + r.h / 2, { maxWidth: r.w, ...o }) };
 }
 
-export function skyNode(screen: Screen, darkness: number): Node {
-  return { rect: rect(0, 0, screen.W, screen.H), draw: (ctx) => drawSky(ctx, screen.W, screen.H, darkness) };
+export function skyNode(screen: Screen, darkness: number, backdrop: Backdrop = 'table'): Node {
+  return { rect: rect(0, 0, screen.W, screen.H), draw: (ctx) => drawSky(ctx, screen.W, screen.H, darkness, backdrop) };
 }
 
 /** 全屏半透明遮罩，拦住下面的点击；onTap 常用于「点空白处关闭」 */

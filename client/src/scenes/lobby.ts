@@ -20,7 +20,7 @@ export class LobbyScene implements Scene {
     const isHost = room.host === ctl.openid;
     const busy = ctl.busy;
     const seats = room.seats;
-    const nodes: Node[] = [skyNode(this.ui.screen, 0)];
+    const nodes: Node[] = [skyNode(this.ui.screen, 0, 'lobby')];
 
     nodes.push({
       rect: rect(0, top, W, 90),

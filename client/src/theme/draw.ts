@@ -3,7 +3,10 @@ import type { Rect } from '../core/geom';
 import type { Ctx } from '../core/node';
 import { ellipsize, wrapText } from '../core/text';
 import { CARD_INFO, TRYAL_SHORT } from '../model/cards';
-import { badgeColor, C, CARD_GRADIENT, font, goldGlow, nightShade } from './palette';
+import { blit } from './art/cache';
+import { paintBackdrop, tableMoon, type Backdrop } from './art/scenes';
+import { glow } from './art/shapes';
+import { alpha, badgeColor, C, CARD_GRADIENT, font, goldGlow, nightShade } from './palette';
 
 export function roundRect(ctx: Ctx, r: Rect, radius: number): void {
   const rr = Math.max(0, Math.min(radius, r.w / 2, r.h / 2));
@@ -34,32 +37,15 @@ export function drawText(ctx: Ctx, text: string, x: number, y: number, o: TextOp
   ctx.fillText(t, x, y);
 }
 
-/** 夜空背景：渐变、弯月、星星；darkness 0→1 叠加一层更深的夜色 */
-export function drawSky(ctx: Ctx, W: number, H: number, darkness: number): void {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, C.skyTop);
-  g.addColorStop(0.55, C.skyMid);
-  g.addColorStop(1, C.skyBottom);
-  ctx.fillStyle = g;
+/** 整屏背景：按场景缓存；darkness 0→1 叠加一层夜色，牌桌的月亮在夜里更亮 */
+export function drawSky(ctx: Ctx, W: number, H: number, darkness: number, backdrop: Backdrop = 'table'): void {
+  blit(ctx, `sky:${backdrop}`, W, H, (c, w, h) => paintBackdrop(c, w, h, backdrop), 0, 0);
+  if (darkness <= 0) return;
+  ctx.fillStyle = nightShade(0.55 * darkness);
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = C.star;
-  for (let i = 0; i < 40; i++) {
-    ctx.globalAlpha = 0.25 + (i % 5) * 0.1;
-    ctx.fillRect((i * 97 + 13) % W, (i * 57 + 7) % (H * 0.5), 1.5, 1.5);
-  }
-  ctx.globalAlpha = 0.85;
-  ctx.fillStyle = C.moon;
-  ctx.beginPath();
-  ctx.arc(W - 60, H * 0.16, 22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(W - 51, H * 0.16 - 7, 20, 0, Math.PI * 2);
-  ctx.fill();
-  if (darkness > 0) {
-    ctx.fillStyle = nightShade(0.55 * darkness);
-    ctx.fillRect(0, 0, W, H);
+  if (backdrop === 'table') {
+    const m = tableMoon(W, H);
+    glow(ctx, m.x, m.y, m.r * 4, alpha(C.moon, 0.3 * darkness));
   }
 }
 

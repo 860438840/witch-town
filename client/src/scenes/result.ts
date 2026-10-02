@@ -16,7 +16,7 @@ export class ResultScene implements Scene {
     if (!view || view.phase.kind !== 'ended') return [];
     const village = view.phase.winner === 'village';
     const mySeat = ctl.room!.seats.findIndex((s) => s.openid === ctl.openid);
-    const nodes: Node[] = [skyNode(this.ui.screen, village ? 0 : 0.6)];
+    const nodes: Node[] = [skyNode(this.ui.screen, 0, village ? 'village' : 'witch')];
     nodes.push({
       rect: rect(0, top, W, 90),
       draw: (ctx) => {

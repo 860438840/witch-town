@@ -8,6 +8,8 @@ import { CARD_INFO } from '../src/model/cards';
 import { CHAR_INFO } from '../src/model/characters';
 import { cardBack, cardFace, charCard, portrait, tryalFace } from '../src/theme/art/frames';
 import { CARD_ICONS, CHAR_ICONS, TRYAL_ICONS } from '../src/theme/art/icons';
+import { paintBackdrop, type Backdrop } from '../src/theme/art/scenes';
+import { drawSky } from '../src/theme/draw';
 
 afterEach(() => setSurfaceFactory(null));
 
@@ -132,5 +134,26 @@ describe('卡框模板', () => {
     charCard(j.ctx, 160, 240, 'judge');
     expect(j.texts.join('')).not.toContain('限');
     expect(j.texts[0]).toBe(CHAR_INFO.judge.name);
+  });
+});
+
+
+describe('场景', () => {
+  const ALL: Backdrop[] = ['home', 'lobby', 'table', 'village', 'witch'];
+
+  it('五种背景在大屏、小屏上都能画完', () => {
+    const { ctx } = fakeCtx();
+    for (const b of ALL) for (const [W, H] of [[375, 667], [320, 568]]) expect(() => paintBackdrop(ctx, W, H, b)).not.toThrow();
+  });
+
+  it('背景缓存：同一种背景只画一次；夜色叠加不进缓存', () => {
+    const { factory, created } = fakeSurfaces();
+    setSurfaceFactory(factory, 2);
+    const { ctx } = fakeCtx();
+    drawSky(ctx, 375, 667, 0, 'table');
+    drawSky(ctx, 375, 667, 0.8, 'table');
+    expect(created).toHaveLength(1);
+    drawSky(ctx, 375, 667, 0, 'home');
+    expect(created).toHaveLength(2);
   });
 });
