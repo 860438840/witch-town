@@ -1,12 +1,13 @@
-import type { CardKind, TryalKind } from '../../../engine/src/index';
+import type { CardKind, CharacterId, TryalKind } from '../../../engine/src/index';
 import type { Rect } from '../core/geom';
 import type { Ctx } from '../core/node';
-import { ellipsize, wrapText } from '../core/text';
-import { CARD_INFO, TRYAL_SHORT } from '../model/cards';
+import { ellipsize } from '../core/text';
+import { TRYAL_SHORT } from '../model/cards';
 import { blit } from './art/cache';
+import { cardBack, cardFace, charCard, portrait, tryalFace } from './art/frames';
 import { paintBackdrop, tableMoon, type Backdrop } from './art/scenes';
 import { glow } from './art/shapes';
-import { alpha, badgeColor, C, CARD_GRADIENT, font, goldGlow, nightShade } from './palette';
+import { alpha, badgeColor, C, font, goldGlow, nightShade } from './palette';
 
 export function roundRect(ctx: Ctx, r: Rect, radius: number): void {
   const rr = Math.max(0, Math.min(radius, r.w / 2, r.h / 2));
@@ -92,8 +93,13 @@ export function drawButton(ctx: Ctx, r: Rect, label: string, style: ButtonStyle)
   drawText(ctx, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, bold: true, color, align: 'center', maxWidth: r.w - 8 });
 }
 
-/** 圆形头像徽章：名字首字 + 座位专属颜色 */
-export function drawBadge(ctx: Ctx, cx: number, cy: number, radius: number, name: string, seat: number): void {
+/** 圆形头像：有角色时画角色图标（外圈用座位颜色），没有角色时写名字首字 */
+export function drawBadge(ctx: Ctx, cx: number, cy: number, radius: number, name: string, seat: number, character: CharacterId | null = null): void {
+  if (character) {
+    const size = radius * 2;
+    blit(ctx, `portrait:${character}:${((seat % 12) + 12) % 12}`, size, size, (c, w) => portrait(c, w, character, badgeColor(seat)), cx - radius, cy - radius);
+    return;
+  }
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fillStyle = badgeColor(seat);
@@ -109,35 +115,48 @@ export interface CardOpts {
   dim?: boolean;
 }
 
+const cardRadius = (r: Rect): number => Math.max(3, r.w * 0.07);
+
 export function drawCardFace(ctx: Ctx, r: Rect, kind: CardKind, o: CardOpts = {}): void {
-  const info = CARD_INFO[kind];
-  const [a, b] = CARD_GRADIENT[info.color];
-  const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-  g.addColorStop(0, a);
-  g.addColorStop(1, b);
   if (o.dim) ctx.globalAlpha = 0.55;
-  roundRect(ctx, r, 7);
   if (o.selected) {
+    roundRect(ctx, r, cardRadius(r));
     ctx.shadowColor = C.glowStrong;
     ctx.shadowBlur = 14;
+    ctx.fillStyle = C.goldLine;
+    ctx.fill();
+    ctx.shadowBlur = 0;
   }
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.lineWidth = o.selected ? 2 : 1;
-  ctx.strokeStyle = C.goldLine;
-  ctx.stroke();
-  drawText(ctx, info.name, r.x + r.w / 2, r.y + 16, { size: 14, bold: true, color: C.cardText, align: 'center' });
-  ctx.font = font(9);
-  const lines = wrapText(info.desc, r.w - 8, (s) => ctx.measureText(s).width).slice(0, 4);
-  lines.forEach((line, i) => drawText(ctx, line, r.x + r.w / 2, r.y + 34 + i * 12, { size: 9, color: C.cardText, align: 'center' }));
+  blit(ctx, `card:${kind}`, r.w, r.h, (c, w, h) => cardFace(c, w, h, kind), r.x, r.y);
+  if (o.selected) {
+    roundRect(ctx, r, cardRadius(r));
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = C.gold;
+    ctx.stroke();
+  }
   ctx.globalAlpha = 1;
 }
 
-/** 身份卡小方块：未翻开是暗色金边；翻开显示种类单字。scaleX 用于翻转动画（0→1） */
+export function drawCardBack(ctx: Ctx, r: Rect): void {
+  blit(ctx, 'back', r.w, r.h, cardBack, r.x, r.y);
+}
+
+export function drawCharCard(ctx: Ctx, r: Rect, id: CharacterId): void {
+  blit(ctx, `char:${id}`, r.w, r.h, (c, w, h) => charCard(c, w, h, id), r.x, r.y);
+}
+
+/** 宽度小于这个值的身份卡（格子里的）放不下图标，只用颜色区分 */
+export const SMALL_CHIP = 16;
+
+/** 身份卡：未翻开是卡背，翻开是身份卡面；很小时用颜色方块。scaleX 用于翻转动画（0→1） */
 export function drawTryalChip(ctx: Ctx, r: Rect, kind: TryalKind | null, revealed: boolean, scaleX = 1): void {
   const w = r.w * Math.max(0.05, scaleX);
   const x = r.x + (r.w - w) / 2;
+  if (r.w >= SMALL_CHIP) {
+    if (revealed && kind) blit(ctx, `tryal:${kind}`, r.w, r.h, (c, cw, ch) => tryalFace(c, cw, ch, kind), x, r.y, w, r.h);
+    else blit(ctx, 'back', r.w, r.h, cardBack, x, r.y, w, r.h);
+    return;
+  }
   const fill = !revealed || !kind ? C.tryalHidden : kind === 'witch' ? C.witch : kind === 'constable' ? C.constable : C.villager;
   roundRect(ctx, { x, y: r.y, w, h: r.h }, 2);
   ctx.fillStyle = fill;
@@ -145,7 +164,15 @@ export function drawTryalChip(ctx: Ctx, r: Rect, kind: TryalKind | null, reveale
   ctx.lineWidth = 1;
   ctx.strokeStyle = revealed ? C.chipRevealedLine : C.goldDark;
   ctx.stroke();
-  if (revealed && kind && scaleX > 0.6) {
+  if (!revealed || !kind) {
+    // 像缩小的卡背：中间一个金点
+    ctx.beginPath();
+    ctx.arc(r.x + r.w / 2, r.y + r.h / 2, Math.max(0.8, w * 0.15), 0, Math.PI * 2);
+    ctx.fillStyle = C.goldDark;
+    ctx.fill();
+    return;
+  }
+  if (scaleX > 0.6) {
     drawText(ctx, TRYAL_SHORT[kind], r.x + r.w / 2, r.y + r.h / 2 + 0.5, { size: Math.max(8, r.h - 4), color: C.badgeText, align: 'center' });
   }
 }

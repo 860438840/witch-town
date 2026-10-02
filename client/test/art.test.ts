@@ -10,6 +10,11 @@ import { cardBack, cardFace, charCard, portrait, tryalFace } from '../src/theme/
 import { CARD_ICONS, CHAR_ICONS, TRYAL_ICONS } from '../src/theme/art/icons';
 import { paintBackdrop, type Backdrop } from '../src/theme/art/scenes';
 import { drawSky } from '../src/theme/draw';
+import { rect } from '../src/core/geom';
+import { drawBadge, drawCardFace, drawTryalChip } from '../src/theme/draw';
+import { drawCell } from '../src/scenes/tableParts';
+import { projectPublic } from '../../engine/src/index';
+import { newState } from './fixtures';
 
 afterEach(() => setSurfaceFactory(null));
 
@@ -155,5 +160,56 @@ describe('场景', () => {
     expect(created).toHaveLength(1);
     drawSky(ctx, 375, 667, 0, 'home');
     expect(created).toHaveLength(2);
+  });
+});
+
+
+describe('接入游戏的绘制函数', () => {
+  it('手牌：同一种牌同一尺寸只画一次', () => {
+    const { factory, created } = fakeSurfaces();
+    setSurfaceFactory(factory, 2);
+    const { ctx } = fakeCtx();
+    drawCardFace(ctx, rect(0, 0, 58, 84), 'night');
+    drawCardFace(ctx, rect(70, 0, 58, 84), 'night', { selected: true });
+    drawCardFace(ctx, rect(140, 0, 58, 84), 'night', { dim: true });
+    expect(created).toHaveLength(1);
+  });
+
+  it('很小的身份卡（宽 < 16）保持颜色画法，不建隐藏画布；大的用卡面', () => {
+    const { factory, created } = fakeSurfaces();
+    setSurfaceFactory(factory, 2);
+    const { ctx } = fakeCtx();
+    drawTryalChip(ctx, rect(0, 0, 8, 11), 'witch', true);
+    drawTryalChip(ctx, rect(0, 0, 8, 11), null, false);
+    expect(created).toHaveLength(0);
+    drawTryalChip(ctx, rect(0, 0, 52, 68), 'witch', true);
+    drawTryalChip(ctx, rect(0, 0, 52, 68), null, false);
+    expect(created).toHaveLength(2);
+  });
+
+  it('翻牌动画的不同进度复用同一张缓存', () => {
+    const { factory, created } = fakeSurfaces();
+    setSurfaceFactory(factory, 2);
+    const { ctx } = fakeCtx();
+    for (const sx of [1, 0.6, 0.2]) drawTryalChip(ctx, rect(0, 0, 52, 68), 'constable', true, sx);
+    expect(created).toHaveLength(1);
+  });
+
+  it('头像：没有角色写名字首字；有角色画角色图标，不写字', () => {
+    const a = fakeCtx();
+    drawBadge(a.ctx, 10, 10, 9, '小明', 0);
+    expect(a.texts).toEqual(['小']);
+    const b = fakeCtx();
+    drawBadge(b.ctx, 10, 10, 9, '小明', 0, 'judge');
+    expect(b.texts).toEqual([]);
+  });
+
+  it('格子里面前的牌画成迷你卡面，不再写单字', () => {
+    const s = newState(5);
+    s.players[1].blue.push({ id: 'cat', kind: 'blackCat' });
+    const p = projectPublic(s).players[1];
+    const { ctx, texts } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), p, { turn: false, glow: 0, targetable: false, order: 0, alpha: 1, flip: null, partner: false });
+    expect(texts).not.toContain('黑');
   });
 });

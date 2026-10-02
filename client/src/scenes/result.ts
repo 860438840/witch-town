@@ -33,7 +33,7 @@ export class ResultScene implements Scene {
         rect: r,
         draw: (ctx) => {
           drawPanel(ctx, r, { stroke: p.witchFaction ? C.danger : C.panelLine });
-          drawBadge(ctx, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat);
+          drawBadge(ctx, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat, p.character);
           drawText(ctx, `${p.name}${i === mySeat ? '（你）' : ''}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
           drawText(ctx, `${p.witchFaction ? '女巫阵营' : '村民阵营'} · ${p.alive ? '存活' : '出局'}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.danger : C.textDim });
           const cw = 12;
