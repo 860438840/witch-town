@@ -879,6 +879,7 @@
   // src/theme/art/cache.ts
   var LARGE_AREA = 256 * 256;
   var LARGE_KEEP = 2;
+  var SMALL_KEEP = 400;
   var factory = null;
   var ratio = 1;
   var small = /* @__PURE__ */ new Map();
@@ -909,9 +910,18 @@
     }
     ctx2.drawImage(s.canvas, dx, dy, dw, dh);
   }
+  function release(s) {
+    const c = s.canvas;
+    c.width = 0;
+    c.height = 0;
+  }
   function find(k) {
     const hit = small.get(k);
-    if (hit) return hit;
+    if (hit) {
+      small.delete(k);
+      small.set(k, hit);
+      return hit;
+    }
     const i = large.findIndex((e2) => e2.key === k);
     if (i < 0) return void 0;
     const [e] = large.splice(i, 1);
@@ -921,10 +931,15 @@
   function keep(k, s, area) {
     if (area <= LARGE_AREA) {
       small.set(k, s);
+      if (small.size > SMALL_KEEP) {
+        const oldest = small.keys().next().value;
+        release(small.get(oldest));
+        small.delete(oldest);
+      }
       return;
     }
     large.push({ key: k, s });
-    if (large.length > LARGE_KEEP) large.shift();
+    if (large.length > LARGE_KEEP) release(large.shift().s);
   }
 
   // ../engine/src/cards.ts
@@ -3130,9 +3145,10 @@
   }
   function characterPanel(ui2, _m, p, st, cd, slide) {
     const { nodes, body } = sheet(ui2.screen, 480, "\u9009\u62E9\u4F60\u7684\u89D2\u8272", null, slide, `\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00 \xB7 \u5269\u4F59 ${cd} \xB7 \u8D85\u65F6\u968F\u673A\u9009\u62E9`);
+    const settledH = body.h + Math.min(480, ui2.screen.H - ui2.screen.top) * (1 - slide);
     const gap = 10;
     const slot = (body.w - gap) / 2;
-    const cw = Math.min(slot, (body.h - 70) / 1.5);
+    const cw = Math.min(slot, (settledH - 70) / 1.5);
     const ch = cw * 1.5;
     p.offers.forEach((c, i) => {
       const r = rect(body.x + i * (slot + gap) + (slot - cw) / 2, body.y + 6, cw, ch);
@@ -3160,7 +3176,7 @@
     const { nodes, body } = sheet(ui2.screen, 420, "\u7267\u5E08\uFF1A\u4ECE\u5F03\u724C\u5806\u62FF\u724C", close, 1, "\u9009 1\u20132 \u5F20\u975E\u9ED1\u5361\uFF0C\u62FF\u5B8C\u56DE\u5408\u7ED3\u675F");
     const pool = m.view.discard.filter((c) => !isBlack(c.kind));
     const kinds = [...new Set(pool.map((c) => c.kind))];
-    const cols = 4;
+    const cols = 5;
     const gap = 8;
     const w = (body.w - gap * (cols - 1)) / cols;
     const h = 78;
@@ -3847,10 +3863,10 @@
       var _a;
       const kind = this.selKind(m);
       if (kind) {
-        const name = CARD_INFO[kind].name;
+        const { name, desc } = CARD_INFO[kind];
         const need = targetCount(kind);
-        if (this.targets.length < need) return need === 2 ? `\u300C${name}\u300D\uFF1A${TWO_TARGET_HINT[this.targets.length]}` : `\u300C${name}\u300D\uFF1A\u9009\u62E9\u76EE\u6807`;
-        return this.ready(m) ? `\u300C${name}\u300D\uFF1A\u70B9\u300C\u786E\u8BA4\u51FA\u724C\u300D` : `\u300C${name}\u300D\uFF1A\u8BF7\u9009\u62E9\u9009\u9879`;
+        if (this.targets.length < need) return `\u300C${name}\u300D${need === 2 ? TWO_TARGET_HINT[this.targets.length] : "\u9009\u62E9\u76EE\u6807"}\uFF5C${desc}`;
+        return `\u300C${name}\u300D${this.ready(m) ? "\u70B9\u300C\u786E\u8BA4\u51FA\u724C\u300D" : "\u8BF7\u9009\u62E9\u9009\u9879"}\uFF5C${desc}`;
       }
       if (this.peek) {
         const k = cardKindOf(m, this.peek);

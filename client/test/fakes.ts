@@ -121,14 +121,22 @@ export class FakeDb implements DbLike {
   }
 }
 
-/** 假的隐藏画布工厂：记录每次创建的像素尺寸，画布上下文是 fakeCtx */
-export function fakeSurfaces(): { factory: (w: number, h: number) => { canvas: CanvasImageSource; ctx: Ctx }; created: [number, number][] } {
+/** 假的隐藏画布工厂：记录每次创建的像素尺寸和画布本身（释放时 width 会被设成 0） */
+export function fakeSurfaces(): {
+  factory: (w: number, h: number) => { canvas: CanvasImageSource; ctx: Ctx };
+  created: [number, number][];
+  canvases: { width: number; height: number }[];
+} {
   const created: [number, number][] = [];
+  const canvases: { width: number; height: number }[] = [];
   return {
     created,
+    canvases,
     factory: (w, h) => {
       created.push([w, h]);
-      return { canvas: {} as CanvasImageSource, ctx: fakeCtx().ctx };
+      const canvas = { width: w, height: h };
+      canvases.push(canvas);
+      return { canvas: canvas as unknown as CanvasImageSource, ctx: fakeCtx().ctx };
     },
   };
 }

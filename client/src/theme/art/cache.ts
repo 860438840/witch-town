@@ -12,6 +12,8 @@ export type SurfaceFactory = (pixelW: number, pixelH: number) => Surface;
 /** 面积超过这个值（逻辑像素²）的图算大图，只保留最近用过的几张 */
 const LARGE_AREA = 256 * 256;
 const LARGE_KEEP = 2;
+/** 小图最多保留这么多张（一局正常用到 100–200 张），超出时挤掉最久没用的 */
+const SMALL_KEEP = 400;
 
 let factory: SurfaceFactory | null = null;
 let ratio = 1;
@@ -61,9 +63,20 @@ export function blit(
   ctx.drawImage(s.canvas, dx, dy, dw, dh);
 }
 
+/** 释放画布占用的原生内存（把尺寸设为 0） */
+function release(s: Surface): void {
+  const c = s.canvas as unknown as { width: number; height: number };
+  c.width = 0;
+  c.height = 0;
+}
+
 function find(k: string): Surface | undefined {
   const hit = small.get(k);
-  if (hit) return hit;
+  if (hit) {
+    small.delete(k);
+    small.set(k, hit);
+    return hit;
+  }
   const i = large.findIndex((e) => e.key === k);
   if (i < 0) return undefined;
   const [e] = large.splice(i, 1);
@@ -74,8 +87,13 @@ function find(k: string): Surface | undefined {
 function keep(k: string, s: Surface, area: number): void {
   if (area <= LARGE_AREA) {
     small.set(k, s);
+    if (small.size > SMALL_KEEP) {
+      const oldest = small.keys().next().value as string;
+      release(small.get(oldest) as Surface);
+      small.delete(oldest);
+    }
     return;
   }
   large.push({ key: k, s });
-  if (large.length > LARGE_KEEP) large.shift();
+  if (large.length > LARGE_KEEP) release((large.shift() as { s: Surface }).s);
 }

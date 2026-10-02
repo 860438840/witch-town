@@ -12,7 +12,7 @@ export function priestPanel(ui: Ui, m: TableModel, picked: string[], close: () =
   const { nodes, body } = sheet(ui.screen, 420, '牧师：从弃牌堆拿牌', close, 1, '选 1–2 张非黑卡，拿完回合结束');
   const pool = m.view.discard.filter((c) => !isBlack(c.kind));
   const kinds = [...new Set(pool.map((c) => c.kind))];
-  const cols = 4;
+  const cols = 5;
   const gap = 8;
   const w = (body.w - gap * (cols - 1)) / cols;
   const h = 78;

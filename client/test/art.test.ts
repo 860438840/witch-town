@@ -17,6 +17,14 @@ import { projectPublic } from '../../engine/src/index';
 import { newState } from './fixtures';
 import { RULES } from '../src/model/rules';
 import { ScrollBox } from '../src/scenes/widgets';
+import { findNode } from '../src/core/node';
+import { buildTable } from '../src/model/table';
+import { choicePanel } from '../src/scenes/choicePanels';
+import { priestPanel } from '../src/scenes/abilityPanels';
+import { TableScene } from '../src/scenes/table';
+import { giveCard, handOf, roomOf, setDay } from './fixtures';
+import { drawAll, fakeCtl, fakeUi, tap } from './sceneKit';
+import type { Screen } from '../src/core/app';
 
 afterEach(() => setSurfaceFactory(null));
 
@@ -232,5 +240,68 @@ describe('面板里的图标', () => {
     const { ctx, texts } = fakeCtx();
     node.draw!(ctx);
     expect(texts).toEqual(['黑猫：说明', '法官：说明']);
+  });
+});
+
+describe('最终审查修复', () => {
+  const SIZES: Screen[] = [
+    { W: 320, H: 568, top: 64, bottom: 568 },
+    { W: 375, H: 667, top: 60, bottom: 667 },
+    { W: 414, H: 896, top: 92, bottom: 862 },
+  ];
+
+  it('选角色面板滑入时卡片尺寸不变：不会每帧新建隐藏画布', () => {
+    const { factory, created } = fakeSurfaces();
+    setSurfaceFactory(factory, 3);
+    const s = newState(5);
+    s.phase = { kind: 'characterPick' };
+    s.characterOffers = { 0: ['judge', 'maid'], 1: ['priest', 'child'], 2: ['farmer', 'beggar'], 3: ['doctor', 'maiden'], 4: ['official', 'tailor'] };
+    const ui = fakeUi(fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' }));
+    const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
+    const st = { key: '', picked: null, suspect: null };
+    drawAll(choicePanel(ui, m, st, 0, 1));
+    const settled = created.length;
+    for (const slide of [0.3, 0.45, 0.6, 0.8]) drawAll(choicePanel(ui, m, st, 0, slide));
+    expect(created.length).toBe(settled);
+  });
+
+  it('牧师面板：弃牌堆里有全部 13 种非黑卡时，确认按钮仍在屏幕内', () => {
+    const kinds = (Object.keys(CARD_INFO) as CardKind[]).filter((k) => CARD_INFO[k].color !== 'black');
+    expect(kinds).toHaveLength(13);
+    for (const sc of SIZES) {
+      const s = newState(5);
+      setDay(s, 0);
+      s.players[0].character = 'priest';
+      s.discard.push(...kinds.map((kind) => ({ id: `d-${kind}`, kind })));
+      const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' });
+      const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
+      const r = findNode(priestPanel(fakeUi(ctl, sc), m, [], () => {}), 'confirm-priest')!.rect;
+      expect(r.y + r.h).toBeLessThanOrEqual(sc.bottom);
+    }
+  });
+
+  it('选中一张可打出的手牌后，信息栏仍显示这张牌的说明', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const id = giveCard(s, 0, 'scapegoat');
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' });
+    const scene = new TableScene(fakeUi(ctl));
+    tap(scene.build(0), `card:${id}`);
+    expect(drawAll(scene.build(0)).join('')).toContain(CARD_INFO.scapegoat.desc);
+  });
+
+  it('隐藏画布缓存有上限；被挤掉的画布会释放（width 设为 0）', () => {
+    const { factory, canvases } = fakeSurfaces();
+    setSurfaceFactory(factory, 1);
+    const { ctx } = fakeCtx();
+    for (let i = 0; i < 450; i++) blit(ctx, `k${i}`, 20, 30, () => {}, 0, 0);
+    expect(canvases[0].width).toBe(0);
+    expect(canvases.filter((c) => c.width > 0).length).toBeLessThanOrEqual(400);
+    // 大图被挤掉时也释放
+    const big = fakeSurfaces();
+    setSurfaceFactory(big.factory, 1);
+    for (const k of ['a', 'b', 'c']) blit(ctx, k, 375, 667, () => {}, 0, 0);
+    expect(big.canvases[0].width).toBe(0);
+    expect(big.canvases[2].width).toBeGreaterThan(0);
   });
 });

@@ -14,11 +14,10 @@ const html = `<title>女巫镇图鉴</title>
   :root { color-scheme: dark; }
   body { background: #0d0a14; color: #e9dcb8; font-family: -apple-system, "PingFang SC", sans-serif; margin: 0; padding: 16px; }
   h2 { color: #e8c774; font-size: 16px; margin: 24px 0 8px; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; max-width: 100%; overflow-x: auto; }
   figure { margin: 0; display: grid; gap: 2px; justify-items: center; }
   figcaption { font-size: 11px; color: #8a7fa3; }
 </style>
-<body>
 <script>${gallery}</script>
 <h2>真实界面（手机尺寸）</h2>
 <div id="screens" class="row"></div>

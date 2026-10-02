@@ -249,9 +249,11 @@ function characterPanel(
   slide: number,
 ): Node[] {
   const { nodes, body } = sheet(ui.screen, 480, '选择你的角色', null, slide, `角色对所有人公开 · 剩余 ${cd} · 超时随机选择`);
+  // 面板滑入时 body.h 每帧都在变：按停稳后的高度定卡片大小，只平移位置，避免每帧新建不同尺寸的缓存画布
+  const settledH = body.h + Math.min(480, ui.screen.H - ui.screen.top) * (1 - slide);
   const gap = 10;
   const slot = (body.w - gap) / 2;
-  const cw = Math.min(slot, (body.h - 70) / 1.5);
+  const cw = Math.min(slot, (settledH - 70) / 1.5);
   const ch = cw * 1.5;
   p.offers.forEach((c, i) => {
     const r = rect(body.x + i * (slot + gap) + (slot - cw) / 2, body.y + 6, cw, ch);

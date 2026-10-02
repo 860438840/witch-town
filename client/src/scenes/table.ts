@@ -338,10 +338,11 @@ export class TableScene implements Scene {
   private infoText(m: TableModel): string {
     const kind = this.selKind(m);
     if (kind) {
-      const name = CARD_INFO[kind].name;
+      const { name, desc } = CARD_INFO[kind];
       const need = targetCount(kind);
-      if (this.targets.length < need) return need === 2 ? `「${name}」：${TWO_TARGET_HINT[this.targets.length]}` : `「${name}」：选择目标`;
-      return this.ready(m) ? `「${name}」：点「确认出牌」` : `「${name}」：请选择选项`;
+      // 先说下一步做什么，再说这张牌的作用（卡面上不再印说明）
+      if (this.targets.length < need) return `「${name}」${need === 2 ? TWO_TARGET_HINT[this.targets.length] : '选择目标'}｜${desc}`;
+      return `「${name}」${this.ready(m) ? '点「确认出牌」' : '请选择选项'}｜${desc}`;
     }
     if (this.peek) {
       const k = cardKindOf(m, this.peek);
