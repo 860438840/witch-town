@@ -657,10 +657,6 @@
     text: "#e9dcb8",
     textDim: "#bfb2d6",
     textMuted: "#8a7fa3",
-    panel: "rgba(255,255,255,0.05)",
-    panelSolid: "#221833",
-    panelLine: "#4a3a6c",
-    logBg: "rgba(0,0,0,0.35)",
     danger: "#c0394d",
     moon: "#f1e3b3",
     overlay: "rgba(8,5,14,0.72)",
@@ -674,9 +670,20 @@
     badgeRing: "rgba(232,199,116,0.7)",
     chipRevealedLine: "rgba(255,255,255,0.4)",
     buttonDangerFill: "rgba(192,57,77,0.25)",
-    buttonFill: "rgba(0,0,0,0.25)",
+    buttonFill: "rgba(60,10,24,0.45)",
     glowStrong: "rgba(232,199,116,0.9)",
     lineDark: "#3b2d57",
+    // 酒红金线：大面板、普通面板、主按钮的上下渐变色
+    panelBigTop: "#3a0d1c",
+    panelBigBottom: "#1e0a14",
+    panelTop: "rgba(92,14,32,0.6)",
+    panelBottom: "rgba(34,6,16,0.78)",
+    buttonTop: "#8a1c34",
+    buttonBottom: "#4a0a18",
+    /** 危险按钮的文字（比 danger 亮，压得住深色底） */
+    dangerText: "#e5677a",
+    /** 出局格子、不可用按钮的灰线 */
+    greyLine: "#6b6378",
     transparent: "rgba(0,0,0,0)"
   };
   var nightShade = (alpha2) => `rgba(4,2,10,${alpha2})`;
@@ -2315,11 +2322,11 @@
     ctx2.closePath();
   }
   function drawText(ctx2, text, x, y, o = {}) {
-    var _a, _b, _c, _d;
-    ctx2.font = font((_a = o.size) != null ? _a : 14, o.bold);
-    ctx2.fillStyle = (_b = o.color) != null ? _b : C.text;
-    ctx2.textAlign = (_c = o.align) != null ? _c : "left";
-    ctx2.textBaseline = (_d = o.baseline) != null ? _d : "middle";
+    var _a, _b, _c, _d, _e;
+    ctx2.font = o.serif ? titleFont((_a = o.size) != null ? _a : 14) : font((_b = o.size) != null ? _b : 14, o.bold);
+    ctx2.fillStyle = (_c = o.color) != null ? _c : C.text;
+    ctx2.textAlign = (_d = o.align) != null ? _d : "left";
+    ctx2.textBaseline = (_e = o.baseline) != null ? _e : "middle";
     const t = o.maxWidth ? ellipsize(text, o.maxWidth, (s) => ctx2.measureText(s).width) : text;
     ctx2.fillText(t, x, y);
   }
@@ -2333,37 +2340,69 @@
       glow(ctx2, m.x, m.y, m.r * 4, alpha(C.moon, 0.3 * darkness));
     }
   }
+  function diamond(ctx2, x, y, r, color) {
+    ctx2.fillStyle = color;
+    ctx2.beginPath();
+    ctx2.moveTo(x, y - r);
+    ctx2.lineTo(x + r, y);
+    ctx2.lineTo(x, y + r);
+    ctx2.lineTo(x - r, y);
+    ctx2.closePath();
+    ctx2.fill();
+  }
   function drawPanel(ctx2, r, o = {}) {
-    var _a, _b, _c, _d;
-    roundRect(ctx2, r, (_a = o.radius) != null ? _a : 8);
+    var _a, _b, _c;
+    const big = o.tier === "big";
+    const radius = (_a = o.radius) != null ? _a : 8;
+    roundRect(ctx2, r, radius);
     if (o.glow) {
       ctx2.shadowColor = goldGlow(o.glow);
       ctx2.shadowBlur = 12;
     }
-    ctx2.fillStyle = (_b = o.fill) != null ? _b : C.panel;
+    if (o.fill !== void 0) ctx2.fillStyle = o.fill;
+    else {
+      const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+      g.addColorStop(0, big ? C.panelBigTop : C.panelTop);
+      g.addColorStop(1, big ? C.panelBigBottom : C.panelBottom);
+      ctx2.fillStyle = g;
+    }
     ctx2.fill();
     ctx2.shadowBlur = 0;
-    ctx2.lineWidth = (_c = o.lineWidth) != null ? _c : 1;
-    ctx2.strokeStyle = (_d = o.stroke) != null ? _d : C.panelLine;
-    ctx2.stroke();
-  }
-  function drawButton(ctx2, r, label, style) {
-    if (style === "primary") {
-      const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
-      g.addColorStop(0, C.gold);
-      g.addColorStop(1, C.goldDark);
-      roundRect(ctx2, r, 10);
-      ctx2.fillStyle = g;
+    if (o.tint !== void 0) {
+      ctx2.fillStyle = o.tint;
       ctx2.fill();
-    } else {
-      drawPanel(ctx2, r, {
-        radius: 10,
-        fill: style === "danger" ? C.buttonDangerFill : C.buttonFill,
-        stroke: style === "disabled" ? C.panelLine : style === "danger" ? C.danger : C.gold
-      });
     }
-    const color = style === "primary" ? C.skyMid : style === "disabled" ? C.textMuted : style === "danger" ? C.danger : C.gold;
-    drawText(ctx2, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, bold: true, color, align: "center", maxWidth: r.w - 8 });
+    ctx2.lineWidth = (_b = o.lineWidth) != null ? _b : big ? 1.5 : 1;
+    ctx2.strokeStyle = (_c = o.stroke) != null ? _c : big ? C.goldLine : C.goldDark;
+    ctx2.stroke();
+    if (!big) return;
+    roundRect(ctx2, { x: r.x + 4, y: r.y + 4, w: r.w - 8, h: r.h - 8 }, Math.max(2, radius - 3));
+    ctx2.lineWidth = 1;
+    ctx2.strokeStyle = alpha(C.gold, 0.28);
+    ctx2.stroke();
+    if (r.w >= 120) diamond(ctx2, r.x + r.w / 2, r.y + 0.5, 4, C.gold);
+  }
+  function drawButton(ctx2, r, label, kind) {
+    const radius = 9;
+    roundRect(ctx2, r, radius);
+    if (kind === "primary") {
+      const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
+      g.addColorStop(0, C.buttonTop);
+      g.addColorStop(1, C.buttonBottom);
+      ctx2.fillStyle = g;
+    } else ctx2.fillStyle = kind === "danger" ? C.buttonDangerFill : C.buttonFill;
+    ctx2.fill();
+    ctx2.lineWidth = kind === "primary" ? 1.5 : 1.2;
+    ctx2.strokeStyle = kind === "disabled" ? C.greyLine : kind === "danger" ? C.danger : C.gold;
+    ctx2.stroke();
+    if (kind === "primary" || kind === "secondary") {
+      roundRect(ctx2, { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 }, radius - 2);
+      ctx2.lineWidth = 1;
+      ctx2.strokeStyle = alpha(C.gold, kind === "primary" ? 0.35 : 0.25);
+      ctx2.stroke();
+    }
+    const color = kind === "disabled" ? C.textMuted : kind === "danger" ? C.dangerText : C.gold;
+    drawText(ctx2, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, serif: true, color, align: "center", maxWidth: r.w - 8 });
   }
   function drawBadge(ctx2, cx, cy, radius, name, seat, character = null) {
     var _a;
@@ -2487,8 +2526,8 @@
         onTap: () => {
         },
         draw: (ctx2) => {
-          drawPanel(ctx2, panel, { fill: C.panelSolid, stroke: C.goldLine, radius: 16 });
-          drawText(ctx2, title, 20, y + 26, { size: 17, bold: true, color: C.gold, maxWidth: screen2.W - 120 });
+          drawPanel(ctx2, panel, { tier: "big", radius: 16 });
+          drawText(ctx2, title, 20, y + 26, { size: 17, serif: true, color: C.gold, maxWidth: screen2.W - 120 });
           if (subtitle) drawText(ctx2, subtitle, 20, y + 50, { size: 12, color: C.textDim, maxWidth: screen2.W - 40 });
         }
       }
@@ -2525,10 +2564,10 @@
             const size = (_a = l.size) != null ? _a : 13;
             const iconH = l.icon ? size + 6 : 0;
             const indent = l.icon ? drawIconRef(ctx2, l.icon, r.x + 4, y - 2, iconH) + 6 : 0;
-            ctx2.font = font(size, l.bold);
+            ctx2.font = l.serif ? titleFont(size) : font(size, l.bold);
             const top = y;
             for (const t of wrapText(l.text, r.w - 8 - indent, (s) => ctx2.measureText(s).width)) {
-              drawText(ctx2, t, r.x + 4 + indent, y + size / 2, { size, color: l.color, bold: l.bold });
+              drawText(ctx2, t, r.x + 4 + indent, y + size / 2, { size, color: l.color, bold: l.bold, serif: l.serif });
               y += size + 6;
             }
             y = Math.max(y, top + iconH + 2);
@@ -2542,7 +2581,7 @@
 
   // src/scenes/home.ts
   var RULE_LINES = RULES.flatMap((s) => [
-    { text: s.title, size: 15, bold: true, color: C.gold, gap: 2 },
+    { text: s.title, size: 15, serif: true, color: C.gold, gap: 2 },
     ...s.items.map((it, i) => ({ text: it.icon ? it.text : `\xB7 ${it.text}`, icon: it.icon, size: 13, gap: i === s.items.length - 1 ? 10 : 2 }))
   ]);
   var HomeScene = class {
@@ -2561,7 +2600,7 @@
       nodes.push({
         rect: rect(0, titleY - 30, W, 100),
         draw: (ctx2) => {
-          drawText(ctx2, "\u5973\u5DEB\u9547", W / 2, titleY, { size: 46, bold: true, color: C.gold, align: "center" });
+          drawText(ctx2, "\u5973\u5DEB\u9547", W / 2, titleY, { size: 46, serif: true, color: C.gold, align: "center" });
           drawText(ctx2, "Salem 1692 \xB7 \u670B\u53CB\u5C40", W / 2, titleY + 44, { size: 14, color: C.textDim, align: "center" });
         }
       });
@@ -2611,7 +2650,7 @@
         rect: rect(0, top, W, 90),
         draw: (ctx2) => {
           drawText(ctx2, "\u623F\u95F4\u53F7", W / 2, top + 12, { size: 13, color: C.textDim, align: "center" });
-          drawText(ctx2, room.code, W / 2, top + 54, { size: 46, bold: true, color: C.gold, align: "center" });
+          drawText(ctx2, room.code, W / 2, top + 54, { size: 46, serif: true, color: C.gold, align: "center" });
         }
       });
       const half = (W - 24 - 10) / 2;
@@ -2683,7 +2722,7 @@
       nodes.push({
         rect: rect(0, top, W, 90),
         draw: (ctx2) => {
-          drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.moon, align: "center" });
+          drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, serif: true, color: village ? C.gold : C.moon, align: "center" });
           drawText(ctx2, village ? "\u5973\u5DEB\u9635\u8425\u5168\u90E8\u51FA\u5C40" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
         }
       });
@@ -2695,10 +2734,10 @@
         nodes.push({
           rect: r,
           draw: (ctx2) => {
-            drawPanel(ctx2, r, { fill: C.overlay, stroke: p.witchFaction ? C.danger : C.panelLine });
+            drawPanel(ctx2, r, { stroke: p.witchFaction ? C.danger : void 0 });
             drawBadge(ctx2, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat, p.character);
             drawText(ctx2, `${p.name}${i === mySeat ? "\uFF08\u4F60\uFF09" : ""}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
-            drawText(ctx2, `${p.witchFaction ? "\u5973\u5DEB\u9635\u8425" : "\u6751\u6C11\u9635\u8425"} \xB7 ${p.alive ? "\u5B58\u6D3B" : "\u51FA\u5C40"}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.danger : C.textDim });
+            drawText(ctx2, `${p.witchFaction ? "\u5973\u5DEB\u9635\u8425" : "\u6751\u6C11\u9635\u8425"} \xB7 ${p.alive ? "\u5B58\u6D3B" : "\u51FA\u5C40"}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.dangerText : C.textDim });
             const cw = 12;
             const x0 = r.x + r.w - 10 - p.tryals.length * (cw + 3);
             p.tryals.forEach((t, j) => drawTryalChip(ctx2, rect(x0 + j * (cw + 3), r.y + r.h / 2 - 8, cw, 16), t.kind, true));
@@ -2990,10 +3029,10 @@
         rect: r,
         onTap: onPick ? () => onPick(seat) : void 0,
         draw: (ctx2) => {
-          drawPanel(ctx2, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : partner ? C.danger : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
+          drawPanel(ctx2, r, { tint: selected === seat ? goldGlow(0.25) : void 0, stroke: selected === seat ? C.gold : partner ? C.danger : void 0, lineWidth: selected === seat ? 2 : 1, glow: selected === seat ? 0.6 : 0 });
           drawBadge(ctx2, r.x + 13, r.y + h / 2, 9, p.name, seat, p.character);
           drawText(ctx2, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
-          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
+          if (mark) drawText(ctx2, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.dangerText : C.gold, maxWidth: r.w - 30 });
         }
       };
     });
@@ -3054,7 +3093,7 @@
       const picked = tryals.find((t) => t.id === st.picked);
       let y = body.y + row.height + 8;
       if ((picked == null ? void 0 : picked.kind) === "witch") {
-        nodes.push(textNode(rect(body.x, y, body.w, 20), "\u7FFB\u5F00\u5973\u5DEB\u5361\u4F1A\u7ACB\u5373\u6B7B\u4EA1", { size: 13, color: C.danger, align: "center" }));
+        nodes.push(textNode(rect(body.x, y, body.w, 20), "\u7FFB\u5F00\u5973\u5DEB\u5361\u4F1A\u7ACB\u5373\u6B7B\u4EA1", { size: 13, color: C.dangerText, align: "center" }));
       }
       y += 28;
       nodes.push(requestButton("confirm-reveal", rect(body.x, y, body.w, 44), "\u786E\u8BA4\u7FFB\u5F00", picked ? () => void act({ type: "revealTryal", tryalId: picked.id }) : null, busy));
@@ -3199,7 +3238,7 @@
           }
         },
         draw: (ctx2) => {
-          drawPanel(ctx2, r, { fill: mine ? goldGlow(0.2) : C.panel, stroke: mine ? C.gold : C.panelLine, lineWidth: mine ? 2 : 1 });
+          drawPanel(ctx2, r, { tint: mine ? goldGlow(0.2) : void 0, stroke: mine ? C.gold : void 0, lineWidth: mine ? 2 : 1 });
           drawCardFace(ctx2, rect(r.x + (r.w - 40) / 2, r.y + 4, 40, 56), kind);
           drawText(ctx2, mine ? `\u5DF2\u9009 ${mine} / ${ids.length}` : `${ids.length} \u5F20`, r.x + r.w / 2, r.y + 69, {
             size: 11,
@@ -3458,7 +3497,7 @@
   };
   function drawRow(ctx2, r, card, index, lifted) {
     const info = CARD_INFO[card.kind];
-    drawPanel(ctx2, r, { fill: lifted ? C.panelSolid : C.panel, stroke: lifted ? C.gold : C.panelLine, lineWidth: lifted ? 2 : 1 });
+    drawPanel(ctx2, r, { fill: lifted ? C.panelBigBottom : void 0, stroke: lifted ? C.gold : void 0, lineWidth: lifted ? 2 : 1, glow: lifted ? 0.6 : 0 });
     drawText(ctx2, String(index + 1), r.x + 26, r.y + r.h / 2, { size: 12, color: C.textMuted, align: "right" });
     const chip = rect(r.x + 34, r.y + 5, 28, r.h - 10);
     drawCardFace(ctx2, chip, card.kind);
@@ -3537,10 +3576,10 @@
   function drawCell(ctx2, r, p, o) {
     ctx2.globalAlpha = o.alpha;
     drawPanel(ctx2, r, {
-      fill: o.targetable ? goldGlow(0.14) : C.panel,
-      stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : C.panelLine,
+      tint: o.targetable ? goldGlow(0.14) : void 0,
+      stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : !p.alive ? C.greyLine : void 0,
       glow: o.turn ? o.glow : 0,
-      lineWidth: o.order ? 2 : 1
+      lineWidth: o.turn || o.order ? 2 : 1
     });
     const cx = r.x + r.w / 2;
     const tag = o.partner && !o.order;
@@ -3561,15 +3600,16 @@
     }
     if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
     if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
-    else if (tag) drawText(ctx2, "\u540C\u4F34", r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.danger, align: "right" });
+    else if (tag) drawText(ctx2, "\u540C\u4F34", r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.dangerText, align: "right" });
     ctx2.globalAlpha = 1;
   }
   function drawMeBar(ctx2, r, m, o) {
     drawPanel(ctx2, r, {
-      fill: o.targetable ? goldGlow(0.14) : C.panel,
-      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : C.panelLine,
+      tier: "strip",
+      tint: o.targetable ? goldGlow(0.14) : void 0,
+      stroke: o.targetable || o.order || m.isMyTurn ? C.gold : void 0,
       glow: m.isMyTurn ? o.glow : 0,
-      lineWidth: o.order ? 2 : 1
+      lineWidth: o.order || m.isMyTurn ? 2 : 1
     });
     const me = m.me;
     const cy = r.y + r.h / 2;
@@ -3749,7 +3789,7 @@
         rect: r,
         draw: (ctx2) => {
           const cy = r.y + r.h / 2;
-          drawText(ctx2, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
+          drawText(ctx2, phaseTitle(m), r.x, cy, { size: 15, serif: true, color: C.gold, maxWidth: r.w * 0.46 });
           const cd = formatCountdown(m.deadline, now);
           if (cd) drawText(ctx2, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: "center" });
           const x = r.x + r.w - LEAVE_W - 8;
@@ -3836,7 +3876,7 @@
           this.logBox.reset();
         },
         draw: (ctx2) => {
-          drawPanel(ctx2, r, { fill: C.logBg, stroke: C.lineDark });
+          drawPanel(ctx2, r, { tier: "big" });
           const lh = (r.h - 8) / count;
           lines.forEach(
             (t, i) => drawText(ctx2, t, r.x + 8, r.y + 4 + lh * (i + 0.5), { size: 11, color: i === lines.length - 1 ? C.text : C.textDim, maxWidth: r.w - 16 })
