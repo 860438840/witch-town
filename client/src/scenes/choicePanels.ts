@@ -1,13 +1,11 @@
 import type { PendingChoice } from '../../../engine/src/index';
 import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
-import { wrapText } from '../core/text';
 import { dawnTargets, nightSteps, nightTargets, unrevealedTryals, type NightPending, type NightStep } from '../model/actions';
 import { TRYAL_NAME } from '../model/cards';
-import { CHAR_INFO } from '../model/characters';
 import { formatCountdown, isPartner, nameOf, type TableModel } from '../model/table';
-import { drawBadge, drawPanel, drawText, drawTryalChip } from '../theme/draw';
-import { C, font, goldGlow } from '../theme/palette';
+import { drawBadge, drawCharCard, drawPanel, drawText, drawTryalChip } from '../theme/draw';
+import { C, goldGlow } from '../theme/palette';
 import type { Ui } from './ui';
 import { button, requestButton, sheet, textNode } from './widgets';
 
@@ -61,7 +59,7 @@ function seatGrid(
       onTap: onPick ? () => onPick(seat) : undefined,
       draw: (ctx: CanvasRenderingContext2D) => {
         drawPanel(ctx, r, { fill: selected === seat ? goldGlow(0.25) : C.panel, stroke: selected === seat ? C.gold : partner ? C.danger : C.panelLine, lineWidth: selected === seat ? 2 : 1 });
-        drawBadge(ctx, r.x + 13, r.y + h / 2, 9, p.name, seat);
+        drawBadge(ctx, r.x + 13, r.y + h / 2, 9, p.name, seat, p.character);
         drawText(ctx, nameOf(m, seat), r.x + 26, r.y + (mark ? h / 3 : h / 2), { size: 12, maxWidth: r.w - 30 });
         if (mark) drawText(ctx, mark, r.x + 26, r.y + h * 0.72, { size: 9, color: partner ? C.danger : C.gold, maxWidth: r.w - 30 });
       },
@@ -250,36 +248,30 @@ function characterPanel(
   cd: string,
   slide: number,
 ): Node[] {
-  const { nodes, body } = sheet(ui.screen, 400, '选择你的角色', null, slide, `角色对所有人公开 · 剩余 ${cd} · 超时随机选择`);
+  const { nodes, body } = sheet(ui.screen, 480, '选择你的角色', null, slide, `角色对所有人公开 · 剩余 ${cd} · 超时随机选择`);
+  // 面板滑入时 body.h 每帧都在变：按停稳后的高度定卡片大小，只平移位置，避免每帧新建不同尺寸的缓存画布
+  const settledH = body.h + Math.min(480, ui.screen.H - ui.screen.top) * (1 - slide);
   const gap = 10;
-  const w = (body.w - gap) / 2;
-  const h = Math.min(200, body.h - 60);
+  const slot = (body.w - gap) / 2;
+  const cw = Math.min(slot, (settledH - 70) / 1.5);
+  const ch = cw * 1.5;
   p.offers.forEach((c, i) => {
-    const r = rect(body.x + i * (w + gap), body.y, w, h);
+    const r = rect(body.x + i * (slot + gap) + (slot - cw) / 2, body.y + 6, cw, ch);
     nodes.push({
       id: `character:${c}`,
       rect: r,
       onTap: () => (st.picked = i),
       draw: (ctx) => {
         const sel = st.picked === i;
-        drawPanel(ctx, r, { fill: sel ? goldGlow(0.2) : C.panel, stroke: sel ? C.gold : C.panelLine, lineWidth: sel ? 2 : 1 });
-        drawText(ctx, CHAR_INFO[c].name, r.x + r.w / 2, r.y + 28, { size: 20, bold: true, color: C.gold, align: 'center' });
-        ctx.font = font(13);
-        wrapText(CHAR_INFO[c].desc, r.w - 20, (s) => ctx.measureText(s).width).forEach((line, k) =>
-          drawText(ctx, line, r.x + 10, r.y + 62 + k * 20, { size: 13 }),
-        );
+        const y = r.y - (sel ? 6 : 0);
+        if (sel) drawPanel(ctx, rect(r.x - 3, y - 3, r.w + 6, r.h + 6), { fill: C.transparent, stroke: C.gold, lineWidth: 2, radius: 12, glow: 0.9 });
+        drawCharCard(ctx, rect(r.x, y, r.w, r.h), c);
       },
     });
   });
   const idx = typeof st.picked === 'number' ? st.picked : null;
   nodes.push(
-    requestButton(
-      'confirm-character',
-      rect(body.x, body.y + h + 16, body.w, 44),
-      '选这个角色',
-      idx !== null ? () => void ui.ctl.act({ type: 'pickCharacter', index: idx }) : null,
-      ui.ctl.busy,
-    ),
+    requestButton('confirm-character', rect(body.x, body.y + 6 + ch + 14, body.w, 44), '选这个角色', idx !== null ? () => void ui.ctl.act({ type: 'pickCharacter', index: idx }) : null, ui.ctl.busy),
   );
   return nodes;
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "gallery": "node gallery/build.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

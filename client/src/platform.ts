@@ -1,8 +1,9 @@
 import type { App, Screen } from './core/app';
 import type { Ctx } from './core/node';
+import type { SurfaceFactory } from './theme/art/cache';
 
 /** 创建全屏画布，按像素比缩放，计算内容区（避开右上角胶囊按钮和底部安全区） */
-export function createPlatform(): { ctx: Ctx; screen: Screen } {
+export function createPlatform(): { ctx: Ctx; screen: Screen; dpr: number } {
   const canvas = wx.createCanvas();
   const info = wx.getSystemInfoSync();
   const dpr = info.pixelRatio || 2;
@@ -17,8 +18,16 @@ export function createPlatform(): { ctx: Ctx; screen: Screen } {
     // 个别环境拿不到胶囊按钮位置，用默认值
   }
   const bottom = info.safeArea ? Math.min(info.safeArea.bottom, info.windowHeight) : info.windowHeight;
-  return { ctx, screen: { W: info.windowWidth, H: info.windowHeight, top, bottom } };
+  return { ctx, screen: { W: info.windowWidth, H: info.windowHeight, top, bottom }, dpr };
 }
+
+/** 隐藏画布：小游戏里第一次 createCanvas 是屏幕画布，之后创建的都是离屏画布 */
+export const wxSurfaces: SurfaceFactory = (w, h) => {
+  const canvas = wx.createCanvas();
+  canvas.width = w;
+  canvas.height = h;
+  return { canvas: canvas as unknown as CanvasImageSource, ctx: canvas.getContext('2d') };
+};
 
 export function bindTouches(app: App): void {
   wx.onTouchStart((e) => {

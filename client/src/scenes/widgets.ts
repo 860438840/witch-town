@@ -2,7 +2,8 @@ import type { Screen } from '../core/app';
 import { rect, type Rect } from '../core/geom';
 import type { Node } from '../core/node';
 import { wrapText } from '../core/text';
-import { drawButton, drawPanel, drawSky, drawText, type TextOpts } from '../theme/draw';
+import type { Backdrop } from '../theme/art/scenes';
+import { drawButton, drawIconRef, drawPanel, drawSky, drawText, type IconRef, type TextOpts } from '../theme/draw';
 import { C, font } from '../theme/palette';
 
 export type WidgetButtonStyle = 'primary' | 'secondary' | 'danger';
@@ -37,8 +38,8 @@ export function textNode(r: Rect, text: string, o: TextOpts = {}): Node {
   return { rect: r, draw: (ctx) => drawText(ctx, text, x, r.y + r.h / 2, { maxWidth: r.w, ...o }) };
 }
 
-export function skyNode(screen: Screen, darkness: number): Node {
-  return { rect: rect(0, 0, screen.W, screen.H), draw: (ctx) => drawSky(ctx, screen.W, screen.H, darkness) };
+export function skyNode(screen: Screen, darkness: number, backdrop: Backdrop = 'table'): Node {
+  return { rect: rect(0, 0, screen.W, screen.H), draw: (ctx) => drawSky(ctx, screen.W, screen.H, darkness, backdrop) };
 }
 
 /** 全屏半透明遮罩，拦住下面的点击；onTap 常用于「点空白处关闭」 */
@@ -96,6 +97,8 @@ export interface Line {
   bold?: boolean;
   /** 本行之后额外空出的高度 */
   gap?: number;
+  /** 行首的小图标（牌或角色） */
+  icon?: IconRef;
 }
 
 /** 可上下拖动的文字列表。内容高度在绘制时才知道，所以第一次绘制前滚动不会生效。 */
@@ -120,11 +123,15 @@ export class ScrollBox {
         let y = start + this.offset;
         for (const l of lines) {
           const size = l.size ?? 13;
+          const iconH = l.icon ? size + 6 : 0;
+          const indent = l.icon ? drawIconRef(ctx, l.icon, r.x + 4, y - 2, iconH) + 6 : 0;
           ctx.font = font(size, l.bold);
-          for (const t of wrapText(l.text, r.w - 8, (s) => ctx.measureText(s).width)) {
-            drawText(ctx, t, r.x + 4, y + size / 2, { size, color: l.color, bold: l.bold });
+          const top = y;
+          for (const t of wrapText(l.text, r.w - 8 - indent, (s) => ctx.measureText(s).width)) {
+            drawText(ctx, t, r.x + 4 + indent, y + size / 2, { size, color: l.color, bold: l.bold });
             y += size + 6;
           }
+          y = Math.max(y, top + iconH + 2);
           y += l.gap ?? 0;
         }
         this.contentH = y - this.offset - start;
