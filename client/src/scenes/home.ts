@@ -8,7 +8,7 @@ import type { Ui } from './ui';
 import { button, requestButton, ScrollBox, sheet, skyNode, type Line } from './widgets';
 
 const RULE_LINES: Line[] = RULES.flatMap((s) => [
-  { text: s.title, size: 15, bold: true, color: C.gold, gap: 2 },
+  { text: s.title, size: 15, serif: true, color: C.gold, gap: 2 },
   ...s.items.map((it, i) => ({ text: it.icon ? it.text : `· ${it.text}`, icon: it.icon, size: 13, gap: i === s.items.length - 1 ? 10 : 2 })),
 ]);
 
@@ -27,7 +27,7 @@ export class HomeScene implements Scene {
     nodes.push({
       rect: rect(0, titleY - 30, W, 100),
       draw: (ctx) => {
-        drawText(ctx, '女巫镇', W / 2, titleY, { size: 46, bold: true, color: C.gold, align: 'center' });
+        drawText(ctx, '女巫镇', W / 2, titleY, { size: 46, serif: true, color: C.gold, align: 'center' });
         drawText(ctx, 'Salem 1692 · 朋友局', W / 2, titleY + 44, { size: 14, color: C.textDim, align: 'center' });
       },
     });

@@ -26,7 +26,7 @@ export class LobbyScene implements Scene {
       rect: rect(0, top, W, 90),
       draw: (ctx) => {
         drawText(ctx, '房间号', W / 2, top + 12, { size: 13, color: C.textDim, align: 'center' });
-        drawText(ctx, room.code, W / 2, top + 54, { size: 46, bold: true, color: C.gold, align: 'center' });
+        drawText(ctx, room.code, W / 2, top + 54, { size: 46, serif: true, color: C.gold, align: 'center' });
       },
     });
     const half = (W - 24 - 10) / 2;

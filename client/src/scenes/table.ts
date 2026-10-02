@@ -212,7 +212,7 @@ export class TableScene implements Scene {
       rect: r,
       draw: (ctx) => {
         const cy = r.y + r.h / 2;
-        drawText(ctx, phaseTitle(m), r.x, cy, { size: 15, bold: true, color: C.gold, maxWidth: r.w * 0.46 });
+        drawText(ctx, phaseTitle(m), r.x, cy, { size: 15, serif: true, color: C.gold, maxWidth: r.w * 0.46 });
         const cd = formatCountdown(m.deadline, now);
         if (cd) drawText(ctx, cd, r.x + r.w * 0.6, cy, { size: 15, bold: true, color: m.pending ? C.gold : C.text, align: 'center' });
         // 右边留给「离开」按钮，牌堆数分两行放在它左边
@@ -310,7 +310,7 @@ export class TableScene implements Scene {
         this.logBox.reset();
       },
       draw: (ctx) => {
-        drawPanel(ctx, r, { fill: C.logBg, stroke: C.lineDark });
+        drawPanel(ctx, r, { tier: 'big' });
         const lh = (r.h - 8) / count;
         lines.forEach((t, i) =>
           drawText(ctx, t, r.x + 8, r.y + 4 + lh * (i + 0.5), { size: 11, color: i === lines.length - 1 ? C.text : C.textDim, maxWidth: r.w - 16 }),

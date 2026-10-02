@@ -161,7 +161,7 @@ export class StoryBoard {
 /** 一行：序号、卡牌小色块、名字和说明、拖动把手 */
 function drawRow(ctx: Ctx, r: Rect, card: Card, index: number, lifted: boolean): void {
   const info = CARD_INFO[card.kind];
-  drawPanel(ctx, r, { fill: lifted ? C.panelSolid : C.panel, stroke: lifted ? C.gold : C.panelLine, lineWidth: lifted ? 2 : 1 });
+  drawPanel(ctx, r, { fill: lifted ? C.panelBigBottom : undefined, stroke: lifted ? C.gold : undefined, lineWidth: lifted ? 2 : 1, glow: lifted ? 0.6 : 0 });
   drawText(ctx, String(index + 1), r.x + 26, r.y + r.h / 2, { size: 12, color: C.textMuted, align: 'right' });
   const chip = rect(r.x + 34, r.y + 5, 28, r.h - 10);
   drawCardFace(ctx, chip, card.kind);

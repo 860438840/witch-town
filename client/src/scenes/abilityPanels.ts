@@ -35,7 +35,7 @@ export function priestPanel(ui: Ui, m: TableModel, picked: string[], close: () =
         }
       },
       draw: (ctx) => {
-        drawPanel(ctx, r, { fill: mine ? goldGlow(0.2) : C.panel, stroke: mine ? C.gold : C.panelLine, lineWidth: mine ? 2 : 1 });
+        drawPanel(ctx, r, { tint: mine ? goldGlow(0.2) : undefined, stroke: mine ? C.gold : undefined, lineWidth: mine ? 2 : 1 });
         drawCardFace(ctx, rect(r.x + (r.w - 40) / 2, r.y + 4, 40, 56), kind);
         drawText(ctx, mine ? `已选 ${mine} / ${ids.length}` : `${ids.length} 张`, r.x + r.w / 2, r.y + 69, {
           size: 11,

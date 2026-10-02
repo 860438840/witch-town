@@ -68,10 +68,10 @@ function cellName(p: PublicPlayer): string {
 export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void {
   ctx.globalAlpha = o.alpha;
   drawPanel(ctx, r, {
-    fill: o.targetable ? goldGlow(0.14) : C.panel,
-    stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : C.panelLine,
+    tint: o.targetable ? goldGlow(0.14) : undefined,
+    stroke: o.turn || o.targetable || o.order ? C.gold : o.partner ? C.danger : !p.alive ? C.greyLine : undefined,
     glow: o.turn ? o.glow : 0,
-    lineWidth: o.order ? 2 : 1,
+    lineWidth: o.turn || o.order ? 2 : 1,
   });
   const cx = r.x + r.w / 2;
   // 同伴标记放在右上角；出牌选目标时那里显示①②
@@ -99,10 +99,11 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
 
 export function drawMeBar(ctx: Ctx, r: Rect, m: TableModel, o: { targetable: boolean; order: number; glow: number }): void {
   drawPanel(ctx, r, {
-    fill: o.targetable ? goldGlow(0.14) : C.panel,
-    stroke: o.targetable || o.order || m.isMyTurn ? C.gold : C.panelLine,
+    tier: 'strip',
+    tint: o.targetable ? goldGlow(0.14) : undefined,
+    stroke: o.targetable || o.order || m.isMyTurn ? C.gold : undefined,
     glow: m.isMyTurn ? o.glow : 0,
-    lineWidth: o.order ? 2 : 1,
+    lineWidth: o.order || m.isMyTurn ? 2 : 1,
   });
   const me = m.me;
   const cy = r.y + r.h / 2;

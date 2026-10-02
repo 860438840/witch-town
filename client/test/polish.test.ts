@@ -2,8 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { alpha, C } from '../src/theme/palette';
 import { rect } from '../src/core/geom';
 import { drawButton, drawPanel, drawText, type ButtonStyle } from '../src/theme/draw';
-import { ScrollBox } from '../src/scenes/widgets';
+import { ScrollBox, sheet } from '../src/scenes/widgets';
 import { fakeCtx } from './fakes';
+import { projectPublic } from '../../engine/src/index';
+import { RULES } from '../src/model/rules';
+import { HomeScene } from '../src/scenes/home';
+import { LobbyScene } from '../src/scenes/lobby';
+import { ResultScene } from '../src/scenes/result';
+import { TableScene } from '../src/scenes/table';
+import { drawCell } from '../src/scenes/tableParts';
+import { drawNodes, type Node } from '../src/core/node';
+import { buildTable, phaseTitle } from '../src/model/table';
+import { handOf, lobbyRoom, newState, roomOf } from './fixtures';
+import { fakeCtl, fakeUi, SCREEN, tap } from './sceneKit';
 
 /** 画某段文字时生效的字体（所有出现处） */
 function fontsOf(ops: string[], text: string): string[] {
@@ -141,5 +152,77 @@ describe('按钮', () => {
     expect(count(ops, 'stroke')).toBe(1);
     expect(colorOf(ops, '确定')).toBe(C.textMuted);
     expect(fontsOf(ops, '确定')).toEqual(['bold 15px serif']);
+  });
+});
+
+function opsOf(nodes: Node[]): string[] {
+  const { ctx, ops } = fakeCtx();
+  drawNodes(ctx, nodes);
+  return ops;
+}
+
+const CELL = { turn: false, glow: 0, targetable: false, order: 0, alpha: 1, flip: null, partner: false };
+
+describe('格子状态', () => {
+  it('出局的格子是灰线', () => {
+    const s = newState(5);
+    s.players[1].alive = false;
+    const { ctx, ops } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), projectPublic(s).players[1], CELL);
+    expect(ops).toContain(`strokeStyle=${C.greyLine}`);
+  });
+  it('轮到的格子是 2px 金线加发光', () => {
+    const s = newState(5);
+    const { ctx, ops } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), projectPublic(s).players[1], { ...CELL, turn: true, glow: 0.8 });
+    expect(ops).toContain(`strokeStyle=${C.gold}`);
+    expect(ops).toContain('lineWidth=2');
+    expect(ops).toContain('shadowBlur=12');
+  });
+  it('可选目标的格子叠一层淡金', () => {
+    const s = newState(5);
+    const { ctx, ops } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), projectPublic(s).players[1], { ...CELL, targetable: true });
+    expect(count(ops, 'fill')).toBeGreaterThanOrEqual(2);
+    expect(ops.some((o) => o.startsWith('fillStyle=rgba(232,199,116,'))).toBe(true);
+  });
+});
+
+describe('衬线标题的位置', () => {
+  it('首页标题', () => {
+    const ui = fakeUi(fakeCtl());
+    expect(fontsOf(opsOf(new HomeScene(ui).build(0)), '女巫镇')).toEqual(['bold 46px serif']);
+  });
+  it('规则页小标题是衬线，正文不是', () => {
+    const ui = fakeUi(fakeCtl());
+    const sc = new HomeScene(ui);
+    tap(sc.build(0), 'rules');
+    const ops = opsOf(sc.build(0));
+    expect(fontsOf(ops, RULES[0].title)[0]).toMatch(/serif$/);
+    expect(fontsOf(ops, RULES[0].title)[0]).not.toMatch(/sans-serif$/);
+  });
+  it('大厅房间号', () => {
+    const room = lobbyRoom(6);
+    const ui = fakeUi(fakeCtl({ room }));
+    expect(fontsOf(opsOf(new LobbyScene(ui).build(0)), room.code)).toEqual(['bold 46px serif']);
+  });
+  it('弹窗标题和大面板', () => {
+    const ops = opsOf(sheet(SCREEN, 300, '弹窗标题', null).nodes);
+    expect(fontsOf(ops, '弹窗标题')).toEqual(['bold 17px serif']);
+    expect(ops).toContain(`strokeStyle=${alpha(C.gold, 0.28)}`);
+  });
+  it('牌桌顶栏阶段标题', () => {
+    const s = newState(5);
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' });
+    const ui = fakeUi(ctl);
+    const title = phaseTitle(buildTable(ctl.room!, ctl.hand, 'u0')!);
+    expect(fontsOf(opsOf(new TableScene(ui).build(0)), title)).toContain('bold 15px serif');
+  });
+  it('结算标题', () => {
+    const s = newState(6);
+    s.phase = { kind: 'ended', winner: 'village' };
+    const ui = fakeUi(fakeCtl({ room: roomOf(s) }));
+    const ops = opsOf(new ResultScene(ui).build(0));
+    expect(ops.some((o) => o === 'font=bold 36px serif')).toBe(true);
   });
 });

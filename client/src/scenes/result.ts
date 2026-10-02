@@ -20,7 +20,7 @@ export class ResultScene implements Scene {
     nodes.push({
       rect: rect(0, top, W, 90),
       draw: (ctx) => {
-        drawText(ctx, village ? '村民胜利' : '女巫胜利', W / 2, top + 30, { size: 36, bold: true, color: village ? C.gold : C.moon, align: 'center' });
+        drawText(ctx, village ? '村民胜利' : '女巫胜利', W / 2, top + 30, { size: 36, serif: true, color: village ? C.gold : C.moon, align: 'center' });
         drawText(ctx, village ? '女巫阵营全部出局' : '活着的人全部属于女巫阵营', W / 2, top + 68, { size: 13, color: C.textDim, align: 'center' });
       },
     });
@@ -32,7 +32,7 @@ export class ResultScene implements Scene {
       nodes.push({
         rect: r,
         draw: (ctx) => {
-          drawPanel(ctx, r, { fill: C.overlay, stroke: p.witchFaction ? C.danger : C.panelLine });
+          drawPanel(ctx, r, { stroke: p.witchFaction ? C.danger : undefined });
           drawBadge(ctx, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat, p.character);
           drawText(ctx, `${p.name}${i === mySeat ? '（你）' : ''}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
           drawText(ctx, `${p.witchFaction ? '女巫阵营' : '村民阵营'} · ${p.alive ? '存活' : '出局'}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.danger : C.textDim });

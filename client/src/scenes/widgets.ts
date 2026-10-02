@@ -74,8 +74,8 @@ export function sheet(
       rect: panel,
       onTap: () => {},
       draw: (ctx) => {
-        drawPanel(ctx, panel, { fill: C.panelSolid, stroke: C.goldLine, radius: 16 });
-        drawText(ctx, title, 20, y + 26, { size: 17, bold: true, color: C.gold, maxWidth: screen.W - 120 });
+        drawPanel(ctx, panel, { tier: 'big', radius: 16 });
+        drawText(ctx, title, 20, y + 26, { size: 17, serif: true, color: C.gold, maxWidth: screen.W - 120 });
         if (subtitle) drawText(ctx, subtitle, 20, y + 50, { size: 12, color: C.textDim, maxWidth: screen.W - 40 });
       },
     },
