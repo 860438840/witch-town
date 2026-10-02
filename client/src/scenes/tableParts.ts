@@ -101,7 +101,7 @@ export function drawMeBar(ctx: Ctx, r: Rect, m: TableModel, o: { targetable: boo
   drawPanel(ctx, r, {
     tier: 'strip',
     tint: o.targetable ? goldGlow(0.14) : undefined,
-    stroke: o.targetable || o.order || m.isMyTurn ? C.gold : undefined,
+    stroke: o.targetable || o.order || m.isMyTurn ? C.gold : m.me && !m.me.alive ? C.greyLine : undefined,
     glow: m.isMyTurn ? o.glow : 0,
     lineWidth: o.order || m.isMyTurn ? 2 : 1,
   });

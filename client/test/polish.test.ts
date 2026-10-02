@@ -218,6 +218,23 @@ describe('衬线标题的位置', () => {
     const title = phaseTitle(buildTable(ctl.room!, ctl.hand, 'u0')!);
     expect(fontsOf(opsOf(new TableScene(ui).build(0)), title)).toContain('bold 15px serif');
   });
+  it('出局玩家的底栏描边是灰线', () => {
+    const s = newState(5);
+    s.players[0].alive = false;
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' });
+    const ops = opsOf(new TableScene(fakeUi(ctl)).build(0));
+    expect(ops).toContain(`strokeStyle=${C.greyLine}`);
+  });
+  it('提示行底下有条形面板', () => {
+    const s = newState(5);
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0), openid: 'u0' });
+    const ops = opsOf(new TableScene(fakeUi(ctl)).build(0));
+    // 夜晚时提示行文字就是阶段标题；顶栏里也有一份，取最后一处（提示行是最后画的节点）
+    const i = ops.lastIndexOf('fillText:' + phaseTitle(buildTable(ctl.room!, ctl.hand, 'u0')!));
+    expect(i).toBeGreaterThan(0);
+    const prevText = ops.slice(0, i).map((o, k) => (o.startsWith('fillText:') ? k : -1)).filter((k) => k >= 0).pop() ?? -1;
+    expect(ops.slice(prevText + 1, i)).toContain('stroke');
+  });
   it('结算标题', () => {
     const s = newState(6);
     s.phase = { kind: 'ended', winner: 'village' };

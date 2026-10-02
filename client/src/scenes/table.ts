@@ -360,7 +360,11 @@ export class TableScene implements Scene {
 
   private infoNode(m: TableModel, r: Rect): Node {
     const text = this.infoText(m);
-    return { rect: r, draw: (ctx) => drawText(ctx, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: 'center', maxWidth: r.w }) };
+    return { rect: r, draw: (ctx) => {
+        drawPanel(ctx, r, { tier: 'strip' });
+        drawText(ctx, text, r.x + r.w / 2, r.y + r.h / 2, { size: 12, color: C.gold, align: 'center', maxWidth: r.w });
+      },
+    };
   }
 
   private handNodes(m: TableModel, r: Rect, a: AnimState): Node[] {
