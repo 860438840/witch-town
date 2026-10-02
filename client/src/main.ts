@@ -5,13 +5,15 @@ import { rejoinable, RoomSession, type DbLike } from './net/session';
 import { LocalStore } from './net/storage';
 import { Ticker } from './net/ticker';
 import { realTimers } from './net/timers';
-import { bindTouches, createPlatform } from './platform';
+import { bindTouches, createPlatform, wxSurfaces } from './platform';
 import { RootScene } from './scenes/root';
 import type { Ui } from './scenes/ui';
+import { setSurfaceFactory } from './theme/art/cache';
 
 wx.cloud.init({ traceUser: true });
 
-const { ctx, screen } = createPlatform();
+const { ctx, screen, dpr } = createPlatform();
+setSurfaceFactory(wxSurfaces, dpr);
 const app = new App(ctx, screen, (cb) => requestAnimationFrame(() => cb()), () => Date.now());
 bindTouches(app);
 

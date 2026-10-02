@@ -54,3 +54,62 @@ const BADGE_COLORS = [
 export const badgeColor = (seat: number): string => BADGE_COLORS[((seat % 12) + 12) % 12];
 
 export const font = (size: number, bold = false): string => `${bold ? 'bold ' : ''}${size}px sans-serif`;
+
+
+/** 插画用色（剪影、羊皮纸、火焰、植物等），与上面的界面色同属一套调色板 */
+export const INK = {
+  ink: '#0d0a14',
+  inkSoft: '#120c1c',
+  townFar: '#251a3a',
+  townNear: '#0f0a18',
+  ground: '#0b0811',
+  parchment: '#e3d3a8',
+  parchmentDark: '#cdb98a',
+  sepia: '#5a4020',
+  sepiaDark: '#3a2614',
+  brown: '#2b1d12',
+  wood: '#3a2614',
+  straw: '#b8913e',
+  steel: '#cfc6dc',
+  iron: '#9b93ad',
+  wax: '#8e1a2c',
+  wine: '#7a1428',
+  wineDark: '#5a1020',
+  leaf: '#3f6b4f',
+  flameCore: '#fff1c4',
+  lilac: '#bfb2d6',
+  lilacText: '#d8cce8',
+  portraitTop: '#5a4585',
+  portraitBottom: '#241a38',
+  backTop: '#2a1d44',
+  backBottom: '#120c1e',
+  poison: '#5d8a4a',
+  poisonLight: '#a8d08d',
+  dawnTop: '#4a3a6c',
+  dawnMid: '#c97b4a',
+  dawnLow: '#f0c27a',
+  sun: '#ffd98a',
+  bloodTop: '#2a0710',
+  bloodMid: '#5a0f1c',
+  bloodMoon: '#c0283a',
+  white: '#ffffff',
+  black: '#000000',
+} as const;
+
+/** 身份卡、角色卡的底色（上、下） */
+export const FRAME_GRADIENT = {
+  witch: ['#6e1424', '#2a0710'],
+  constable: ['#6b5320', '#2e220a'],
+  villager: ['#4a4560', '#221f30'],
+  character: ['#3a2a5c', '#1a1326'],
+  back: ['#2a1d44', '#120c1e'],
+} as const satisfies Record<string, readonly [string, string]>;
+
+/** 把 #rrggbb 转成带透明度的 rgba() */
+export function alpha(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** 卡名、角色名用的衬线字体（手机自带） */
+export const titleFont = (size: number): string => `bold ${size}px serif`;

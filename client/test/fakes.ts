@@ -120,3 +120,15 @@ export class FakeDb implements DbLike {
     for (const w of this.watchers.filter((x) => x.coll === coll && !x.closed)) w.opts.onError(new Error('socket closed'));
   }
 }
+
+/** 假的隐藏画布工厂：记录每次创建的像素尺寸，画布上下文是 fakeCtx */
+export function fakeSurfaces(): { factory: (w: number, h: number) => { canvas: CanvasImageSource; ctx: Ctx }; created: [number, number][] } {
+  const created: [number, number][] = [];
+  return {
+    created,
+    factory: (w, h) => {
+      created.push([w, h]);
+      return { canvas: {} as CanvasImageSource, ctx: fakeCtx().ctx };
+    },
+  };
+}
