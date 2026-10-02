@@ -112,23 +112,27 @@ export function drawPanel(ctx: Ctx, r: Rect, o: PanelOpts = {}): void {
 
 export type ButtonStyle = 'primary' | 'secondary' | 'danger' | 'disabled';
 
-export function drawButton(ctx: Ctx, r: Rect, label: string, style: ButtonStyle): void {
-  if (style === 'primary') {
+export function drawButton(ctx: Ctx, r: Rect, label: string, kind: ButtonStyle): void {
+  const radius = 9;
+  roundRect(ctx, r, radius);
+  if (kind === 'primary') {
     const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-    g.addColorStop(0, C.gold);
-    g.addColorStop(1, C.goldDark);
-    roundRect(ctx, r, 10);
+    g.addColorStop(0, C.buttonTop);
+    g.addColorStop(1, C.buttonBottom);
     ctx.fillStyle = g;
-    ctx.fill();
-  } else {
-    drawPanel(ctx, r, {
-      radius: 10,
-      fill: style === 'danger' ? C.buttonDangerFill : C.buttonFill,
-      stroke: style === 'disabled' ? C.panelLine : style === 'danger' ? C.danger : C.gold,
-    });
+  } else ctx.fillStyle = kind === 'danger' ? C.buttonDangerFill : C.buttonFill;
+  ctx.fill();
+  ctx.lineWidth = kind === 'primary' ? 1.5 : 1.2;
+  ctx.strokeStyle = kind === 'disabled' ? C.greyLine : kind === 'danger' ? C.danger : C.gold;
+  ctx.stroke();
+  if (kind === 'primary' || kind === 'secondary') {
+    roundRect(ctx, { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 }, radius - 2);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = alpha(C.gold, kind === 'primary' ? 0.35 : 0.25);
+    ctx.stroke();
   }
-  const color = style === 'primary' ? C.skyMid : style === 'disabled' ? C.textMuted : style === 'danger' ? C.danger : C.gold;
-  drawText(ctx, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, bold: true, color, align: 'center', maxWidth: r.w - 8 });
+  const color = kind === 'disabled' ? C.textMuted : kind === 'danger' ? C.dangerText : C.gold;
+  drawText(ctx, label, r.x + r.w / 2, r.y + r.h / 2, { size: 15, serif: true, color, align: 'center', maxWidth: r.w - 8 });
 }
 
 /** 圆形头像：有角色时画角色图标（外圈用座位颜色），没有角色时写名字首字 */

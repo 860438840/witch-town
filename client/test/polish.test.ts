@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { alpha, C } from '../src/theme/palette';
 import { rect } from '../src/core/geom';
-import { drawPanel, drawText } from '../src/theme/draw';
+import { drawButton, drawPanel, drawText, type ButtonStyle } from '../src/theme/draw';
 import { ScrollBox } from '../src/scenes/widgets';
 import { fakeCtx } from './fakes';
 
@@ -93,5 +93,53 @@ describe('面板分档', () => {
     expect(f.ops).not.toContain('fillStyle=[object]');
     expect(f.ops).toContain(`strokeStyle=${C.danger}`);
     expect(f.ops).toContain('lineWidth=2');
+  });
+});
+
+/** 画某段文字时的填充色 */
+function colorOf(ops: string[], text: string): string {
+  let color = '';
+  for (const o of ops) {
+    if (o.startsWith('fillStyle=')) color = o.slice(10);
+    if (o === `fillText:${text}`) return color;
+  }
+  throw new Error(`没画 ${text}`);
+}
+
+describe('按钮', () => {
+  const draw = (kind: ButtonStyle) => {
+    const { ctx, ops } = fakeCtx();
+    drawButton(ctx, rect(0, 0, 120, 44), '确定', kind);
+    return ops;
+  };
+  it('主要：渐变底、金线加内金线、金色衬线字', () => {
+    const ops = draw('primary');
+    expect(ops).toContain('fillStyle=[object]');
+    expect(ops).toContain(`strokeStyle=${C.gold}`);
+    expect(ops).toContain('lineWidth=1.5');
+    expect(ops).toContain(`strokeStyle=${alpha(C.gold, 0.35)}`);
+    expect(count(ops, 'stroke')).toBe(2);
+    expect(colorOf(ops, '确定')).toBe(C.gold);
+    expect(fontsOf(ops, '确定')).toEqual(['bold 15px serif']);
+  });
+  it('次要：深红半透明底、金线加淡内线', () => {
+    const ops = draw('secondary');
+    expect(ops).toContain(`fillStyle=${C.buttonFill}`);
+    expect(ops).toContain(`strokeStyle=${alpha(C.gold, 0.25)}`);
+    expect(count(ops, 'stroke')).toBe(2);
+    expect(colorOf(ops, '确定')).toBe(C.gold);
+  });
+  it('危险：红线，没有内线，亮红字', () => {
+    const ops = draw('danger');
+    expect(ops).toContain(`strokeStyle=${C.danger}`);
+    expect(count(ops, 'stroke')).toBe(1);
+    expect(colorOf(ops, '确定')).toBe(C.dangerText);
+  });
+  it('不可用：灰线，没有内线，灰字', () => {
+    const ops = draw('disabled');
+    expect(ops).toContain(`strokeStyle=${C.greyLine}`);
+    expect(count(ops, 'stroke')).toBe(1);
+    expect(colorOf(ops, '确定')).toBe(C.textMuted);
+    expect(fontsOf(ops, '确定')).toEqual(['bold 15px serif']);
   });
 });
