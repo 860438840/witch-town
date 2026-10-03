@@ -2547,7 +2547,7 @@
     },
     {
       title: "\u56DE\u5408",
-      items: plain(["\u8F6E\u5230\u4F60\u65F6\u4E8C\u9009\u4E00\uFF1A\u62BD 2 \u5F20\u724C\uFF0C\u6216\u6253\u51FA\u4EFB\u610F\u5F20\u7EA2 / \u84DD / \u7EFF\u5361\u3002", "\u7EA2\u5361\u4E0D\u80FD\u6253\u7ED9\u81EA\u5DF1\uFF0C\u84DD\u5361\u548C\u7EFF\u5361\u53EF\u4EE5\u3002"])
+      items: plain(["\u8F6E\u5230\u4F60\u65F6\u4E8C\u9009\u4E00\uFF1A\u62BD 2 \u5F20\u724C\uFF0C\u6216\u6253\u51FA\u4EFB\u610F\u5F20\u7EA2 / \u84DD / \u7EFF\u5361\u3002", "\u6240\u6709\u724C\u90FD\u4E0D\u80FD\u5BF9\u81EA\u5DF1\u4F7F\u7528\uFF08\u7B2C\u4E00\u591C\u653E\u9ED1\u732B\u9664\u5916\uFF09\u3002"])
     },
     {
       title: "\u5BA1\u5224",
@@ -2899,9 +2899,9 @@
   function targetOptions(m, kind, chosen) {
     const out = [];
     for (const p of m.view.players) {
-      if (!p.alive || chosen.includes(p.seat)) continue;
+      if (!p.alive || chosen.includes(p.seat) || p.seat === m.mySeat) continue;
       if (chosen.length === 0) {
-        if (isRed(kind) && (p.seat === m.mySeat || p.blue.some((c) => c.kind === "piety"))) continue;
+        if (isRed(kind) && p.blue.some((c) => c.kind === "piety")) continue;
         if (kind === "matchmaker" && p.blue.some((c) => c.kind === "matchmaker")) continue;
         if (kind === "stocks" && p.green.some((c) => c.kind === "stocks")) continue;
         if (kind === "curse" && p.blue.length === 0) continue;
