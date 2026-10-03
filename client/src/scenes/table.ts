@@ -16,8 +16,8 @@ import { ANIM_MS, diffTables } from '../model/changes';
 import { CARD_INFO } from '../model/cards';
 import { logLines } from '../model/log';
 import { buildTable, formatCountdown, isPartner, phaseTitle, type TableModel } from '../model/table';
-import { drawCardFace, drawPanel, drawText, roundRect } from '../theme/draw';
-import { C, CARD_GRADIENT } from '../theme/palette';
+import { drawCardBack, drawCardFace, drawPanel, drawText } from '../theme/draw';
+import { alpha, C } from '../theme/palette';
 import { choicePanel, type ChoiceState } from './choicePanels';
 import { priestPanel } from './abilityPanels';
 import { detailPanel, discardPanel, logPanel, myTryalsPanel } from './infoPanels';
@@ -34,8 +34,13 @@ const LEAVE_W = 46;
 export interface AnimState {
   darkness: number;
   glow: number;
-  cell(seat: number): Pick<CellOpts, 'alpha' | 'flip'>;
-  cardIn(id: string): number;
+  cell(seat: number): Pick<CellOpts, 'alpha' | 'flip' | 'shake' | 'flash' | 'stamp'>;
+  /** 我自己（信息栏）的晃动和闪光 */
+  me: { shake: number; flash: string | null };
+  /** 新手牌的飞入进度：null = 还没轮到它开始；1 = 已落定 */
+  cardIn(id: string): number | null;
+  /** 牌堆在画面上的位置（飞行起点） */
+  deck: { x: number; y: number };
   overlay: Node[];
   panelSlide: number;
 }
@@ -91,13 +96,21 @@ export class TableScene implements Scene {
   /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
   protected anim(m: TableModel, now: number): AnimState {
     const A = this.ui.animator;
+    let mine = 0;
     for (const c of diffTables(this.prev, m)) {
       switch (c.kind) {
         case 'cardIn':
-          A.start(`in:${c.id}`, now, ANIM_MS.cardIn);
+          A.start(`in:${c.id}`, now + mine++ * ANIM_MS.cardStagger, ANIM_MS.cardIn);
+          break;
+        case 'draw':
+          for (let k = 0; k < c.count; k++) A.start(`draw:${c.seat}:${now}:${k}`, now + k * ANIM_MS.cardStagger, ANIM_MS.othersDraw, { seat: c.seat });
           break;
         case 'play':
           A.start(`fly:${c.index}`, now, ANIM_MS.play, c);
+          A.start(`hit:${c.to}`, now + ANIM_MS.play, ANIM_MS.hit, { red: CARD_INFO[c.card].color === 'red' });
+          break;
+        case 'trial':
+          A.start(`trial:${c.seat}`, now, ANIM_MS.trial);
           break;
         case 'night':
           A.start('sky', now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
@@ -107,6 +120,7 @@ export class TableScene implements Scene {
           break;
         case 'reveal':
           A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
+          if (c.witch) A.start(`burst:${c.seat}`, now + ANIM_MS.reveal, ANIM_MS.burst);
           break;
         case 'turn':
           A.start('turn', now, ANIM_MS.turn);
@@ -118,52 +132,85 @@ export class TableScene implements Scene {
     }
     this.prev = m;
 
+    /** 已经开始、还没结束 */
+    const live = (key: string): boolean => A.started(key, now) && A.running(key, now);
     const staticDark = m.view.phase.kind === 'night' ? 1 : 0;
     const sky = A.data<{ from: number; to: number }>('sky');
     const darkness = sky && A.running('sky', now) ? sky.from + (sky.to - sky.from) * A.progress('sky', now) : staticDark;
     // 按线性时间均匀闪 3 下，起止都落在常亮值 0.6 上
     const glow = A.running('turn', now) ? 0.6 + 0.4 * Math.abs(Math.sin(A.linear('turn', now) * Math.PI * 3)) : 0.6;
+    const deck = this.deckPoint();
+
+    const shakeOf = (seat: number): number => {
+      const k = `trial:${seat}`;
+      if (!live(k)) return 0;
+      const p = A.linear(k, now);
+      return Math.sin(p * Math.PI * 6) * 3 * (1 - p);
+    };
+    const flashOf = (seat: number): string | null => {
+      const t = `trial:${seat}`;
+      if (live(t)) return alpha(C.danger, 0.4 * Math.abs(Math.sin(A.linear(t, now) * Math.PI * 2)));
+      const b = `burst:${seat}`;
+      if (live(b)) return alpha(C.danger, 0.45 * (1 - A.progress(b, now)));
+      const h = `hit:${seat}`;
+      if (live(h)) return alpha(A.data<{ red: boolean }>(h)!.red ? C.danger : C.gold, 0.4 * (1 - A.progress(h, now)));
+      return null;
+    };
 
     const overlay: Node[] = [];
     for (const key of A.keys()) {
-      if (!key.startsWith('fly:') || !A.running(key, now)) continue;
-      const c = A.data<{ from: number; to: number; card: CardKind }>(key)!;
-      const from = this.seatRect(m, c.from);
-      const to = this.seatRect(m, c.to);
-      if (!from || !to) continue;
-      const p = A.progress(key, now);
-      const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
-      const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p;
-      const r = rect(x - 14, y - 20, 28, 40);
-      const [top, bottom] = CARD_GRADIENT[CARD_INFO[c.card].color];
-      overlay.push({
-        rect: r,
-        draw: (ctx) => {
-          ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
-          const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-          g.addColorStop(0, top);
-          g.addColorStop(1, bottom);
-          roundRect(ctx, r, 4);
-          ctx.fillStyle = g;
-          ctx.fill();
-          ctx.strokeStyle = C.goldLine;
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-        },
-      });
+      if (key.startsWith('fly:') && live(key)) {
+        const c = A.data<{ from: number; to: number; card: CardKind }>(key)!;
+        const from = this.seatRect(m, c.from);
+        const to = this.seatRect(m, c.to);
+        if (!from || !to) continue;
+        const p = A.progress(key, now);
+        const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
+        const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p - Math.sin(Math.PI * p) * 40;
+        const s = 1 + 0.3 * Math.sin(Math.PI * p);
+        overlay.push({
+          rect: rect(x - 14 * s, y - 20 * s, 28 * s, 40 * s),
+          draw: (ctx) => {
+            ctx.globalAlpha = p > 0.85 ? (1 - p) / 0.15 : 1;
+            ctx.translate(x, y);
+            ctx.scale(s, s);
+            // 固定 28×40 画，缩放交给画布变换：插画缓存只存一种尺寸
+            drawCardFace(ctx, rect(-14, -20, 28, 40), c.card);
+          },
+        });
+      }
+      if (key.startsWith('draw:') && live(key)) {
+        const { seat } = A.data<{ seat: number }>(key)!;
+        const to = this.seatRect(m, seat);
+        if (!to) continue;
+        const p = A.progress(key, now);
+        const x = deck.x + (to.x + to.w / 2 - deck.x) * p;
+        const y = deck.y + (to.y + to.h / 2 - deck.y) * p - Math.sin(Math.PI * p) * 24;
+        overlay.push({
+          rect: rect(x - 9, y - 13, 18, 26),
+          draw: (ctx) => {
+            ctx.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
+            drawCardBack(ctx, rect(x - 9, y - 13, 18, 26));
+          },
+        });
+      }
     }
 
+    const meSeat = m.mySeat;
     return {
       darkness,
       glow,
       cell: (seat) => {
         const alive = m.view.players[seat]?.alive ?? true;
-        const alpha = A.running(`dead:${seat}`, now) ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
+        const dying = A.running(`dead:${seat}`, now);
+        const alphaV = dying ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
         const f = A.data<{ index: number }>(`flip:${seat}`);
         const flip = f && A.running(`flip:${seat}`, now) ? { index: f.index, p: A.progress(`flip:${seat}`, now) } : null;
-        return { alpha, flip };
+        return { alpha: alphaV, flip, shake: shakeOf(seat), flash: flashOf(seat), stamp: dying ? A.progress(`dead:${seat}`, now) : 1 };
       },
-      cardIn: (id) => A.progress(`in:${id}`, now),
+      me: meSeat === null ? { shake: 0, flash: null } : { shake: shakeOf(meSeat), flash: flashOf(meSeat) },
+      cardIn: (id) => (A.started(`in:${id}`, now) ? A.progress(`in:${id}`, now) : null),
+      deck,
       overlay,
       panelSlide: A.progress('panel', now),
     };
@@ -188,6 +235,13 @@ export class TableScene implements Scene {
     if (seat === m.mySeat) return L.me;
     const i = m.others.findIndex((p) => p.seat === seat);
     return i >= 0 ? L.grid[i] : null;
+  }
+
+  /** 牌堆数字在画面上的位置（抽牌飞行的起点） */
+  protected deckPoint(): { x: number; y: number } {
+    const r = this.layout?.top;
+    if (!r) return { x: this.ui.screen.W - 80, y: 40 };
+    return { x: r.x + r.w - LEAVE_W - 28, y: r.y + r.h / 2 - 7 };
   }
 
   private sync(m: TableModel): void {
@@ -331,7 +385,7 @@ export class TableScene implements Scene {
         if (kind && me !== null) this.tapSeat(m, me);
         else if (!kind && m.priv) this.mine = true;
       },
-      draw: (ctx) => drawMeBar(ctx, r, m, { targetable, order, glow: a.glow }),
+      draw: (ctx) => drawMeBar(ctx, r, m, { targetable, order, glow: a.glow, shake: a.me.shake, flash: a.me.flash }),
     };
   }
 
@@ -381,15 +435,29 @@ export class TableScene implements Scene {
     return hand.map((c, i) => {
       const lifted = c.id === this.sel;
       const p = a.cardIn(c.id);
-      const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12) + (1 - p) * 40, cw, ch);
+      const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12), cw, ch);
+      const opts = { selected: lifted, dim: m.pending?.kind === 'turn' && !playable.includes(c.id) };
       return {
         id: `card:${c.id}`,
         rect: cr,
         onTap: () => this.tapCard(c.id, playable),
         draw: (ctx) => {
-          ctx.globalAlpha = p;
-          drawCardFace(ctx, cr, c.kind, { selected: lifted, dim: m.pending?.kind === 'turn' && !playable.includes(c.id) });
-          ctx.globalAlpha = 1;
+          if (p === null) return; // 还没轮到这张开始飞
+          if (p >= 1) {
+            drawCardFace(ctx, cr, c.kind, opts);
+            return;
+          }
+          // 从牌堆飞到自己的位置：前 60% 是卡背，之后横向翻成正面；固定按手牌尺寸画，整体缩放
+          const x = a.deck.x + (cr.x + cw / 2 - a.deck.x) * p;
+          const y = a.deck.y + (cr.y + ch / 2 - a.deck.y) * p - Math.sin(Math.PI * p) * 30;
+          const s = 0.4 + 0.6 * p;
+          const q = Math.min(1, Math.max(0, (p - 0.6) / 0.4));
+          const sx = Math.abs(1 - 2 * q);
+          ctx.translate(x, y);
+          ctx.scale(s * Math.max(sx, 0.02), s);
+          const local = rect(-cw / 2, -ch / 2, cw, ch);
+          if (q < 0.5) drawCardBack(ctx, local);
+          else drawCardFace(ctx, local, c.kind, opts);
         },
       };
     });

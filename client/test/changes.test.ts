@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ANIM_MS, diffTables, MAX_VERSION_STEP } from '../src/model/changes';
 import { buildTable, type TableModel } from '../src/model/table';
 import { RootScene } from '../src/scenes/root';
@@ -6,6 +6,9 @@ import { TableScene } from '../src/scenes/table';
 import { handOf, newState, roomOf, setDay } from './fixtures';
 import { fakeCtl, fakeUi } from './sceneKit';
 import { MAX_PLAYERS } from '../../server/src/types';
+import { setSurfaceFactory } from '../src/theme/art/cache';
+import { drawNodes } from '../src/core/node';
+import { fakeCtx, fakeSurfaces } from './fakes';
 
 const model = (s: ReturnType<typeof newState>, seat = 0) => buildTable(roomOf(s), handOf(s, seat), `u${seat}`)!;
 
@@ -128,6 +131,129 @@ describe('diffTables', () => {
 });
 
 describe('游戏桌动效', () => {
+  class Probe extends TableScene {
+    at(m: TableModel, now: number) {
+      return this.anim(m, now);
+    }
+  }
+  /** 先画一帧，改数据后在 t0 再画一帧（启动动效），返回探针和最新的画面数据 */
+  const start = (s: ReturnType<typeof newState>, change: () => void, t0 = 1000) => {
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0) }) as unknown as { room: unknown; hand: unknown };
+    const ui = fakeUi(ctl as never);
+    const t = new Probe(ui);
+    t.build(0);
+    change();
+    s.version += 1;
+    ctl.room = roomOf(s);
+    ctl.hand = handOf(s, 0);
+    t.build(t0);
+    return { t, ui, m: model(s) };
+  };
+  afterEach(() => setSurfaceFactory(null));
+
+  it('出牌：中途有一张飞行的牌，结束后没有；到达后目标格子闪光', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { t, m } = start(s, () => s.log.push({ t: 'play', seat: 1, kind: 'accusation', targets: [3] }));
+    expect(t.at(m, 1000 + ANIM_MS.play / 2).overlay).toHaveLength(1);
+    expect(t.at(m, 1000 + ANIM_MS.play / 2).cell(3).flash ?? null).toBeNull();
+    expect(t.at(m, 1000 + ANIM_MS.play + ANIM_MS.hit / 2).cell(3).flash).toEqual(expect.any(String));
+    expect(t.at(m, 1000 + ANIM_MS.play + ANIM_MS.hit).overlay).toHaveLength(0);
+  });
+
+  it('别人抽两张：两张小卡背先后飞出', () => {
+    const s = newState(5);
+    setDay(s, 2);
+    const { t, m } = start(s, () => s.players[2].hand.push({ id: 'x1', kind: 'evidence' }, { id: 'x2', kind: 'evidence' }));
+    expect(t.at(m, 1000 + 10).overlay).toHaveLength(1);
+    expect(t.at(m, 1000 + ANIM_MS.cardStagger + 10).overlay).toHaveLength(2);
+    expect(t.at(m, 1000 + ANIM_MS.cardStagger + ANIM_MS.othersDraw).overlay).toHaveLength(0);
+  });
+
+  it('我一次抽两张：第二张晚一点才开始', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const { t, m } = start(s, () => s.players[0].hand.push({ id: 'n1', kind: 'evidence' }, { id: 'n2', kind: 'evidence' }));
+    const a = t.at(m, 1000 + 10);
+    expect(a.cardIn('n1')).not.toBeNull();
+    expect(a.cardIn('n2')).toBeNull();
+    expect(t.at(m, 1000 + ANIM_MS.cardStagger + 10).cardIn('n2')).not.toBeNull();
+    expect(t.at(m, 1000 + ANIM_MS.cardStagger + ANIM_MS.cardIn).cardIn('n2')).toBe(1);
+  });
+
+  it('受审：中途晃动并闪红光，结束后恢复', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { t, m } = start(s, () => s.log.push({ t: 'trial', target: 2, initiator: 1 }));
+    const mid = t.at(m, 1000 + ANIM_MS.trial / 4).cell(2);
+    expect(Math.abs(mid.shake ?? 0)).toBeGreaterThan(0.5);
+    expect(mid.flash).toEqual(expect.any(String));
+    const end = t.at(m, 1000 + ANIM_MS.trial).cell(2);
+    expect(end.shake ?? 0).toBe(0);
+    expect(end.flash ?? null).toBeNull();
+  });
+
+  it('翻出女巫：翻完后冒红光；翻出村民不冒', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const seatW = s.players.findIndex((p) => p.tryals.some((x) => x.kind === 'witch'));
+    const iw = s.players[seatW].tryals.findIndex((x) => x.kind === 'witch');
+    const seatV = s.players.findIndex((p, i) => i !== seatW && p.tryals.some((x) => x.kind !== 'witch'));
+    const iv = s.players[seatV].tryals.findIndex((x) => x.kind !== 'witch');
+    const { t, m } = start(s, () => {
+      s.players[seatW].tryals[iw].revealed = true;
+      s.players[seatV].tryals[iv].revealed = true;
+    });
+    const at = 1000 + ANIM_MS.reveal + ANIM_MS.burst / 2;
+    expect(t.at(m, at).cell(seatW).flash).toEqual(expect.any(String));
+    expect(t.at(m, at).cell(seatV).flash ?? null).toBeNull();
+    expect(t.at(m, 1000 + ANIM_MS.reveal / 2).cell(seatW).flash ?? null).toBeNull();
+  });
+
+  it('出局：印章盖到一半，结束后盖好', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { t, m } = start(s, () => (s.players[3].alive = false));
+    const half = t.at(m, 1000 + ANIM_MS.death / 2).cell(3).stamp!;
+    expect(half).toBeGreaterThan(0);
+    expect(half).toBeLessThan(1);
+    expect(t.at(m, 1000 + ANIM_MS.death).cell(3).stamp).toBe(1);
+  });
+
+  it('入夜的天色渐变用 ANIM_MS.night', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { ui } = start(s, () => {
+      s.phase = { kind: 'night' };
+      s.night = { witchVotes: {}, protect: null, confessions: {} };
+    });
+    expect(ui.animator.running('sky', 1000 + ANIM_MS.night - 1)).toBe(true);
+    expect(ui.animator.running('sky', 1000 + ANIM_MS.night)).toBe(false);
+  });
+
+  it('飞行动效连续画 30 帧，插画缓存里的图数量不变', () => {
+    const surfaces = fakeSurfaces();
+    setSurfaceFactory(surfaces.factory);
+    const s = newState(5);
+    setDay(s, 0);
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0) }) as unknown as { room: unknown; hand: unknown };
+    const ui = fakeUi(ctl as never);
+    const t = new TableScene(ui);
+    const { ctx } = fakeCtx();
+    drawNodes(ctx, t.build(0));
+    s.log.push({ t: 'play', seat: 1, kind: 'accusation', targets: [3] });
+    s.players[2].hand.push({ id: 'x1', kind: 'evidence' });
+    // 新牌用手里已有的牌种：卡面已在缓存里，飞行中不应再新建任何图
+    s.players[0].hand.push({ id: 'n1', kind: s.players[0].hand[0].kind });
+    s.version += 1;
+    ctl.room = roomOf(s);
+    ctl.hand = handOf(s, 0);
+    drawNodes(ctx, t.build(1000));
+    const after1 = surfaces.created.length;
+    for (let i = 1; i <= 30; i++) drawNodes(ctx, t.build(1000 + i * 20));
+    expect(surfaces.created.length).toBe(after1);
+  });
+
   it('收到新牌时启动滑入动画；入夜时启动天色动画', () => {
     const s = newState(5);
     setDay(s, 0);
