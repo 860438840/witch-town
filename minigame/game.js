@@ -2494,7 +2494,8 @@
       const before = new Set(prev.priv.hand.map((c) => c.id));
       for (const c of (_b = (_a = next.priv) == null ? void 0 : _a.hand) != null ? _b : []) if (!before.has(c.id)) out.push({ kind: "cardIn", id: c.id });
     }
-    next.view.log.slice(prev.view.log.length).forEach((e, k) => {
+    const fresh = next.view.log.slice(prev.view.log.length);
+    fresh.forEach((e, k) => {
       if (e.t === "play") out.push({ kind: "play", index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
       if (e.t === "trial") out.push({ kind: "trial", seat: e.target });
     });
@@ -2504,7 +2505,17 @@
     next.view.players.forEach((p, i) => {
       const q = prev.view.players[i];
       if (!q) return;
-      if (q.alive && !p.alive) out.push({ kind: "death", seat: i });
+      if (q.alive && !p.alive) {
+        const used = /* @__PURE__ */ new Set();
+        for (const e of fresh) {
+          if (e.t !== "reveal" || e.seat !== i || e.cause === "death") continue;
+          const j = p.tryals.findIndex((t, k) => !used.has(k) && t.revealed && q.tryals[k] && !q.tryals[k].revealed && t.kind === e.kind);
+          if (j < 0) continue;
+          used.add(j);
+          out.push({ kind: "reveal", seat: i, index: j, witch: e.kind === "witch" });
+        }
+        out.push({ kind: "death", seat: i });
+      }
       if (i !== next.mySeat && p.handCount > q.handCount) out.push({ kind: "draw", seat: i, count: p.handCount - q.handCount });
       if (!p.alive) return;
       p.tryals.forEach((t, j) => {
@@ -3782,9 +3793,17 @@
     }
     /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
     anim(m, now) {
+      var _a, _b;
       const A = this.ui.animator;
       let mine = 0;
-      for (const c of diffTables(this.prev, m)) {
+      const changes = diffTables(this.prev, m);
+      const revealEnd = /* @__PURE__ */ new Map();
+      const playTo = /* @__PURE__ */ new Set();
+      for (const c of changes) {
+        if (c.kind === "reveal") revealEnd.set(c.seat, Math.max((_a = revealEnd.get(c.seat)) != null ? _a : 0, ANIM_MS.reveal + (c.witch ? ANIM_MS.burst : 0)));
+        if (c.kind === "play") playTo.add(c.to);
+      }
+      for (const c of changes) {
         switch (c.kind) {
           case "cardIn":
             A.start(`in:${c.id}`, now + mine++ * ANIM_MS.cardStagger, ANIM_MS.cardIn);
@@ -3797,13 +3816,13 @@
             A.start(`hit:${c.to}`, now + ANIM_MS.play, ANIM_MS.hit, { red: CARD_INFO[c.card].color === "red" });
             break;
           case "trial":
-            A.start(`trial:${c.seat}`, now, ANIM_MS.trial);
+            A.start(`trial:${c.seat}`, now + (playTo.has(c.seat) ? ANIM_MS.play : 0), ANIM_MS.trial);
             break;
           case "night":
             A.start("sky", now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
             break;
           case "death":
-            A.start(`dead:${c.seat}`, now, ANIM_MS.death);
+            A.start(`dead:${c.seat}`, now + ((_b = revealEnd.get(c.seat)) != null ? _b : 0), ANIM_MS.death);
             break;
           case "reveal":
             A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
@@ -3881,8 +3900,8 @@
         darkness,
         glow: glow2,
         cell: (seat) => {
-          var _a, _b;
-          const alive = (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.alive) != null ? _b : true;
+          var _a2, _b2;
+          const alive = (_b2 = (_a2 = m.view.players[seat]) == null ? void 0 : _a2.alive) != null ? _b2 : true;
           const dying = A.running(`dead:${seat}`, now);
           const alphaV = dying ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
           const f = A.data(`flip:${seat}`);
@@ -4117,11 +4136,13 @@
             const s = 0.4 + 0.6 * p;
             const q = Math.min(1, Math.max(0, (p - 0.6) / 0.4));
             const sx = Math.abs(1 - 2 * q);
+            ctx2.save();
             ctx2.translate(x, y);
             ctx2.scale(s * Math.max(sx, 0.02), s);
             const local = rect(-cw / 2, -ch / 2, cw, ch);
             if (q < 0.5) drawCardBack(ctx2, local);
             else drawCardFace(ctx2, local, c.kind, opts);
+            ctx2.restore();
           }
         };
       });
