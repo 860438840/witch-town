@@ -2481,7 +2481,8 @@
     resultTitle: 400,
     resultRowStart: 250,
     resultRowStagger: 80,
-    resultRow: 300
+    resultRow: 300,
+    endHold: 1500
   };
   var MAX_VERSION_STEP = 1 + 2 * 12;
   var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
@@ -4235,6 +4236,7 @@
       __publicField(this, "table", null);
       __publicField(this, "tableKey", "");
       __publicField(this, "shown", "");
+      __publicField(this, "holdKey", "");
       this.home = new HomeScene(ui2);
       this.lobby = new LobbyScene(ui2);
       this.result = new ResultScene(ui2);
@@ -4244,12 +4246,22 @@
       if (!ctl2.code) {
         this.table = null;
         this.tableKey = "";
+        this.holdKey = "";
         return ["home", this.home.build(now)];
       }
       const room = ctl2.room;
       if (!room) return ["message", this.message(`\u6B63\u5728\u8FDB\u5165\u623F\u95F4 ${ctl2.code}\u2026`, "loading-home")];
       if (!room.view) return room.status === "lobby" ? ["lobby", this.lobby.build(now)] : ["message", this.message("\u623F\u95F4\u5DF2\u5173\u95ED", "closed-home")];
-      if (room.view.phase.kind === "ended") return ["result", this.ended(now)];
+      if (room.view.phase.kind === "ended") {
+        const key = `${room.code}:${room.gameId}`;
+        const A = this.ui.animator;
+        if (this.shown === "table" && this.table && this.holdKey !== key) {
+          this.holdKey = key;
+          A.start("endHold", now, ANIM_MS.endHold);
+        }
+        if (this.holdKey === key && this.table && A.running("endHold", now)) return ["table", this.table.build(now)];
+        return ["result", this.ended(now)];
+      }
       return ["table", this.playing(now)];
     }
     build(now) {
