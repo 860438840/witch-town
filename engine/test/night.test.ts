@@ -242,3 +242,11 @@ describe('夜晚过后全部重置', () => {
     expect(s.players[2].uses).toEqual({ priest: 1 });
   });
 });
+
+describe('第一夜的黑猫可以放给自己（不能对自己出牌的唯一例外）', () => {
+  it('女巫把黑猫放给自己', () => {
+    let s = dawn();
+    s = act(s, { type: 'witchVote', seat: 0, target: 0 });
+    expect(s.players[0].blue.map((c) => c.kind)).toEqual(['blackCat']);
+  });
+});

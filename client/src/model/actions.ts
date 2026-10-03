@@ -51,9 +51,10 @@ export function cardKindOf(m: TableModel, id: string): CardKind | null {
 export function targetOptions(m: TableModel, kind: CardKind, chosen: number[]): number[] {
   const out: number[] = [];
   for (const p of m.view.players) {
-    if (!p.alive || chosen.includes(p.seat)) continue;
+    // 任何牌都不能对自己使用（两个目标的牌两个位置都不行）
+    if (!p.alive || chosen.includes(p.seat) || p.seat === m.mySeat) continue;
     if (chosen.length === 0) {
-      if (isRed(kind) && (p.seat === m.mySeat || p.blue.some((c) => c.kind === 'piety'))) continue;
+      if (isRed(kind) && p.blue.some((c) => c.kind === 'piety')) continue;
       if (kind === 'matchmaker' && p.blue.some((c) => c.kind === 'matchmaker')) continue;
       if (kind === 'stocks' && p.green.some((c) => c.kind === 'stocks')) continue;
       if (kind === 'curse' && p.blue.length === 0) continue;

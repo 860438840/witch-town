@@ -212,3 +212,28 @@ describe('绿卡和蓝卡', () => {
     expect(() => act(s, { type: 'endTurn', seat: 2 })).toThrow(RuleError);
   });
 });
+
+describe('牌不能对自己使用', () => {
+  const single = ['accusation', 'evidence', 'witness', 'matchmaker', 'asylum', 'piety', 'blackCat', 'stocks', 'arson', 'curse', 'alibi'] as const;
+  for (const kind of single) {
+    it(`${kind} 不能以自己为目标`, () => {
+      const s = fixedGame();
+      const c = giveCard(s, 2, kind);
+      expect(() => act(s, { type: 'play', seat: 2, cardId: c.id, targets: [2] })).toThrow(/自己/);
+    });
+  }
+  for (const kind of ['scapegoat', 'robbery'] as const) {
+    it(`${kind} 的两个目标都不能是自己`, () => {
+      const s = fixedGame();
+      const c = giveCard(s, 2, kind);
+      expect(() => act(s, { type: 'play', seat: 2, cardId: c.id, targets: [2, 3] })).toThrow(/自己/);
+      expect(() => act(s, { type: 'play', seat: 2, cardId: c.id, targets: [3, 2] })).toThrow(/自己/);
+    });
+  }
+  it('对别人照常可以打出（避难给别人）', () => {
+    let s = fixedGame();
+    const c = giveCard(s, 2, 'asylum');
+    s = act(s, { type: 'play', seat: 2, cardId: c.id, targets: [3] });
+    expect(s.players[3].blue.map((b) => b.kind)).toContain('asylum');
+  });
+});

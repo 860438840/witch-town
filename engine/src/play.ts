@@ -47,6 +47,8 @@ export function playCard(
   if (targets.length !== need) throw new RuleError(`这张卡需要选择 ${need} 名目标`);
   const ts = targets.map((t) => getPlayer(s, t));
   if (ts.some((t) => !t.alive)) throw new RuleError('目标必须是活着的玩家');
+  // 任何牌都不能对自己使用（第一夜放黑猫是女巫投票，不走出牌）
+  if (targets.includes(seat)) throw new RuleError('牌不能对自己使用');
   if (need === 2 && targets[0] === targets[1]) throw new RuleError('两个目标不能相同');
   const target = ts[0];
 
@@ -54,7 +56,6 @@ export function playCard(
   const asWitness = card.kind === 'alibi' && option === 'witness';
   if (asWitness && !hasAbility(s, seat, 'doctor')) throw new RuleError('只有医生可以把辩护当作目击');
   if (isRed(card.kind) || asWitness) {
-    if (target.seat === seat) throw new RuleError('不能对自己打出红卡');
     if (target.blue.some((c) => c.kind === 'piety')) throw new RuleError('信徒：不能对该玩家打出红卡');
   }
   if (card.kind === 'matchmaker' && target.blue.some((c) => c.kind === 'matchmaker')) {

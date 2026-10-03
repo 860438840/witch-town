@@ -230,15 +230,14 @@ describe('游戏桌', () => {
     expect(b.ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'curse-1', targets: [2], option: 'matchmaker-1' });
   });
 
-  it('蓝卡可以打给自己（点我的信息栏）', () => {
+  it('蓝卡也不能打给自己：选了牌再点我的信息栏不会选中自己', () => {
     const s = newState(5);
     setDay(s, 0);
     giveCard(s, 0, 'asylum', 'asy-1');
-    const { ctl, scene: t } = scene(s);
+    const { scene: t } = scene(s);
     tap(t.build(0), 'card:asy-1');
     tap(t.build(0), 'me');
-    tap(t.build(0), 'confirm-play');
-    expect(ctl.act).toHaveBeenCalledWith({ type: 'play', cardId: 'asy-1', targets: [0] });
+    expect(canTap(t.build(0), 'confirm-play')).toBe(false);
   });
 
   it('出过牌之后可以结束回合', () => {

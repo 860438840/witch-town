@@ -110,14 +110,14 @@ describe('可做的操作', () => {
     expect(playableCardIds(notMine)).toEqual([]);
   });
 
-  it('红卡不能打给自己、死人和信徒持有者', () => {
+  it('任何牌都不能打给自己和死人；红卡不能打给信徒持有者', () => {
     const s = newState(5);
     setDay(s, 0);
     s.players[3].alive = false;
     s.players[4].blue.push({ id: 'piety-1', kind: 'piety' });
     const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
     expect(targetOptions(m, 'accusation', [])).toEqual([1, 2]);
-    expect(targetOptions(m, 'asylum', [])).toEqual([0, 1, 2, 4]);
+    expect(targetOptions(m, 'asylum', [])).toEqual([1, 2, 4]);
   });
 
   it('情侣、拘留、诅咒的目标限制；第二个目标不能和第一个相同', () => {
@@ -126,10 +126,11 @@ describe('可做的操作', () => {
     s.players[1].blue.push({ id: 'matchmaker-1', kind: 'matchmaker' });
     s.players[2].green.push({ id: 'stocks-1', kind: 'stocks' });
     const m = buildTable(roomOf(s), handOf(s, 0), 'u0')!;
-    expect(targetOptions(m, 'matchmaker', [])).toEqual([0, 2, 3, 4]);
-    expect(targetOptions(m, 'stocks', [])).toEqual([0, 1, 3, 4]);
+    expect(targetOptions(m, 'matchmaker', [])).toEqual([2, 3, 4]);
+    expect(targetOptions(m, 'stocks', [])).toEqual([1, 3, 4]);
     expect(targetOptions(m, 'curse', [])).toEqual([1]);
-    expect(targetOptions(m, 'robbery', [2])).toEqual([0, 1, 3, 4]);
+    expect(targetOptions(m, 'robbery', [])).toEqual([1, 2, 3, 4]);
+    expect(targetOptions(m, 'robbery', [2])).toEqual([1, 3, 4]);
   });
 
   it('诅咒要选蓝卡，辩护在指控和证据都有时要选', () => {

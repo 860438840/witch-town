@@ -30,7 +30,7 @@ export const RULES: { title: string; items: RuleItem[] }[] = [
   },
   {
     title: '回合',
-    items: plain(['轮到你时二选一：抽 2 张牌，或打出任意张红 / 蓝 / 绿卡。', '红卡不能打给自己，蓝卡和绿卡可以。']),
+    items: plain(['轮到你时二选一：抽 2 张牌，或打出任意张红 / 蓝 / 绿卡。', '所有牌都不能对自己使用（第一夜放黑猫除外）。']),
   },
   {
     title: '审判',
