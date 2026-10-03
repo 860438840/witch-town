@@ -3060,7 +3060,7 @@
       others,
       turnSeat: view.turn,
       isMyTurn: view.phase.kind === "day" && view.turn === mySeat && !!(me == null ? void 0 : me.alive),
-      pending: (_a = priv == null ? void 0 : priv.pending) != null ? _a : null,
+      pending: view.phase.kind === "ended" ? null : (_a = priv == null ? void 0 : priv.pending) != null ? _a : null,
       deadline: room.deadline,
       winner: view.phase.kind === "ended" ? view.phase.winner : null
     };
