@@ -1,25 +1,46 @@
 import type { Scene } from '../core/app';
 import { rect } from '../core/geom';
 import type { Node } from '../core/node';
+import { easeOutCubic } from '../core/tween';
+import { ANIM_MS } from '../model/changes';
 import { drawBadge, drawPanel, drawText, drawTryalChip } from '../theme/draw';
 import { C } from '../theme/palette';
 import type { Ui } from './ui';
 import { button, skyNode } from './widgets';
 
 export class ResultScene implements Scene {
+  private shownFor: string | null = null;
+
   constructor(private readonly ui: Ui) {}
 
-  build(_now: number): Node[] {
+  build(now: number): Node[] {
     const { W, top, bottom } = this.ui.screen;
     const ctl = this.ui.ctl;
     const view = ctl.room?.view;
     if (!view || view.phase.kind !== 'ended') return [];
+    const A = this.ui.animator;
+    const n = view.players.length;
+    const total = ANIM_MS.resultRowStart + n * ANIM_MS.resultRowStagger + ANIM_MS.resultRow + 100;
+    const key = `${ctl.room!.code}:${ctl.room!.gameId}`;
+    if (key !== this.shownFor) {
+      this.shownFor = key;
+      A.start('result', now, total);
+    }
+    const t = A.running('result', now) ? A.linear('result', now) * total : Infinity;
+    /** 从 start 毫秒开始、持续 dur 毫秒的一段进度（缓动后）；动效结束后恒为 1 */
+    const phase = (start: number, dur: number): number => easeOutCubic(Math.min(1, Math.max(0, (t - start) / dur)));
     const village = view.phase.winner === 'village';
     const mySeat = ctl.room!.seats.findIndex((s) => s.openid === ctl.openid);
     const nodes: Node[] = [skyNode(this.ui.screen, 0, village ? 'village' : 'witch')];
     nodes.push({
       rect: rect(0, top, W, 90),
       draw: (ctx) => {
+        const pt = phase(0, ANIM_MS.resultTitle);
+        const sc = 1 + 0.15 * (1 - pt);
+        ctx.globalAlpha = pt;
+        ctx.translate(W / 2, top + 30);
+        ctx.scale(sc, sc);
+        ctx.translate(-W / 2, -(top + 30));
         drawText(ctx, village ? '村民胜利' : '女巫胜利', W / 2, top + 30, { size: 36, serif: true, color: village ? C.gold : C.moon, align: 'center' });
         drawText(ctx, village ? '女巫阵营全部出局' : '活着的人全部属于女巫阵营', W / 2, top + 68, { size: 13, color: C.textDim, align: 'center' });
       },
@@ -32,6 +53,9 @@ export class ResultScene implements Scene {
       nodes.push({
         rect: r,
         draw: (ctx) => {
+          const pr = phase(ANIM_MS.resultRowStart + i * ANIM_MS.resultRowStagger, ANIM_MS.resultRow);
+          ctx.globalAlpha = pr;
+          ctx.translate(0, (1 - pr) * 24);
           drawPanel(ctx, r, { stroke: p.witchFaction ? C.danger : undefined });
           drawBadge(ctx, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat, p.character);
           drawText(ctx, `${p.name}${i === mySeat ? '（你）' : ''}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
@@ -42,7 +66,15 @@ export class ResultScene implements Scene {
         },
       });
     });
-    nodes.push(button('result-home', rect(12, btnY, W - 24, 48), '回到首页', () => ctl.backHome()));
+    const home = button('result-home', rect(12, btnY, W - 24, 48), '回到首页', () => ctl.backHome());
+    const pb = phase(ANIM_MS.resultRowStart + n * ANIM_MS.resultRowStagger, ANIM_MS.resultRow);
+    nodes.push({
+      ...home,
+      draw: (ctx) => {
+        ctx.globalAlpha = pb;
+        home.draw!(ctx);
+      },
+    });
     return nodes;
   }
 }

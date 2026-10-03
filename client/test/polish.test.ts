@@ -9,6 +9,8 @@ import { RULES } from '../src/model/rules';
 import { HomeScene } from '../src/scenes/home';
 import { LobbyScene } from '../src/scenes/lobby';
 import { ResultScene } from '../src/scenes/result';
+import { RootScene } from '../src/scenes/root';
+import { ANIM_MS } from '../src/model/changes';
 import { TableScene } from '../src/scenes/table';
 import { drawCell } from '../src/scenes/tableParts';
 import { drawNodes, type Node } from '../src/core/node';
@@ -304,5 +306,58 @@ describe('格子动效', () => {
     expect(done.calls).toContainEqual(['scale', [1, 1]]);
     expect(done.calls).toContainEqual(['rotate', [-0.12]]);
     expect(done.texts).toContain('出局');
+  });
+});
+
+describe('弹窗、结算、换界面的动效', () => {
+  it('弹窗滑到一半时，背后遮罩也只有一半深', () => {
+    const ops = opsOf(sheet(SCREEN, 300, '标题', null, 0.5).nodes);
+    expect(ops).toContain('globalAlpha=0.5');
+  });
+
+  it('结算页：开始时各行透明，先出现的行在前；结束后全部不透明', () => {
+    const s = newState(6);
+    s.phase = { kind: 'ended', winner: 'village' };
+    const ui = fakeUi(fakeCtl({ room: roomOf(s) }));
+    const sc = new ResultScene(ui);
+    const rowAlpha = (now: number): number[] => {
+      const nodes = sc.build(now);
+      // 第 0 个是背景，第 1 个是标题，之后 6 行，最后是按钮
+      return nodes.slice(2, 8).map((n) => {
+        const { ctx, ops } = fakeCtx();
+        drawNodes(ctx, [n]);
+        const a = ops.find((o) => o.startsWith('globalAlpha='));
+        return a ? Number(a.slice(12)) : 1;
+      });
+    };
+    expect(rowAlpha(0)).toEqual([0, 0, 0, 0, 0, 0]);
+    const mid = rowAlpha(ANIM_MS.resultRowStart + ANIM_MS.resultRow);
+    expect(mid[0]).toBeGreaterThan(0);
+    expect(mid[5]).toBe(0);
+    expect(rowAlpha(10_000)).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
+  it('结算页：12 人局最后一行也能播完（总时长按人数算）', () => {
+    const s = newState(12);
+    s.phase = { kind: 'ended', winner: 'witch' };
+    const ui = fakeUi(fakeCtl({ room: roomOf(s) }));
+    new ResultScene(ui).build(0);
+    const lastRowEnd = ANIM_MS.resultRowStart + 11 * ANIM_MS.resultRowStagger + ANIM_MS.resultRow;
+    expect(ui.animator.running('result', lastRowEnd - 1)).toBe(true);
+  });
+
+  it('换界面：新界面从夜色里淡出来，结束后没有淡入层', () => {
+    const ctl = fakeCtl({ code: null });
+    const ui = fakeUi(ctl);
+    const root = new RootScene(ui);
+    const first = root.build(0);
+    expect(first[first.length - 1].id).toBe('scene-fade');
+    const after = root.build(ANIM_MS.scene);
+    expect(after.some((n) => n.id === 'scene-fade')).toBe(false);
+    (ctl as unknown as { code: string; room: unknown }).code = '1234';
+    (ctl as unknown as { code: string; room: unknown }).room = lobbyRoom(4);
+    const lobby = root.build(1000);
+    expect(lobby[lobby.length - 1].id).toBe('scene-fade');
+    expect(lobby[lobby.length - 1].onTap).toBeUndefined();
   });
 });

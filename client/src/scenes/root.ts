@@ -1,6 +1,7 @@
 import type { Scene } from '../core/app';
 import { rect } from '../core/geom';
 import type { Node } from '../core/node';
+import { ANIM_MS } from '../model/changes';
 import { C } from '../theme/palette';
 import { HomeScene } from './home';
 import { LobbyScene } from './lobby';
@@ -15,6 +16,7 @@ export class RootScene implements Scene {
   private readonly result: ResultScene;
   private table: TableScene | null = null;
   private tableKey = '';
+  private shown = '';
 
   constructor(private readonly ui: Ui) {
     this.home = new HomeScene(ui);
@@ -22,19 +24,43 @@ export class RootScene implements Scene {
     this.result = new ResultScene(ui);
   }
 
-  build(now: number): Node[] {
+  private pick(now: number): [string, Node[]] {
     const ctl = this.ui.ctl;
     if (!ctl.code) {
       // 回到首页就丢掉游戏桌；再进同一局时从新画面开始，不会把离开期间的变化当动效重放
       this.table = null;
       this.tableKey = '';
-      return this.home.build(now);
+      return ['home', this.home.build(now)];
     }
     const room = ctl.room;
-    if (!room) return this.message(`正在进入房间 ${ctl.code}…`, 'loading-home');
-    if (!room.view) return room.status === 'lobby' ? this.lobby.build(now) : this.message('房间已关闭', 'closed-home');
-    if (room.view.phase.kind === 'ended') return this.ended(now);
-    return this.playing(now);
+    if (!room) return ['message', this.message(`正在进入房间 ${ctl.code}…`, 'loading-home')];
+    if (!room.view) return room.status === 'lobby' ? ['lobby', this.lobby.build(now)] : ['message', this.message('房间已关闭', 'closed-home')];
+    if (room.view.phase.kind === 'ended') return ['result', this.ended(now)];
+    return ['table', this.playing(now)];
+  }
+
+  build(now: number): Node[] {
+    const [kind, nodes] = this.pick(now);
+    const A = this.ui.animator;
+    if (kind !== this.shown) {
+      this.shown = kind;
+      A.start('scene', now, ANIM_MS.scene);
+    }
+    if (!A.running('scene', now)) return nodes;
+    const { W, H } = this.ui.screen;
+    const a = 1 - A.progress('scene', now);
+    return [
+      ...nodes,
+      {
+        id: 'scene-fade',
+        rect: rect(0, 0, W, H),
+        draw: (ctx) => {
+          ctx.globalAlpha = a;
+          ctx.fillStyle = C.skyBottom;
+          ctx.fillRect(0, 0, W, H);
+        },
+      },
+    ];
   }
 
   private playing(now: number): Node[] {

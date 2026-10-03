@@ -43,13 +43,14 @@ export function skyNode(screen: Screen, darkness: number, backdrop: Backdrop = '
 }
 
 /** 全屏半透明遮罩，拦住下面的点击；onTap 常用于「点空白处关闭」 */
-export function overlay(screen: Screen, onTap?: () => void): Node {
+export function overlay(screen: Screen, onTap?: () => void, alpha = 1): Node {
   return {
     id: 'overlay',
     noPress: true,
     rect: rect(0, 0, screen.W, screen.H),
     onTap: onTap ?? (() => {}),
     draw: (ctx) => {
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = C.overlay;
       ctx.fillRect(0, 0, screen.W, screen.H);
     },
@@ -69,7 +70,7 @@ export function sheet(
   const y = screen.H - h * slide;
   const panel = rect(0, y, screen.W, h + 16);
   const nodes: Node[] = [
-    overlay(screen, onClose ?? undefined),
+    overlay(screen, onClose ?? undefined, slide),
     {
       id: 'sheet',
       noPress: true,
