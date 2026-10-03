@@ -275,3 +275,34 @@ describe('按下效果用的暗色与遮罩', () => {
     expect(nodes.find((n) => n.id === 'sheet')?.noPress).toBe(true);
   });
 });
+
+describe('格子动效', () => {
+  const firstMoveX = (calls: [string, unknown[]][]): number => calls.find(([n]) => n === 'moveTo')![1][0] as number;
+  it('晃动只改画的位置', () => {
+    const p = projectPublic(newState(5)).players[1];
+    const a = fakeCtx();
+    drawCell(a.ctx, rect(0, 0, 83, 88), p, CELL);
+    const b = fakeCtx();
+    drawCell(b.ctx, rect(0, 0, 83, 88), p, { ...CELL, shake: 3 });
+    expect(firstMoveX(b.calls) - firstMoveX(a.calls)).toBeCloseTo(3);
+  });
+  it('闪光叠在格子上', () => {
+    const p = projectPublic(newState(5)).players[1];
+    const { ctx, ops } = fakeCtx();
+    drawCell(ctx, rect(0, 0, 83, 88), p, { ...CELL, flash: 'rgba(1,2,3,0.4)' });
+    expect(ops).toContain('fillStyle=rgba(1,2,3,0.4)');
+  });
+  it('出局印章：盖到一半时放大约 1.3 倍，盖好后正常大小且有倾斜', () => {
+    const s = newState(5);
+    s.players[1].alive = false;
+    const p = projectPublic(s).players[1];
+    const half = fakeCtx();
+    drawCell(half.ctx, rect(0, 0, 83, 88), p, { ...CELL, stamp: 0.5 });
+    expect(half.calls).toContainEqual(['scale', [1.3, 1.3]]);
+    const done = fakeCtx();
+    drawCell(done.ctx, rect(0, 0, 83, 88), p, CELL);
+    expect(done.calls).toContainEqual(['scale', [1, 1]]);
+    expect(done.calls).toContainEqual(['rotate', [-0.12]]);
+    expect(done.texts).toContain('出局');
+  });
+});

@@ -21,6 +21,12 @@ export interface CellOpts {
   flip: { index: number; p: number } | null;
   /** 是我的女巫同伴（只有女巫阵营的人会看到） */
   partner: boolean;
+  /** 受审晃动：画的位置水平偏移（像素；点击区域不动） */
+  shake?: number;
+  /** 叠在格子上的闪光色（已含透明度；null/省略 = 不闪） */
+  flash?: string | null;
+  /** 出局印章的盖下进度 0→1（省略 = 1，已盖好） */
+  stamp?: number;
 }
 
 function tryalRow(ctx: Ctx, p: PublicPlayer, cx: number, y: number, h: number, flip: CellOpts['flip']): void {
@@ -65,7 +71,28 @@ function cellName(p: PublicPlayer): string {
   return label ? `${label}·${p.name}` : p.name;
 }
 
-export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void {
+/** 出局印章：从 1.6 倍缩到正常大小、逐渐显现，最后稍微歪着盖在中央 */
+function drawStamp(ctx: Ctx, x: number, y: number, p: number): void {
+  const s = 1 + 0.6 * (1 - p);
+  ctx.save();
+  ctx.globalAlpha *= p;
+  ctx.translate(x, y);
+  ctx.rotate(-0.12);
+  ctx.scale(s, s);
+  drawText(ctx, '出局', 0, 0, { size: 13, bold: true, color: C.badgeText, align: 'center' });
+  ctx.restore();
+}
+
+/** 叠在格子上的闪光 */
+function drawFlash(ctx: Ctx, r: Rect, color: string | null | undefined): void {
+  if (!color) return;
+  roundRect(ctx, r, 8);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+export function drawCell(ctx: Ctx, r0: Rect, p: PublicPlayer, o: CellOpts): void {
+  const r = o.shake ? { ...r0, x: r0.x + o.shake } : r0;
   ctx.globalAlpha = o.alpha;
   drawPanel(ctx, r, {
     tint: o.targetable ? goldGlow(0.14) : undefined,
@@ -73,6 +100,7 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
     glow: o.turn ? o.glow : 0,
     lineWidth: o.turn || o.order ? 2 : 1,
   });
+  drawFlash(ctx, r, o.flash);
   const cx = r.x + r.w / 2;
   // 同伴标记放在右上角；出牌选目标时那里显示①②
   const tag = o.partner && !o.order;
@@ -91,13 +119,19 @@ export function drawCell(ctx: Ctx, r: Rect, p: PublicPlayer, o: CellOpts): void 
     redBar(ctx, p, r.x + 5, r.y + 27, r.w - 10);
     tryalRow(ctx, p, cx, r.y + 34, 10, o.flip);
   }
-  if (!p.alive) drawText(ctx, '出局', cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: 'center' });
+  if (!p.alive) drawStamp(ctx, cx, r.y + r.h / 2, o.stamp ?? 1);
   if (o.order) drawText(ctx, o.order === 1 ? '①' : '②', r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: 'center' });
   else if (tag) drawText(ctx, '同伴', r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.dangerText, align: 'right' });
   ctx.globalAlpha = 1;
 }
 
-export function drawMeBar(ctx: Ctx, r: Rect, m: TableModel, o: { targetable: boolean; order: number; glow: number }): void {
+export function drawMeBar(
+  ctx: Ctx,
+  r0: Rect,
+  m: TableModel,
+  o: { targetable: boolean; order: number; glow: number; shake?: number; flash?: string | null },
+): void {
+  const r = o.shake ? { ...r0, x: r0.x + o.shake } : r0;
   drawPanel(ctx, r, {
     tier: 'strip',
     tint: o.targetable ? goldGlow(0.14) : undefined,
@@ -105,6 +139,7 @@ export function drawMeBar(ctx: Ctx, r: Rect, m: TableModel, o: { targetable: boo
     glow: m.isMyTurn ? o.glow : 0,
     lineWidth: o.order || m.isMyTurn ? 2 : 1,
   });
+  drawFlash(ctx, r, o.flash);
   const me = m.me;
   const cy = r.y + r.h / 2;
   if (!me) {
