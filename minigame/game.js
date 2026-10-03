@@ -29,17 +29,19 @@
   }
 
   // src/core/node.ts
-  function drawNodes(ctx2, nodes) {
+  function drawNodes(ctx2, nodes, pressed = null, shade) {
     var _a;
     for (const n of nodes) {
       ctx2.save();
+      if (n === pressed) ctx2.translate(0, 1);
       if (n.clip) {
         ctx2.beginPath();
         ctx2.rect(n.rect.x, n.rect.y, n.rect.w, n.rect.h);
         ctx2.clip();
       }
       (_a = n.draw) == null ? void 0 : _a.call(n, ctx2);
-      if (n.children) drawNodes(ctx2, n.children);
+      if (n.children) drawNodes(ctx2, n.children, pressed, shade);
+      if (n === pressed && shade) shade(ctx2, n.rect);
       ctx2.restore();
     }
   }
@@ -84,6 +86,11 @@
       const it = this.items.get(key);
       return !!it && now < it.start + it.dur;
     }
+    /** 延后开始的动画是否已经开始；没有这个动画时为 true */
+    started(key, now) {
+      const it = this.items.get(key);
+      return !it || now >= it.start;
+    }
     /** 是否还有动画在进行；顺便清理已结束的动画 */
     active(now) {
       let any = false;
@@ -100,17 +107,19 @@
 
   // src/core/app.ts
   var App = class {
-    constructor(ctx2, screen2, raf, clock) {
+    constructor(ctx2, screen2, raf, clock, shade) {
       __publicField(this, "ctx", ctx2);
       __publicField(this, "screen", screen2);
       __publicField(this, "raf", raf);
       __publicField(this, "clock", clock);
+      __publicField(this, "shade", shade);
       __publicField(this, "animator", new Animator());
       __publicField(this, "scene", null);
       __publicField(this, "nodes", []);
       __publicField(this, "scheduled", false);
       __publicField(this, "touch", null);
       __publicField(this, "drag", null);
+      __publicField(this, "press", null);
     }
     setScene(scene) {
       this.scene = scene;
@@ -132,7 +141,8 @@
       (_b = (_a = this.drag) == null ? void 0 : _a.frame) == null ? void 0 : _b.call(_a);
       this.nodes = this.scene.build(now);
       this.ctx.clearRect(0, 0, this.screen.W, this.screen.H);
-      drawNodes(this.ctx, this.nodes);
+      const hit = this.press ? hitTest(this.nodes, this.press.x, this.press.y, "onTap") : null;
+      drawNodes(this.ctx, this.nodes, hit && !hit.noPress ? hit : null, this.shade);
       if (this.animator.active(now) || this.drag) this.render();
     }
     get current() {
@@ -149,6 +159,8 @@
         return;
       }
       this.touch = { x0: x, y0: y, lastY: y, moved: false, scroll: hitTest(this.nodes, x, y, "onScroll") };
+      this.press = { x, y };
+      this.render();
     }
     touchMove(x, y) {
       if (this.drag) {
@@ -158,7 +170,13 @@
       }
       const t = this.touch;
       if (!t) return;
-      if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) t.moved = true;
+      if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) {
+        t.moved = true;
+        if (this.press) {
+          this.press = null;
+          this.render();
+        }
+      }
       if (t.moved && t.scroll) {
         t.scroll.onScroll(y - t.lastY);
         this.render();
@@ -168,6 +186,10 @@
     /** 系统打断触摸（来电、弹窗等）：结束拖动，丢弃未完成的点击和滚动 */
     touchCancel() {
       this.touch = null;
+      if (this.press) {
+        this.press = null;
+        this.render();
+      }
       if (this.drag) {
         const d = this.drag;
         this.drag = null;
@@ -182,6 +204,10 @@
         d.end();
         this.render();
         return;
+      }
+      if (this.press) {
+        this.press = null;
+        this.render();
       }
       const t = this.touch;
       this.touch = null;
@@ -646,219 +672,6 @@
     wx.onTouchCancel(() => app2.touchCancel());
   }
 
-  // src/theme/palette.ts
-  var C = {
-    skyTop: "#3a2a5c",
-    skyMid: "#1a1326",
-    skyBottom: "#0d0a14",
-    gold: "#e8c774",
-    goldDark: "#b8913e",
-    goldLine: "#d6a44a",
-    text: "#e9dcb8",
-    textDim: "#bfb2d6",
-    textMuted: "#8a7fa3",
-    danger: "#c0394d",
-    moon: "#f1e3b3",
-    overlay: "rgba(8,5,14,0.72)",
-    tryalHidden: "#2e2446",
-    witch: "#b3263a",
-    constable: "#c9a24a",
-    villager: "#6b6384",
-    star: "#ffffff",
-    badgeText: "#fff",
-    cardText: "#f3d9a0",
-    badgeRing: "rgba(232,199,116,0.7)",
-    chipRevealedLine: "rgba(255,255,255,0.4)",
-    buttonDangerFill: "rgba(192,57,77,0.25)",
-    buttonFill: "rgba(60,10,24,0.45)",
-    glowStrong: "rgba(232,199,116,0.9)",
-    lineDark: "#3b2d57",
-    // 酒红金线：大面板、普通面板、主按钮的上下渐变色
-    panelBigTop: "#3a0d1c",
-    panelBigBottom: "#1e0a14",
-    panelTop: "rgba(92,14,32,0.6)",
-    panelBottom: "rgba(34,6,16,0.78)",
-    buttonTop: "#8a1c34",
-    buttonBottom: "#4a0a18",
-    /** 危险按钮的文字（比 danger 亮，压得住深色底） */
-    dangerText: "#e5677a",
-    /** 出局格子、不可用按钮的灰线 */
-    greyLine: "#6b6378",
-    transparent: "rgba(0,0,0,0)"
-  };
-  var nightShade = (alpha2) => `rgba(4,2,10,${alpha2})`;
-  var goldGlow = (alpha2) => `rgba(232,199,116,${alpha2})`;
-  var CARD_GRADIENT = {
-    red: ["#7a1428", "#4a0a18"],
-    blue: ["#233d6e", "#142546"],
-    green: ["#265a45", "#143528"],
-    black: ["#2b2b2b", "#0e0e0e"]
-  };
-  var BADGE_COLORS = [
-    "#8e3b5a",
-    "#3b6e8e",
-    "#5a8e3b",
-    "#8e6a3b",
-    "#6a3b8e",
-    "#3b8e7a",
-    "#8e3b3b",
-    "#3b4a8e",
-    "#7a8e3b",
-    "#8e3b82",
-    "#3b8e4a",
-    "#8e5a3b"
-  ];
-  var badgeColor = (seat) => BADGE_COLORS[(seat % 12 + 12) % 12];
-  var font = (size, bold = false) => `${bold ? "bold " : ""}${size}px sans-serif`;
-  var INK = {
-    ink: "#0d0a14",
-    inkSoft: "#120c1c",
-    townFar: "#251a3a",
-    townNear: "#0f0a18",
-    ground: "#0b0811",
-    parchment: "#e3d3a8",
-    parchmentDark: "#cdb98a",
-    sepia: "#5a4020",
-    sepiaDark: "#3a2614",
-    brown: "#2b1d12",
-    wood: "#3a2614",
-    straw: "#b8913e",
-    steel: "#cfc6dc",
-    iron: "#9b93ad",
-    wax: "#8e1a2c",
-    wine: "#7a1428",
-    wineDark: "#5a1020",
-    leaf: "#3f6b4f",
-    flameCore: "#fff1c4",
-    lilac: "#bfb2d6",
-    lilacText: "#d8cce8",
-    portraitTop: "#5a4585",
-    portraitBottom: "#241a38",
-    backTop: "#2a1d44",
-    backBottom: "#120c1e",
-    poison: "#5d8a4a",
-    poisonLight: "#a8d08d",
-    dawnTop: "#4a3a6c",
-    dawnMid: "#c97b4a",
-    dawnLow: "#f0c27a",
-    sun: "#ffd98a",
-    bloodTop: "#2a0710",
-    bloodMid: "#5a0f1c",
-    bloodMoon: "#c0283a",
-    white: "#ffffff",
-    black: "#000000"
-  };
-  var FRAME_GRADIENT = {
-    witch: ["#6e1424", "#2a0710"],
-    constable: ["#6b5320", "#2e220a"],
-    villager: ["#4a4560", "#221f30"],
-    character: ["#3a2a5c", "#1a1326"],
-    back: ["#2a1d44", "#120c1e"]
-  };
-  function alpha(hex, a) {
-    const n = parseInt(hex.slice(1), 16);
-    return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
-  }
-  var titleFont = (size) => `bold ${size}px serif`;
-
-  // src/model/characters.ts
-  var CHAR_INFO = {
-    doctor: { name: "\u533B\u751F", short: "\u533B\u751F", desc: "\u53EF\u4EE5\u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\uFF087 \u70B9\uFF09\u6253\u51FA" },
-    beggar: { name: "\u4E5E\u4E10", short: "\u4E5E\u4E10", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u62A2\u52AB\u300D\u300C\u7EB5\u706B\u300D\u65E0\u6548\uFF0C\u5E76\u7ACB\u523B\u4E22\u5F03" },
-    landlord: { name: "\u5730\u4E3B", short: "\u5730\u4E3B", desc: "\u62BD\u724C\u65F6\u5982\u679C\u62BD\u51FA 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u8FD9 2 \u5F20\uFF0C\u518D\u62BD\u4E00\u5F20" },
-    judge: { name: "\u6CD5\u5B98", short: "\u6CD5\u5B98", desc: "\u4F60\u6253\u51FA\u7684\u7EA2\u5361\u4F7F\u76EE\u6807\u7D2F\u8BA1\u8FBE\u5230 6 \u70B9\uFF0C\u5373\u53EF\u5BA1\u5224\u8BE5\u73A9\u5BB6" },
-    priest: { name: "\u7267\u5E08", short: "\u7267\u5E08", desc: "\u6E38\u620F\u4E2D\u4E24\u6B21\uFF1A\u62BD\u724C\u65F6\u53EF\u4EE5\u6539\u4E3A\u4ECE\u5F03\u724C\u5806\u9009\u6700\u591A 2 \u5F20\u975E\u9ED1\u5361\u52A0\u5165\u624B\u724C" },
-    storyteller: { name: "\u8BF4\u4E66\u4EBA", short: "\u8BF4\u4E66", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u7684\u56DE\u5408\u62BD\u724C\u524D\uFF0C\u53EF\u4EE5\u4EFB\u610F\u8C03\u6574\u724C\u5806\u987A\u5E8F\uFF0C\u9650\u65F6 2 \u5206\u949F" },
-    tailor: { name: "\u88C1\u7F1D", short: "\u88C1\u7F1D", desc: "\u6280\u80FD\u4E0E\u53F3\u624B\u8FB9\u7B2C\u4E00\u540D\u6D3B\u7740\u7684\u73A9\u5BB6\u4E00\u81F4" },
-    housewife: { name: "\u5BB6\u5EAD\u4E3B\u5987", short: "\u4E3B\u5987", desc: "\u5176\u4ED6\u73A9\u5BB6\u7684\u8EAB\u4EFD\u5361\u56E0\u5BA1\u5224\u6216\u9ED1\u732B\u88AB\u7FFB\u5F00\u65F6\uFF0C\u4F60\u4ECE\u724C\u5806\u62BD\u4E00\u5F20\u724C" },
-    farmer: { name: "\u519C\u6C11", short: "\u519C\u6C11", desc: "\u6709\u73A9\u5BB6\u6B7B\u4EA1\u65F6\uFF0C\u4F60\u83B7\u5F97\u4ED6\u7684\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u84DD\u5361" },
-    child: { name: "\u5C0F\u5B69", short: "\u5C0F\u5B69", desc: "\u4F60\u53D1\u8D77\u7684\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u4F60\u81EA\u5DF1\u9762\u524D\u6240\u6709\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D" },
-    minister: { name: "\u90E8\u957F", short: "\u90E8\u957F", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9" },
-    official: { name: "\u5B98\u5458", short: "\u5B98\u5458", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u81EA\u9996\u65F6\u65E0\u9700\u7FFB\u5F00\u8EAB\u4EFD\u5361" },
-    strongman: { name: "\u5927\u529B\u58EB", short: "\u529B\u58EB", desc: "\u5BF9\u4F60\u7684\u5BA1\u5224\u7EBF\u4E3A 8 \u70B9" },
-    maid: { name: "\u5973\u4EC6", short: "\u5973\u4EC6", desc: "\u300C\u9ED1\u732B\u300D\u548C\u300C\u60C5\u4FA3\u300D\u5BF9\u4F60\u65E0\u6548" },
-    maiden: { name: "\u5C11\u5973", short: "\u5C11\u5973", desc: "\u4F60\u53D1\u8D77\u5BA1\u5224\u65F6\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C\uFF0C\u672C\u56DE\u5408\u53EF\u4EE5\u7ACB\u5373\u4F7F\u7528" }
-  };
-  function charLabel(p) {
-    if (!p.character) return "";
-    if (p.character === "tailor") return p.ability ? `\u88C1\u7F1D\u2192${CHAR_INFO[p.ability].short}` : "\u88C1\u7F1D";
-    return CHAR_INFO[p.character].short;
-  }
-
-  // src/model/cards.ts
-  var CARD_INFO = {
-    accusation: { name: "\u6307\u63A7", color: "red", desc: "\u6307\u63A7\u70B9 +1" },
-    evidence: { name: "\u8BC1\u636E", color: "red", desc: "\u6307\u63A7\u70B9 +3" },
-    witness: { name: "\u76EE\u51FB", color: "red", desc: "\u6307\u63A7\u70B9 +7" },
-    blackCat: { name: "\u9ED1\u732B", color: "blue", desc: "\u4F20\u67D3\u65F6\uFF0C\u6301\u6709\u8005\u5148\u7FFB\u5F00\u81EA\u5DF1\u4E00\u5F20\u8EAB\u4EFD\u5361" },
-    matchmaker: { name: "\u60C5\u4FA3", color: "blue", desc: "\u4E24\u540D\u6301\u6709\u8005\u540C\u751F\u5171\u6B7B" },
-    asylum: { name: "\u907F\u96BE", color: "blue", desc: "\u591C\u665A\u4E0D\u4F1A\u88AB\u5973\u5DEB\u6740\u6B7B" },
-    piety: { name: "\u4FE1\u5F92", color: "blue", desc: "\u5176\u4ED6\u73A9\u5BB6\u4E0D\u80FD\u5BF9\u6301\u6709\u8005\u6253\u51FA\u7EA2\u5361" },
-    scapegoat: { name: "\u5AC1\u7978", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u6240\u6709\u5361\u8F6C\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
-    robbery: { name: "\u62A2\u52AB", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C\u4EA4\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
-    arson: { name: "\u7EB5\u706B", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C" },
-    curse: { name: "\u8BC5\u5492", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u4E00\u5F20\u84DD\u5361" },
-    stocks: { name: "\u62D8\u7559", color: "green", desc: "\u76EE\u6807\u8DF3\u8FC7\u81EA\u5DF1\u7684\u4E0B\u4E00\u56DE\u5408" },
-    alibi: { name: "\u8FA9\u62A4", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u6700\u591A 3 \u5F20\u6307\u63A7\u6216 1 \u5F20\u8BC1\u636E" },
-    night: { name: "\u591C\u665A", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u591C\u665A\u964D\u4E34" },
-    conspiracy: { name: "\u4F20\u67D3", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u6BCF\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u5904\u76F2\u62BD\u4E00\u5F20\u8EAB\u4EFD\u5361" }
-  };
-  var TRYAL_NAME = { witch: "\u5973\u5DEB", constable: "\u8B66\u957F", villager: "\u6751\u6C11" };
-  var TRYAL_SHORT = { witch: "\u5DEB", constable: "\u8B66", villager: "\u6C11" };
-
-  // src/model/rules.ts
-  var plain = (texts) => texts.map((text) => ({ text }));
-  var cardsOf = (color) => Object.keys(CARD_INFO).filter((k) => CARD_INFO[k].color === color).map((k) => ({ text: `${CARD_INFO[k].name}\uFF1A${CARD_INFO[k].desc}`, icon: { card: k } }));
-  var RULES = [
-    {
-      title: "\u80DC\u8D1F",
-      items: plain(["\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u5168\u90E8\u51FA\u5C40\uFF08\u5305\u62EC\u4F20\u67D3\u65F6\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u539F\u5973\u5DEB\uFF09\uFF1A\u6751\u6C11\u80DC\u5229\u3002", "\u6D3B\u7740\u7684\u73A9\u5BB6\u5168\u90FD\u662F\u5973\u5DEB\u9635\u8425\uFF1A\u5973\u5DEB\u80DC\u5229\u3002"])
-    },
-    {
-      title: "\u8EAB\u4EFD\u5361",
-      items: plain([
-        "\u6BCF\u4EBA 5 \u5F20\uFF0C\u53EA\u6709\u81EA\u5DF1\u77E5\u9053\u5185\u5BB9\u30024\u20135 \u4EBA 1 \u5F20\u5973\u5DEB\u5361\uFF0C6 \u4EBA\u4EE5\u4E0A 2 \u5F20\uFF1B\u8B66\u957F 1 \u5F20\uFF0C\u5176\u4F59\u662F\u6751\u6C11\u3002",
-        "\u7FFB\u51FA\u5973\u5DEB\u5361\uFF0C\u6216 5 \u5F20\u5168\u90E8\u7FFB\u5F00\uFF0C\u7ACB\u5373\u6B7B\u4EA1\u3002",
-        "\u5F00\u5C40\u6301\u6709\u5973\u5DEB\u5361\u7684\u4EBA\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\uFF1B\u4E4B\u540E\u901A\u8FC7\u4F20\u67D3\u62FF\u5230\u5973\u5DEB\u5361\u7684\u4EBA\u4E5F\u52A0\u5165\u5973\u5DEB\u9635\u8425\uFF0C\u9635\u8425\u4E0D\u4F1A\u518D\u53D8\uFF08\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u4EBA\u4ECD\u662F\u5973\u5DEB\uFF09\u3002\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u80FD\u770B\u5230\u5F7C\u6B64\u3002"
-      ])
-    },
-    {
-      title: "\u56DE\u5408",
-      items: plain(["\u8F6E\u5230\u4F60\u65F6\u4E8C\u9009\u4E00\uFF1A\u62BD 2 \u5F20\u724C\uFF0C\u6216\u6253\u51FA\u4EFB\u610F\u5F20\u7EA2 / \u84DD / \u7EFF\u5361\u3002", "\u7EA2\u5361\u4E0D\u80FD\u6253\u7ED9\u81EA\u5DF1\uFF0C\u84DD\u5361\u548C\u7EFF\u5361\u53EF\u4EE5\u3002"])
-    },
-    {
-      title: "\u5BA1\u5224",
-      items: plain([
-        "\u9762\u524D\u7EA2\u5361\u70B9\u6570\u8FBE\u5230 7 \u70B9\u7ACB\u5373\u53D7\u5BA1\uFF0C\u7531\u53D7\u5BA1\u8005\u81EA\u5DF1\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\u3002",
-        "\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u53D7\u5BA1\u8005\u9762\u524D\u6240\u6709\u7EA2\u5361\u3002"
-      ])
-    },
-    {
-      title: "\u591C\u665A",
-      items: plain([
-        "\u5973\u5DEB\u9635\u8425\u4E00\u8D77\u9009\u4E00\u540D\u73A9\u5BB6\u51FB\u6740\uFF1B\u8B66\u957F\u4FDD\u62A4\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6\uFF1B\u6240\u6709\u4EBA\u90FD\u53EF\u4EE5\u81EA\u9996\uFF08\u7FFB\u5F00\u4E00\u5F20\u81EA\u5DF1\u7684\u8EAB\u4EFD\u5361\uFF09\uFF0C\u81EA\u9996\u7684\u4EBA\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740\u3002",
-        "\u88AB\u9009\u4E2D\u7684\u4EBA\u6CA1\u6709\u88AB\u4FDD\u62A4\u3001\u6CA1\u6709\u907F\u96BE\u3001\u4E5F\u6CA1\u6709\u81EA\u9996\u65F6\u6B7B\u4EA1\u3002",
-        "\u591C\u665A\u8FC7\u540E\u5168\u90E8\u91CD\u7F6E\uFF1A\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u724C\uFF08\u5305\u62EC\u9ED1\u732B\uFF09\u6536\u56DE\u91CD\u6D17\uFF0C\u6BCF\u4E2A\u6D3B\u4EBA\u91CD\u65B0\u53D1 3 \u5F20\uFF1B\u8EAB\u4EFD\u5361\u4E0D\u53D8\u3002\u62BD\u5230\u591C\u665A\u7684\u4EBA\u56DE\u5408\u7ED3\u675F\u3002",
-        "\u56DE\u5408\u5916\u6478\u5230\u591C\u665A\uFF08\u4F8B\u5982\u5BA1\u5224\u4E2D\uFF09\u65F6\uFF0C\u5148\u628A\u5BA1\u5224\u8D70\u5B8C\u518D\u8FDB\u5165\u591C\u665A\u3002"
-      ])
-    },
-    {
-      title: "\u4F20\u67D3",
-      items: plain(["\u9ED1\u732B\u6301\u6709\u8005\u5148\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF1B\u7136\u540E\u6BCF\u4E2A\u6D3B\u7740\u7684\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u7684\u672A\u7FFB\u5F00\u8EAB\u4EFD\u5361\u91CC\u76F2\u62BD\u4E00\u5F20\u3002"])
-    },
-    { title: "\u7EA2\u5361", items: cardsOf("red") },
-    { title: "\u84DD\u5361\uFF08\u7559\u5728\u9762\u524D\u6301\u7EED\u751F\u6548\uFF09", items: cardsOf("blue") },
-    { title: "\u7EFF\u5361\uFF08\u4E00\u6B21\u6027\uFF09", items: cardsOf("green") },
-    { title: "\u9ED1\u5361\uFF08\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF09", items: cardsOf("black") },
-    {
-      title: "\u89D2\u8272\uFF08\u516C\u5F00\uFF09",
-      items: [
-        { text: "\u5C11\u4E8E 7 \u4EBA\u65F6\u6BCF\u4EBA\u4ECE 2 \u4E2A\u968F\u673A\u89D2\u8272\u4E2D\u9009 1 \u4E2A\uFF1B7 \u4EBA\u53CA\u4EE5\u4E0A\u76F4\u63A5\u968F\u673A\u53D1\u3002\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00\u3002" },
-        ...Object.keys(CHAR_INFO).map((id) => ({ text: `${CHAR_INFO[id].name}\uFF1A${CHAR_INFO[id].desc}`, icon: { char: id } }))
-      ]
-    }
-  ];
-
   // src/core/text.ts
   function wrapText(text, maxWidth, measure) {
     const lines = [];
@@ -882,6 +695,27 @@
     while (chars.length > 0 && measure(chars.join("") + "\u2026") > maxWidth) chars.pop();
     return chars.join("") + "\u2026";
   }
+
+  // src/model/cards.ts
+  var CARD_INFO = {
+    accusation: { name: "\u6307\u63A7", color: "red", desc: "\u6307\u63A7\u70B9 +1" },
+    evidence: { name: "\u8BC1\u636E", color: "red", desc: "\u6307\u63A7\u70B9 +3" },
+    witness: { name: "\u76EE\u51FB", color: "red", desc: "\u6307\u63A7\u70B9 +7" },
+    blackCat: { name: "\u9ED1\u732B", color: "blue", desc: "\u4F20\u67D3\u65F6\uFF0C\u6301\u6709\u8005\u5148\u7FFB\u5F00\u81EA\u5DF1\u4E00\u5F20\u8EAB\u4EFD\u5361" },
+    matchmaker: { name: "\u60C5\u4FA3", color: "blue", desc: "\u4E24\u540D\u6301\u6709\u8005\u540C\u751F\u5171\u6B7B" },
+    asylum: { name: "\u907F\u96BE", color: "blue", desc: "\u591C\u665A\u4E0D\u4F1A\u88AB\u5973\u5DEB\u6740\u6B7B" },
+    piety: { name: "\u4FE1\u5F92", color: "blue", desc: "\u5176\u4ED6\u73A9\u5BB6\u4E0D\u80FD\u5BF9\u6301\u6709\u8005\u6253\u51FA\u7EA2\u5361" },
+    scapegoat: { name: "\u5AC1\u7978", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u6240\u6709\u5361\u8F6C\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
+    robbery: { name: "\u62A2\u52AB", color: "green", desc: "\u628A\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C\u4EA4\u7ED9\u53E6\u4E00\u540D\u73A9\u5BB6" },
+    arson: { name: "\u7EB5\u706B", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u7684\u6240\u6709\u624B\u724C" },
+    curse: { name: "\u8BC5\u5492", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u7684\u4E00\u5F20\u84DD\u5361" },
+    stocks: { name: "\u62D8\u7559", color: "green", desc: "\u76EE\u6807\u8DF3\u8FC7\u81EA\u5DF1\u7684\u4E0B\u4E00\u56DE\u5408" },
+    alibi: { name: "\u8FA9\u62A4", color: "green", desc: "\u4E22\u5F03\u4E00\u540D\u73A9\u5BB6\u9762\u524D\u6700\u591A 3 \u5F20\u6307\u63A7\u6216 1 \u5F20\u8BC1\u636E" },
+    night: { name: "\u591C\u665A", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u591C\u665A\u964D\u4E34" },
+    conspiracy: { name: "\u4F20\u67D3", color: "black", desc: "\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF1A\u6BCF\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u5904\u76F2\u62BD\u4E00\u5F20\u8EAB\u4EFD\u5361" }
+  };
+  var TRYAL_NAME = { witch: "\u5973\u5DEB", constable: "\u8B66\u957F", villager: "\u6751\u6C11" };
+  var TRYAL_SHORT = { witch: "\u5DEB", constable: "\u8B66", villager: "\u6C11" };
 
   // src/theme/art/cache.ts
   var LARGE_AREA = 256 * 256;
@@ -960,6 +794,147 @@
   function targetCount(kind) {
     return kind === "scapegoat" || kind === "robbery" ? 2 : 1;
   }
+
+  // src/model/characters.ts
+  var CHAR_INFO = {
+    doctor: { name: "\u533B\u751F", short: "\u533B\u751F", desc: "\u53EF\u4EE5\u628A\u300C\u8FA9\u62A4\u300D\u5F53\u4F5C\u300C\u76EE\u51FB\u300D\uFF087 \u70B9\uFF09\u6253\u51FA" },
+    beggar: { name: "\u4E5E\u4E10", short: "\u4E5E\u4E10", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u62A2\u52AB\u300D\u300C\u7EB5\u706B\u300D\u65E0\u6548\uFF0C\u5E76\u7ACB\u523B\u4E22\u5F03" },
+    landlord: { name: "\u5730\u4E3B", short: "\u5730\u4E3B", desc: "\u62BD\u724C\u65F6\u5982\u679C\u62BD\u51FA 2 \u5F20\u300C\u6307\u63A7\u300D\uFF0C\u5C55\u793A\u8FD9 2 \u5F20\uFF0C\u518D\u62BD\u4E00\u5F20" },
+    judge: { name: "\u6CD5\u5B98", short: "\u6CD5\u5B98", desc: "\u4F60\u6253\u51FA\u7684\u7EA2\u5361\u4F7F\u76EE\u6807\u7D2F\u8BA1\u8FBE\u5230 6 \u70B9\uFF0C\u5373\u53EF\u5BA1\u5224\u8BE5\u73A9\u5BB6" },
+    priest: { name: "\u7267\u5E08", short: "\u7267\u5E08", desc: "\u6E38\u620F\u4E2D\u4E24\u6B21\uFF1A\u62BD\u724C\u65F6\u53EF\u4EE5\u6539\u4E3A\u4ECE\u5F03\u724C\u5806\u9009\u6700\u591A 2 \u5F20\u975E\u9ED1\u5361\u52A0\u5165\u624B\u724C" },
+    storyteller: { name: "\u8BF4\u4E66\u4EBA", short: "\u8BF4\u4E66", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u7684\u56DE\u5408\u62BD\u724C\u524D\uFF0C\u53EF\u4EE5\u4EFB\u610F\u8C03\u6574\u724C\u5806\u987A\u5E8F\uFF0C\u9650\u65F6 2 \u5206\u949F" },
+    tailor: { name: "\u88C1\u7F1D", short: "\u88C1\u7F1D", desc: "\u6280\u80FD\u4E0E\u53F3\u624B\u8FB9\u7B2C\u4E00\u540D\u6D3B\u7740\u7684\u73A9\u5BB6\u4E00\u81F4" },
+    housewife: { name: "\u5BB6\u5EAD\u4E3B\u5987", short: "\u4E3B\u5987", desc: "\u5176\u4ED6\u73A9\u5BB6\u7684\u8EAB\u4EFD\u5361\u56E0\u5BA1\u5224\u6216\u9ED1\u732B\u88AB\u7FFB\u5F00\u65F6\uFF0C\u4F60\u4ECE\u724C\u5806\u62BD\u4E00\u5F20\u724C" },
+    farmer: { name: "\u519C\u6C11", short: "\u519C\u6C11", desc: "\u6709\u73A9\u5BB6\u6B7B\u4EA1\u65F6\uFF0C\u4F60\u83B7\u5F97\u4ED6\u7684\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u84DD\u5361" },
+    child: { name: "\u5C0F\u5B69", short: "\u5C0F\u5B69", desc: "\u4F60\u53D1\u8D77\u7684\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u4F60\u81EA\u5DF1\u9762\u524D\u6240\u6709\u300C\u6307\u63A7\u300D\u548C\u300C\u8BC1\u636E\u300D" },
+    minister: { name: "\u90E8\u957F", short: "\u90E8\u957F", desc: "\u5BF9\u4F60\u6253\u51FA\u7684\u300C\u8BC1\u636E\u300D\u53EA\u7B97 1 \u70B9" },
+    official: { name: "\u5B98\u5458", short: "\u5B98\u5458", desc: "\u6E38\u620F\u4E2D\u4E00\u6B21\uFF1A\u4F60\u81EA\u9996\u65F6\u65E0\u9700\u7FFB\u5F00\u8EAB\u4EFD\u5361" },
+    strongman: { name: "\u5927\u529B\u58EB", short: "\u529B\u58EB", desc: "\u5BF9\u4F60\u7684\u5BA1\u5224\u7EBF\u4E3A 8 \u70B9" },
+    maid: { name: "\u5973\u4EC6", short: "\u5973\u4EC6", desc: "\u300C\u9ED1\u732B\u300D\u548C\u300C\u60C5\u4FA3\u300D\u5BF9\u4F60\u65E0\u6548" },
+    maiden: { name: "\u5C11\u5973", short: "\u5C11\u5973", desc: "\u4F60\u53D1\u8D77\u5BA1\u5224\u65F6\uFF0C\u5BA1\u5224\u524D\u5148\u62BD 2 \u5F20\u724C\uFF0C\u672C\u56DE\u5408\u53EF\u4EE5\u7ACB\u5373\u4F7F\u7528" }
+  };
+  function charLabel(p) {
+    if (!p.character) return "";
+    if (p.character === "tailor") return p.ability ? `\u88C1\u7F1D\u2192${CHAR_INFO[p.ability].short}` : "\u88C1\u7F1D";
+    return CHAR_INFO[p.character].short;
+  }
+
+  // src/theme/palette.ts
+  var C = {
+    skyTop: "#3a2a5c",
+    skyMid: "#1a1326",
+    skyBottom: "#0d0a14",
+    gold: "#e8c774",
+    goldDark: "#b8913e",
+    goldLine: "#d6a44a",
+    text: "#e9dcb8",
+    textDim: "#bfb2d6",
+    textMuted: "#8a7fa3",
+    danger: "#c0394d",
+    moon: "#f1e3b3",
+    overlay: "rgba(8,5,14,0.72)",
+    tryalHidden: "#2e2446",
+    witch: "#b3263a",
+    constable: "#c9a24a",
+    villager: "#6b6384",
+    star: "#ffffff",
+    badgeText: "#fff",
+    cardText: "#f3d9a0",
+    badgeRing: "rgba(232,199,116,0.7)",
+    chipRevealedLine: "rgba(255,255,255,0.4)",
+    buttonDangerFill: "rgba(192,57,77,0.25)",
+    buttonFill: "rgba(60,10,24,0.45)",
+    glowStrong: "rgba(232,199,116,0.9)",
+    lineDark: "#3b2d57",
+    // 酒红金线：大面板、普通面板、主按钮的上下渐变色
+    panelBigTop: "#3a0d1c",
+    panelBigBottom: "#1e0a14",
+    panelTop: "rgba(92,14,32,0.6)",
+    panelBottom: "rgba(34,6,16,0.78)",
+    buttonTop: "#8a1c34",
+    buttonBottom: "#4a0a18",
+    /** 危险按钮的文字（比 danger 亮，压得住深色底） */
+    dangerText: "#e5677a",
+    /** 出局格子、不可用按钮的灰线 */
+    greyLine: "#6b6378",
+    /** 按下效果：盖在被按住的元素上 */
+    pressShade: "rgba(0,0,0,0.22)",
+    transparent: "rgba(0,0,0,0)"
+  };
+  var nightShade = (alpha2) => `rgba(4,2,10,${alpha2})`;
+  var goldGlow = (alpha2) => `rgba(232,199,116,${alpha2})`;
+  var CARD_GRADIENT = {
+    red: ["#7a1428", "#4a0a18"],
+    blue: ["#233d6e", "#142546"],
+    green: ["#265a45", "#143528"],
+    black: ["#2b2b2b", "#0e0e0e"]
+  };
+  var BADGE_COLORS = [
+    "#8e3b5a",
+    "#3b6e8e",
+    "#5a8e3b",
+    "#8e6a3b",
+    "#6a3b8e",
+    "#3b8e7a",
+    "#8e3b3b",
+    "#3b4a8e",
+    "#7a8e3b",
+    "#8e3b82",
+    "#3b8e4a",
+    "#8e5a3b"
+  ];
+  var badgeColor = (seat) => BADGE_COLORS[(seat % 12 + 12) % 12];
+  var font = (size, bold = false) => `${bold ? "bold " : ""}${size}px sans-serif`;
+  var INK = {
+    ink: "#0d0a14",
+    inkSoft: "#120c1c",
+    townFar: "#251a3a",
+    townNear: "#0f0a18",
+    ground: "#0b0811",
+    parchment: "#e3d3a8",
+    parchmentDark: "#cdb98a",
+    sepia: "#5a4020",
+    sepiaDark: "#3a2614",
+    brown: "#2b1d12",
+    wood: "#3a2614",
+    straw: "#b8913e",
+    steel: "#cfc6dc",
+    iron: "#9b93ad",
+    wax: "#8e1a2c",
+    wine: "#7a1428",
+    wineDark: "#5a1020",
+    leaf: "#3f6b4f",
+    flameCore: "#fff1c4",
+    lilac: "#bfb2d6",
+    lilacText: "#d8cce8",
+    portraitTop: "#5a4585",
+    portraitBottom: "#241a38",
+    backTop: "#2a1d44",
+    backBottom: "#120c1e",
+    poison: "#5d8a4a",
+    poisonLight: "#a8d08d",
+    dawnTop: "#4a3a6c",
+    dawnMid: "#c97b4a",
+    dawnLow: "#f0c27a",
+    sun: "#ffd98a",
+    bloodTop: "#2a0710",
+    bloodMid: "#5a0f1c",
+    bloodMoon: "#c0283a",
+    white: "#ffffff",
+    black: "#000000"
+  };
+  var FRAME_GRADIENT = {
+    witch: ["#6e1424", "#2a0710"],
+    constable: ["#6b5320", "#2e220a"],
+    villager: ["#4a4560", "#221f30"],
+    character: ["#3a2a5c", "#1a1326"],
+    back: ["#2a1d44", "#120c1e"]
+  };
+  function alpha(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+  }
+  var titleFont = (size) => `bold ${size}px serif`;
 
   // src/theme/art/shapes.ts
   function rr(ctx2, x, y, w, h, r) {
@@ -2440,6 +2415,9 @@
     }
     ctx2.globalAlpha = 1;
   }
+  function drawCardBack(ctx2, r) {
+    blit(ctx2, "back", r.w, r.h, cardBack, r.x, r.y);
+  }
   function drawCharCard(ctx2, r, id) {
     blit(ctx2, `char:${id}`, r.w, r.h, (c, w, h) => charCard(c, w, h, id), r.x, r.y);
   }
@@ -2479,6 +2457,118 @@
     drawBadge(ctx2, x + h / 2, y + h / 2, h / 2, "", 0, ref.char);
     return h;
   }
+  function drawPressShade(ctx2, r) {
+    roundRect(ctx2, r, 8);
+    ctx2.fillStyle = C.pressShade;
+    ctx2.fill();
+  }
+
+  // src/model/changes.ts
+  var ANIM_MS = {
+    cardIn: 450,
+    cardStagger: 80,
+    othersDraw: 400,
+    play: 600,
+    hit: 250,
+    trial: 600,
+    death: 500,
+    reveal: 500,
+    burst: 350,
+    night: 900,
+    turn: 1800,
+    panel: 250,
+    scene: 250,
+    resultTitle: 400,
+    resultRowStart: 250,
+    resultRowStagger: 80,
+    resultRow: 300
+  };
+  var MAX_VERSION_STEP = 1 + 2 * 12;
+  var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
+  function diffTables(prev, next) {
+    var _a, _b, _c;
+    if (!prev || prev.code !== next.code || prev.view.log.length > next.view.log.length) return [];
+    if (next.view.version - prev.view.version > MAX_VERSION_STEP) return [];
+    const out = [];
+    if (prev.priv) {
+      const before = new Set(prev.priv.hand.map((c) => c.id));
+      for (const c of (_b = (_a = next.priv) == null ? void 0 : _a.hand) != null ? _b : []) if (!before.has(c.id)) out.push({ kind: "cardIn", id: c.id });
+    }
+    next.view.log.slice(prev.view.log.length).forEach((e, k) => {
+      if (e.t === "play") out.push({ kind: "play", index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
+      if (e.t === "trial") out.push({ kind: "trial", seat: e.target });
+    });
+    const wasNight = prev.view.phase.kind === "night";
+    const isNight = next.view.phase.kind === "night";
+    if (wasNight !== isNight) out.push({ kind: "night", on: isNight });
+    next.view.players.forEach((p, i) => {
+      const q = prev.view.players[i];
+      if (!q) return;
+      if (q.alive && !p.alive) out.push({ kind: "death", seat: i });
+      if (i !== next.mySeat && p.handCount > q.handCount) out.push({ kind: "draw", seat: i, count: p.handCount - q.handCount });
+      if (!p.alive) return;
+      p.tryals.forEach((t, j) => {
+        if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: "reveal", seat: i, index: j, witch: t.kind === "witch" });
+      });
+    });
+    const turn = dayTurn(next);
+    if (turn !== null && turn !== dayTurn(prev)) out.push({ kind: "turn", seat: turn });
+    if (next.pending && next.pending.kind !== "turn" && ((_c = prev.pending) == null ? void 0 : _c.kind) !== next.pending.kind) out.push({ kind: "panel" });
+    return out;
+  }
+
+  // src/model/rules.ts
+  var plain = (texts) => texts.map((text) => ({ text }));
+  var cardsOf = (color) => Object.keys(CARD_INFO).filter((k) => CARD_INFO[k].color === color).map((k) => ({ text: `${CARD_INFO[k].name}\uFF1A${CARD_INFO[k].desc}`, icon: { card: k } }));
+  var RULES = [
+    {
+      title: "\u80DC\u8D1F",
+      items: plain(["\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u5168\u90E8\u51FA\u5C40\uFF08\u5305\u62EC\u4F20\u67D3\u65F6\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u539F\u5973\u5DEB\uFF09\uFF1A\u6751\u6C11\u80DC\u5229\u3002", "\u6D3B\u7740\u7684\u73A9\u5BB6\u5168\u90FD\u662F\u5973\u5DEB\u9635\u8425\uFF1A\u5973\u5DEB\u80DC\u5229\u3002"])
+    },
+    {
+      title: "\u8EAB\u4EFD\u5361",
+      items: plain([
+        "\u6BCF\u4EBA 5 \u5F20\uFF0C\u53EA\u6709\u81EA\u5DF1\u77E5\u9053\u5185\u5BB9\u30024\u20135 \u4EBA 1 \u5F20\u5973\u5DEB\u5361\uFF0C6 \u4EBA\u4EE5\u4E0A 2 \u5F20\uFF1B\u8B66\u957F 1 \u5F20\uFF0C\u5176\u4F59\u662F\u6751\u6C11\u3002",
+        "\u7FFB\u51FA\u5973\u5DEB\u5361\uFF0C\u6216 5 \u5F20\u5168\u90E8\u7FFB\u5F00\uFF0C\u7ACB\u5373\u6B7B\u4EA1\u3002",
+        "\u5F00\u5C40\u6301\u6709\u5973\u5DEB\u5361\u7684\u4EBA\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425\uFF1B\u4E4B\u540E\u901A\u8FC7\u4F20\u67D3\u62FF\u5230\u5973\u5DEB\u5361\u7684\u4EBA\u4E5F\u52A0\u5165\u5973\u5DEB\u9635\u8425\uFF0C\u9635\u8425\u4E0D\u4F1A\u518D\u53D8\uFF08\u4EA4\u51FA\u5973\u5DEB\u5361\u7684\u4EBA\u4ECD\u662F\u5973\u5DEB\uFF09\u3002\u5973\u5DEB\u9635\u8425\u7684\u4EBA\u80FD\u770B\u5230\u5F7C\u6B64\u3002"
+      ])
+    },
+    {
+      title: "\u56DE\u5408",
+      items: plain(["\u8F6E\u5230\u4F60\u65F6\u4E8C\u9009\u4E00\uFF1A\u62BD 2 \u5F20\u724C\uFF0C\u6216\u6253\u51FA\u4EFB\u610F\u5F20\u7EA2 / \u84DD / \u7EFF\u5361\u3002", "\u7EA2\u5361\u4E0D\u80FD\u6253\u7ED9\u81EA\u5DF1\uFF0C\u84DD\u5361\u548C\u7EFF\u5361\u53EF\u4EE5\u3002"])
+    },
+    {
+      title: "\u5BA1\u5224",
+      items: plain([
+        "\u9762\u524D\u7EA2\u5361\u70B9\u6570\u8FBE\u5230 7 \u70B9\u7ACB\u5373\u53D7\u5BA1\uFF0C\u7531\u53D7\u5BA1\u8005\u81EA\u5DF1\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\u3002",
+        "\u5BA1\u5224\u7ED3\u675F\u540E\uFF0C\u4E22\u5F03\u53D7\u5BA1\u8005\u9762\u524D\u6240\u6709\u7EA2\u5361\u3002"
+      ])
+    },
+    {
+      title: "\u591C\u665A",
+      items: plain([
+        "\u5973\u5DEB\u9635\u8425\u4E00\u8D77\u9009\u4E00\u540D\u73A9\u5BB6\u51FB\u6740\uFF1B\u8B66\u957F\u4FDD\u62A4\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6\uFF1B\u6240\u6709\u4EBA\u90FD\u53EF\u4EE5\u81EA\u9996\uFF08\u7FFB\u5F00\u4E00\u5F20\u81EA\u5DF1\u7684\u8EAB\u4EFD\u5361\uFF09\uFF0C\u81EA\u9996\u7684\u4EBA\u5F53\u665A\u4E0D\u4F1A\u88AB\u6740\u3002",
+        "\u88AB\u9009\u4E2D\u7684\u4EBA\u6CA1\u6709\u88AB\u4FDD\u62A4\u3001\u6CA1\u6709\u907F\u96BE\u3001\u4E5F\u6CA1\u6709\u81EA\u9996\u65F6\u6B7B\u4EA1\u3002",
+        "\u591C\u665A\u8FC7\u540E\u5168\u90E8\u91CD\u7F6E\uFF1A\u6240\u6709\u624B\u724C\u548C\u9762\u524D\u7684\u724C\uFF08\u5305\u62EC\u9ED1\u732B\uFF09\u6536\u56DE\u91CD\u6D17\uFF0C\u6BCF\u4E2A\u6D3B\u4EBA\u91CD\u65B0\u53D1 3 \u5F20\uFF1B\u8EAB\u4EFD\u5361\u4E0D\u53D8\u3002\u62BD\u5230\u591C\u665A\u7684\u4EBA\u56DE\u5408\u7ED3\u675F\u3002",
+        "\u56DE\u5408\u5916\u6478\u5230\u591C\u665A\uFF08\u4F8B\u5982\u5BA1\u5224\u4E2D\uFF09\u65F6\uFF0C\u5148\u628A\u5BA1\u5224\u8D70\u5B8C\u518D\u8FDB\u5165\u591C\u665A\u3002"
+      ])
+    },
+    {
+      title: "\u4F20\u67D3",
+      items: plain(["\u9ED1\u732B\u6301\u6709\u8005\u5148\u7FFB\u5F00\u4E00\u5F20\u8EAB\u4EFD\u5361\uFF1B\u7136\u540E\u6BCF\u4E2A\u6D3B\u7740\u7684\u4EBA\u4ECE\u5DE6\u8FB9\u73A9\u5BB6\u7684\u672A\u7FFB\u5F00\u8EAB\u4EFD\u5361\u91CC\u76F2\u62BD\u4E00\u5F20\u3002"])
+    },
+    { title: "\u7EA2\u5361", items: cardsOf("red") },
+    { title: "\u84DD\u5361\uFF08\u7559\u5728\u9762\u524D\u6301\u7EED\u751F\u6548\uFF09", items: cardsOf("blue") },
+    { title: "\u7EFF\u5361\uFF08\u4E00\u6B21\u6027\uFF09", items: cardsOf("green") },
+    { title: "\u9ED1\u5361\uFF08\u62BD\u5230\u7ACB\u5373\u7ED3\u7B97\uFF09", items: cardsOf("black") },
+    {
+      title: "\u89D2\u8272\uFF08\u516C\u5F00\uFF09",
+      items: [
+        { text: "\u5C11\u4E8E 7 \u4EBA\u65F6\u6BCF\u4EBA\u4ECE 2 \u4E2A\u968F\u673A\u89D2\u8272\u4E2D\u9009 1 \u4E2A\uFF1B7 \u4EBA\u53CA\u4EE5\u4E0A\u76F4\u63A5\u968F\u673A\u53D1\u3002\u89D2\u8272\u5BF9\u6240\u6709\u4EBA\u516C\u5F00\u3002" },
+        ...Object.keys(CHAR_INFO).map((id) => ({ text: `${CHAR_INFO[id].name}\uFF1A${CHAR_INFO[id].desc}`, icon: { char: id } }))
+      ]
+    }
+  ];
 
   // src/scenes/widgets.ts
   function button(id, r, label, onTap, style = "primary") {
@@ -2502,13 +2592,15 @@
   function skyNode(screen2, darkness, backdrop = "table") {
     return { rect: rect(0, 0, screen2.W, screen2.H), draw: (ctx2) => drawSky(ctx2, screen2.W, screen2.H, darkness, backdrop) };
   }
-  function overlay(screen2, onTap) {
+  function overlay(screen2, onTap, alpha2 = 1) {
     return {
       id: "overlay",
+      noPress: true,
       rect: rect(0, 0, screen2.W, screen2.H),
       onTap: onTap != null ? onTap : (() => {
       }),
       draw: (ctx2) => {
+        ctx2.globalAlpha = alpha2;
         ctx2.fillStyle = C.overlay;
         ctx2.fillRect(0, 0, screen2.W, screen2.H);
       }
@@ -2519,9 +2611,10 @@
     const y = screen2.H - h * slide;
     const panel = rect(0, y, screen2.W, h + 16);
     const nodes = [
-      overlay(screen2, onClose != null ? onClose : void 0),
+      overlay(screen2, onClose != null ? onClose : void 0, slide),
       {
         id: "sheet",
+        noPress: true,
         rect: panel,
         onTap: () => {
         },
@@ -2709,19 +2802,36 @@
   var ResultScene = class {
     constructor(ui2) {
       __publicField(this, "ui", ui2);
+      __publicField(this, "shownFor", null);
     }
-    build(_now) {
+    build(now) {
       var _a;
       const { W, top, bottom } = this.ui.screen;
       const ctl2 = this.ui.ctl;
       const view = (_a = ctl2.room) == null ? void 0 : _a.view;
       if (!view || view.phase.kind !== "ended") return [];
+      const A = this.ui.animator;
+      const n = view.players.length;
+      const total = ANIM_MS.resultRowStart + n * ANIM_MS.resultRowStagger + ANIM_MS.resultRow + 100;
+      const key = `${ctl2.room.code}:${ctl2.room.gameId}`;
+      if (key !== this.shownFor) {
+        this.shownFor = key;
+        A.start("result", now, total);
+      }
+      const t = A.running("result", now) ? A.linear("result", now) * total : Infinity;
+      const phase = (start, dur) => easeOutCubic(Math.min(1, Math.max(0, (t - start) / dur)));
       const village = view.phase.winner === "village";
       const mySeat = ctl2.room.seats.findIndex((s) => s.openid === ctl2.openid);
       const nodes = [skyNode(this.ui.screen, 0, village ? "village" : "witch")];
       nodes.push({
         rect: rect(0, top, W, 90),
         draw: (ctx2) => {
+          const pt = phase(0, ANIM_MS.resultTitle);
+          const sc = 1 + 0.15 * (1 - pt);
+          ctx2.globalAlpha = pt;
+          ctx2.translate(W / 2, top + 30);
+          ctx2.scale(sc, sc);
+          ctx2.translate(-W / 2, -(top + 30));
           drawText(ctx2, village ? "\u6751\u6C11\u80DC\u5229" : "\u5973\u5DEB\u80DC\u5229", W / 2, top + 30, { size: 36, serif: true, color: village ? C.gold : C.moon, align: "center" });
           drawText(ctx2, village ? "\u5973\u5DEB\u9635\u8425\u5168\u90E8\u51FA\u5C40" : "\u6D3B\u7740\u7684\u4EBA\u5168\u90E8\u5C5E\u4E8E\u5973\u5DEB\u9635\u8425", W / 2, top + 68, { size: 13, color: C.textDim, align: "center" });
         }
@@ -2734,17 +2844,27 @@
         nodes.push({
           rect: r,
           draw: (ctx2) => {
+            const pr = phase(ANIM_MS.resultRowStart + i * ANIM_MS.resultRowStagger, ANIM_MS.resultRow);
+            ctx2.globalAlpha = pr;
+            ctx2.translate(0, (1 - pr) * 24);
             drawPanel(ctx2, r, { stroke: p.witchFaction ? C.danger : void 0 });
             drawBadge(ctx2, r.x + 18, r.y + r.h / 2, Math.min(13, r.h / 2 - 3), p.name, p.seat, p.character);
             drawText(ctx2, `${p.name}${i === mySeat ? "\uFF08\u4F60\uFF09" : ""}`, r.x + 38, r.y + r.h / 2 - 7, { size: 13, maxWidth: r.w * 0.4 });
             drawText(ctx2, `${p.witchFaction ? "\u5973\u5DEB\u9635\u8425" : "\u6751\u6C11\u9635\u8425"} \xB7 ${p.alive ? "\u5B58\u6D3B" : "\u51FA\u5C40"}`, r.x + 38, r.y + r.h / 2 + 9, { size: 11, color: p.witchFaction ? C.dangerText : C.textDim });
             const cw = 12;
             const x0 = r.x + r.w - 10 - p.tryals.length * (cw + 3);
-            p.tryals.forEach((t, j) => drawTryalChip(ctx2, rect(x0 + j * (cw + 3), r.y + r.h / 2 - 8, cw, 16), t.kind, true));
+            p.tryals.forEach((t2, j) => drawTryalChip(ctx2, rect(x0 + j * (cw + 3), r.y + r.h / 2 - 8, cw, 16), t2.kind, true));
           }
         });
       });
-      nodes.push(button("result-home", rect(12, btnY, W - 24, 48), "\u56DE\u5230\u9996\u9875", () => ctl2.backHome()));
+      const home = button("result-home", rect(12, btnY, W - 24, 48), "\u56DE\u5230\u9996\u9875", () => ctl2.backHome());
+      const pb = phase(ANIM_MS.resultRowStart + n * ANIM_MS.resultRowStagger, ANIM_MS.resultRow);
+      nodes.push(__spreadProps(__spreadValues({}, home), {
+        draw: (ctx2) => {
+          ctx2.globalAlpha = pb;
+          home.draw(ctx2);
+        }
+      }));
       return nodes;
     }
   };
@@ -2808,40 +2928,6 @@
   }
   function unrevealedTryals(m) {
     return m.priv ? m.priv.tryals.filter((t) => !t.revealed) : [];
-  }
-
-  // src/model/changes.ts
-  var ANIM_MS = { cardIn: 300, play: 450, night: 600, death: 500, reveal: 500, turn: 1800, panel: 250 };
-  var MAX_VERSION_STEP = 1 + 2 * 12;
-  var dayTurn = (m) => m.view.phase.kind === "day" ? m.turnSeat : null;
-  function diffTables(prev, next) {
-    var _a, _b, _c;
-    if (!prev || prev.code !== next.code || prev.view.log.length > next.view.log.length) return [];
-    if (next.view.version - prev.view.version > MAX_VERSION_STEP) return [];
-    const out = [];
-    if (prev.priv) {
-      const before = new Set(prev.priv.hand.map((c) => c.id));
-      for (const c of (_b = (_a = next.priv) == null ? void 0 : _a.hand) != null ? _b : []) if (!before.has(c.id)) out.push({ kind: "cardIn", id: c.id });
-    }
-    next.view.log.slice(prev.view.log.length).forEach((e, k) => {
-      if (e.t === "play") out.push({ kind: "play", index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
-    });
-    const wasNight = prev.view.phase.kind === "night";
-    const isNight = next.view.phase.kind === "night";
-    if (wasNight !== isNight) out.push({ kind: "night", on: isNight });
-    next.view.players.forEach((p, i) => {
-      const q = prev.view.players[i];
-      if (!q) return;
-      if (q.alive && !p.alive) out.push({ kind: "death", seat: i });
-      if (!p.alive) return;
-      p.tryals.forEach((t, j) => {
-        if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: "reveal", seat: i, index: j });
-      });
-    });
-    const turn = dayTurn(next);
-    if (turn !== null && turn !== dayTurn(prev)) out.push({ kind: "turn", seat: turn });
-    if (next.pending && next.pending.kind !== "turn" && ((_c = prev.pending) == null ? void 0 : _c.kind) !== next.pending.kind) out.push({ kind: "panel" });
-    return out;
   }
 
   // src/model/log.ts
@@ -3573,7 +3659,25 @@
     const label = charLabel(p);
     return label ? `${label}\xB7${p.name}` : p.name;
   }
-  function drawCell(ctx2, r, p, o) {
+  function drawStamp(ctx2, x, y, p) {
+    const s = 1 + 0.6 * (1 - p);
+    ctx2.save();
+    ctx2.globalAlpha *= p;
+    ctx2.translate(x, y);
+    ctx2.rotate(-0.12);
+    ctx2.scale(s, s);
+    drawText(ctx2, "\u51FA\u5C40", 0, 0, { size: 13, bold: true, color: C.badgeText, align: "center" });
+    ctx2.restore();
+  }
+  function drawFlash(ctx2, r, color) {
+    if (!color) return;
+    roundRect(ctx2, r, 8);
+    ctx2.fillStyle = color;
+    ctx2.fill();
+  }
+  function drawCell(ctx2, r0, p, o) {
+    var _a;
+    const r = o.shake ? __spreadProps(__spreadValues({}, r0), { x: r0.x + o.shake }) : r0;
     ctx2.globalAlpha = o.alpha;
     drawPanel(ctx2, r, {
       tint: o.targetable ? goldGlow(0.14) : void 0,
@@ -3581,6 +3685,7 @@
       glow: o.turn ? o.glow : 0,
       lineWidth: o.turn || o.order ? 2 : 1
     });
+    drawFlash(ctx2, r, o.flash);
     const cx = r.x + r.w / 2;
     const tag = o.partner && !o.order;
     if (r.h >= 70) {
@@ -3598,12 +3703,13 @@
       redBar(ctx2, p, r.x + 5, r.y + 27, r.w - 10);
       tryalRow2(ctx2, p, cx, r.y + 34, 10, o.flip);
     }
-    if (!p.alive) drawText(ctx2, "\u51FA\u5C40", cx, r.y + r.h / 2, { size: 13, bold: true, color: C.badgeText, align: "center" });
+    if (!p.alive) drawStamp(ctx2, cx, r.y + r.h / 2, (_a = o.stamp) != null ? _a : 1);
     if (o.order) drawText(ctx2, o.order === 1 ? "\u2460" : "\u2461", r.x + r.w - 9, r.y + 10, { size: 12, bold: true, color: C.gold, align: "center" });
     else if (tag) drawText(ctx2, "\u540C\u4F34", r.x + r.w - 5, r.y + 10, { size: 9, bold: true, color: C.dangerText, align: "right" });
     ctx2.globalAlpha = 1;
   }
-  function drawMeBar(ctx2, r, m, o) {
+  function drawMeBar(ctx2, r0, m, o) {
+    const r = o.shake ? __spreadProps(__spreadValues({}, r0), { x: r0.x + o.shake }) : r0;
     drawPanel(ctx2, r, {
       tier: "strip",
       tint: o.targetable ? goldGlow(0.14) : void 0,
@@ -3611,6 +3717,7 @@
       glow: m.isMyTurn ? o.glow : 0,
       lineWidth: o.order || m.isMyTurn ? 2 : 1
     });
+    drawFlash(ctx2, r, o.flash);
     const me = m.me;
     const cy = r.y + r.h / 2;
     if (!me) {
@@ -3676,13 +3783,21 @@
     /** 比较上一帧的画面数据，启动对应动效，再算出这一帧的动效参数 */
     anim(m, now) {
       const A = this.ui.animator;
+      let mine = 0;
       for (const c of diffTables(this.prev, m)) {
         switch (c.kind) {
           case "cardIn":
-            A.start(`in:${c.id}`, now, ANIM_MS.cardIn);
+            A.start(`in:${c.id}`, now + mine++ * ANIM_MS.cardStagger, ANIM_MS.cardIn);
+            break;
+          case "draw":
+            for (let k = 0; k < c.count; k++) A.start(`draw:${c.seat}:${now}:${k}`, now + k * ANIM_MS.cardStagger, ANIM_MS.othersDraw, { seat: c.seat });
             break;
           case "play":
             A.start(`fly:${c.index}`, now, ANIM_MS.play, c);
+            A.start(`hit:${c.to}`, now + ANIM_MS.play, ANIM_MS.hit, { red: CARD_INFO[c.card].color === "red" });
+            break;
+          case "trial":
+            A.start(`trial:${c.seat}`, now, ANIM_MS.trial);
             break;
           case "night":
             A.start("sky", now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
@@ -3692,6 +3807,7 @@
             break;
           case "reveal":
             A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
+            if (c.witch) A.start(`burst:${c.seat}`, now + ANIM_MS.reveal, ANIM_MS.burst);
             break;
           case "turn":
             A.start("turn", now, ANIM_MS.turn);
@@ -3702,50 +3818,80 @@
         }
       }
       this.prev = m;
+      const live = (key) => A.started(key, now) && A.running(key, now);
       const staticDark = m.view.phase.kind === "night" ? 1 : 0;
       const sky2 = A.data("sky");
       const darkness = sky2 && A.running("sky", now) ? sky2.from + (sky2.to - sky2.from) * A.progress("sky", now) : staticDark;
       const glow2 = A.running("turn", now) ? 0.6 + 0.4 * Math.abs(Math.sin(A.linear("turn", now) * Math.PI * 3)) : 0.6;
+      const deck = this.deckPoint();
+      const shakeOf = (seat) => {
+        const k = `trial:${seat}`;
+        if (!live(k)) return 0;
+        const p = A.linear(k, now);
+        return Math.sin(p * Math.PI * 6) * 3 * (1 - p);
+      };
+      const flashOf = (seat) => {
+        const t = `trial:${seat}`;
+        if (live(t)) return alpha(C.danger, 0.4 * Math.abs(Math.sin(A.linear(t, now) * Math.PI * 2)));
+        const b = `burst:${seat}`;
+        if (live(b)) return alpha(C.danger, 0.45 * (1 - A.progress(b, now)));
+        const h = `hit:${seat}`;
+        if (live(h)) return alpha(A.data(h).red ? C.danger : C.gold, 0.4 * (1 - A.progress(h, now)));
+        return null;
+      };
       const overlay2 = [];
       for (const key of A.keys()) {
-        if (!key.startsWith("fly:") || !A.running(key, now)) continue;
-        const c = A.data(key);
-        const from = this.seatRect(m, c.from);
-        const to = this.seatRect(m, c.to);
-        if (!from || !to) continue;
-        const p = A.progress(key, now);
-        const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
-        const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p;
-        const r = rect(x - 14, y - 20, 28, 40);
-        const [top, bottom] = CARD_GRADIENT[CARD_INFO[c.card].color];
-        overlay2.push({
-          rect: r,
-          draw: (ctx2) => {
-            ctx2.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
-            const g = ctx2.createLinearGradient(0, r.y, 0, r.y + r.h);
-            g.addColorStop(0, top);
-            g.addColorStop(1, bottom);
-            roundRect(ctx2, r, 4);
-            ctx2.fillStyle = g;
-            ctx2.fill();
-            ctx2.strokeStyle = C.goldLine;
-            ctx2.stroke();
-            ctx2.globalAlpha = 1;
-          }
-        });
+        if (key.startsWith("fly:") && live(key)) {
+          const c = A.data(key);
+          const from = this.seatRect(m, c.from);
+          const to = this.seatRect(m, c.to);
+          if (!from || !to) continue;
+          const p = A.progress(key, now);
+          const x = from.x + from.w / 2 + (to.x + to.w / 2 - from.x - from.w / 2) * p;
+          const y = from.y + from.h / 2 + (to.y + to.h / 2 - from.y - from.h / 2) * p - Math.sin(Math.PI * p) * 40;
+          const s = 1 + 0.3 * Math.sin(Math.PI * p);
+          overlay2.push({
+            rect: rect(x - 14 * s, y - 20 * s, 28 * s, 40 * s),
+            draw: (ctx2) => {
+              ctx2.globalAlpha = p > 0.85 ? (1 - p) / 0.15 : 1;
+              ctx2.translate(x, y);
+              ctx2.scale(s, s);
+              drawCardFace(ctx2, rect(-14, -20, 28, 40), c.card);
+            }
+          });
+        }
+        if (key.startsWith("draw:") && live(key)) {
+          const { seat } = A.data(key);
+          const to = this.seatRect(m, seat);
+          if (!to) continue;
+          const p = A.progress(key, now);
+          const x = deck.x + (to.x + to.w / 2 - deck.x) * p;
+          const y = deck.y + (to.y + to.h / 2 - deck.y) * p - Math.sin(Math.PI * p) * 24;
+          overlay2.push({
+            rect: rect(x - 9, y - 13, 18, 26),
+            draw: (ctx2) => {
+              ctx2.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
+              drawCardBack(ctx2, rect(x - 9, y - 13, 18, 26));
+            }
+          });
+        }
       }
+      const meSeat = m.mySeat;
       return {
         darkness,
         glow: glow2,
         cell: (seat) => {
           var _a, _b;
           const alive = (_b = (_a = m.view.players[seat]) == null ? void 0 : _a.alive) != null ? _b : true;
-          const alpha2 = A.running(`dead:${seat}`, now) ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
+          const dying = A.running(`dead:${seat}`, now);
+          const alphaV = dying ? 1 - 0.6 * A.progress(`dead:${seat}`, now) : alive ? 1 : 0.4;
           const f = A.data(`flip:${seat}`);
           const flip = f && A.running(`flip:${seat}`, now) ? { index: f.index, p: A.progress(`flip:${seat}`, now) } : null;
-          return { alpha: alpha2, flip };
+          return { alpha: alphaV, flip, shake: shakeOf(seat), flash: flashOf(seat), stamp: dying ? A.progress(`dead:${seat}`, now) : 1 };
         },
-        cardIn: (id) => A.progress(`in:${id}`, now),
+        me: meSeat === null ? { shake: 0, flash: null } : { shake: shakeOf(meSeat), flash: flashOf(meSeat) },
+        cardIn: (id) => A.started(`in:${id}`, now) ? A.progress(`in:${id}`, now) : null,
+        deck,
         overlay: overlay2,
         panelSlide: A.progress("panel", now)
       };
@@ -3768,6 +3914,13 @@
       if (seat === m.mySeat) return L.me;
       const i = m.others.findIndex((p) => p.seat === seat);
       return i >= 0 ? L.grid[i] : null;
+    }
+    /** 牌堆数字在画面上的位置（抽牌飞行的起点） */
+    deckPoint() {
+      var _a;
+      const r = (_a = this.layout) == null ? void 0 : _a.top;
+      if (!r) return { x: this.ui.screen.W - 80, y: 40 };
+      return { x: r.x + r.w - LEAVE_W - 28, y: r.y + r.h / 2 - 7 };
     }
     sync(m) {
       var _a, _b;
@@ -3896,7 +4049,7 @@
           if (kind && me !== null) this.tapSeat(m, me);
           else if (!kind && m.priv) this.mine = true;
         },
-        draw: (ctx2) => drawMeBar(ctx2, r, m, { targetable, order, glow: a.glow })
+        draw: (ctx2) => drawMeBar(ctx2, r, m, { targetable, order, glow: a.glow, shake: a.me.shake, flash: a.me.flash })
       };
     }
     infoText(m) {
@@ -3944,18 +4097,31 @@
       const step = n > 1 ? Math.min(cw + 6, (r.w - cw) / (n - 1)) : 0;
       const x0 = r.x + (r.w - (cw + step * (n - 1))) / 2;
       return hand.map((c, i) => {
+        var _a2;
         const lifted = c.id === this.sel;
         const p = a.cardIn(c.id);
-        const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12) + (1 - p) * 40, cw, ch);
+        const cr = rect(x0 + step * i, r.y + (lifted ? 0 : 12), cw, ch);
+        const opts = { selected: lifted, dim: ((_a2 = m.pending) == null ? void 0 : _a2.kind) === "turn" && !playable.includes(c.id) };
         return {
           id: `card:${c.id}`,
           rect: cr,
           onTap: () => this.tapCard(c.id, playable),
           draw: (ctx2) => {
-            var _a2;
-            ctx2.globalAlpha = p;
-            drawCardFace(ctx2, cr, c.kind, { selected: lifted, dim: ((_a2 = m.pending) == null ? void 0 : _a2.kind) === "turn" && !playable.includes(c.id) });
-            ctx2.globalAlpha = 1;
+            if (p === null) return;
+            if (p >= 1) {
+              drawCardFace(ctx2, cr, c.kind, opts);
+              return;
+            }
+            const x = a.deck.x + (cr.x + cw / 2 - a.deck.x) * p;
+            const y = a.deck.y + (cr.y + ch / 2 - a.deck.y) * p - Math.sin(Math.PI * p) * 30;
+            const s = 0.4 + 0.6 * p;
+            const q = Math.min(1, Math.max(0, (p - 0.6) / 0.4));
+            const sx = Math.abs(1 - 2 * q);
+            ctx2.translate(x, y);
+            ctx2.scale(s * Math.max(sx, 0.02), s);
+            const local = rect(-cw / 2, -ch / 2, cw, ch);
+            if (q < 0.5) drawCardBack(ctx2, local);
+            else drawCardFace(ctx2, local, c.kind, opts);
           }
         };
       });
@@ -4047,22 +4213,46 @@
       __publicField(this, "result");
       __publicField(this, "table", null);
       __publicField(this, "tableKey", "");
+      __publicField(this, "shown", "");
       this.home = new HomeScene(ui2);
       this.lobby = new LobbyScene(ui2);
       this.result = new ResultScene(ui2);
     }
-    build(now) {
+    pick(now) {
       const ctl2 = this.ui.ctl;
       if (!ctl2.code) {
         this.table = null;
         this.tableKey = "";
-        return this.home.build(now);
+        return ["home", this.home.build(now)];
       }
       const room = ctl2.room;
-      if (!room) return this.message(`\u6B63\u5728\u8FDB\u5165\u623F\u95F4 ${ctl2.code}\u2026`, "loading-home");
-      if (!room.view) return room.status === "lobby" ? this.lobby.build(now) : this.message("\u623F\u95F4\u5DF2\u5173\u95ED", "closed-home");
-      if (room.view.phase.kind === "ended") return this.ended(now);
-      return this.playing(now);
+      if (!room) return ["message", this.message(`\u6B63\u5728\u8FDB\u5165\u623F\u95F4 ${ctl2.code}\u2026`, "loading-home")];
+      if (!room.view) return room.status === "lobby" ? ["lobby", this.lobby.build(now)] : ["message", this.message("\u623F\u95F4\u5DF2\u5173\u95ED", "closed-home")];
+      if (room.view.phase.kind === "ended") return ["result", this.ended(now)];
+      return ["table", this.playing(now)];
+    }
+    build(now) {
+      const [kind, nodes] = this.pick(now);
+      const A = this.ui.animator;
+      if (kind !== this.shown) {
+        this.shown = kind;
+        A.start("scene", now, ANIM_MS.scene);
+      }
+      if (!A.running("scene", now)) return nodes;
+      const { W, H } = this.ui.screen;
+      const a = 1 - A.progress("scene", now);
+      return [
+        ...nodes,
+        {
+          id: "scene-fade",
+          rect: rect(0, 0, W, H),
+          draw: (ctx2) => {
+            ctx2.globalAlpha = a;
+            ctx2.fillStyle = C.skyBottom;
+            ctx2.fillRect(0, 0, W, H);
+          }
+        }
+      ];
     }
     playing(now) {
       const room = this.ui.ctl.room;
@@ -4090,7 +4280,7 @@
   wx.cloud.init({ traceUser: true });
   var { ctx, screen, dpr } = createPlatform();
   setSurfaceFactory(wxSurfaces, dpr);
-  var app = new App(ctx, screen, (cb) => requestAnimationFrame(() => cb()), () => Date.now());
+  var app = new App(ctx, screen, (cb) => requestAnimationFrame(() => cb()), () => Date.now(), drawPressShade);
   bindTouches(app);
   var store = new LocalStore(wx);
   var db = wx.cloud.database();
