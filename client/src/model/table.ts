@@ -44,7 +44,7 @@ export function buildTable(room: RoomDoc, hand: HandDoc | null, openid: string):
     others,
     turnSeat: view.turn,
     isMyTurn: view.phase.kind === 'day' && view.turn === mySeat && !!me?.alive,
-    pending: priv?.pending ?? null,
+    pending: view.phase.kind === 'ended' ? null : (priv?.pending ?? null),
     deadline: room.deadline,
     winner: view.phase.kind === 'ended' ? view.phase.winner : null,
   };

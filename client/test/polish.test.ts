@@ -405,4 +405,17 @@ describe('最后一只女巫被揭穿：游戏桌多停一会再出结算', () =
     expect(root.build(0).some((n) => n.id === 'result-home')).toBe(true);
   });
 });
+
+describe('局终后不再有待选操作', () => {
+  it('房间已结束而手牌文档还带着旧的待选：pending 为空', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const hand = handOf(s, 0);
+    (hand.view as { pending: unknown }).pending = { kind: 'turn' };
+    const room = roomOf(s);
+    expect(buildTable(room, hand, 'u0')!.pending).not.toBeNull();
+    s.phase = { kind: 'ended', winner: 'village' };
+    expect(buildTable(roomOf(s), hand, 'u0')!.pending).toBeNull();
+  });
+});
 });
