@@ -15,7 +15,7 @@ export type Change =
 export const ANIM_MS = {
   cardIn: 450, cardStagger: 80, othersDraw: 400, play: 600, hit: 250, trial: 600,
   death: 500, reveal: 500, burst: 350, night: 900, turn: 1800, panel: 250, scene: 250,
-  resultTitle: 400, resultRowStart: 250, resultRowStagger: 80, resultRow: 300,
+  resultTitle: 400, resultRowStart: 250, resultRowStagger: 80, resultRow: 300, endHold: 1500,
 } as const;
 
 /**

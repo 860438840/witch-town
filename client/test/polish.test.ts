@@ -14,8 +14,9 @@ import { ANIM_MS } from '../src/model/changes';
 import { TableScene } from '../src/scenes/table';
 import { drawCell } from '../src/scenes/tableParts';
 import { drawNodes, type Node } from '../src/core/node';
+import { revealTryal } from '../../engine/src/death';
 import { buildTable, phaseTitle } from '../src/model/table';
-import { handOf, lobbyRoom, newState, roomOf } from './fixtures';
+import { handOf, lobbyRoom, newState, roomOf, setDay } from './fixtures';
 import { fakeCtl, fakeUi, SCREEN, tap } from './sceneKit';
 
 /** 画某段文字时生效的字体（所有出现处） */
@@ -360,4 +361,48 @@ describe('弹窗、结算、换界面的动效', () => {
     expect(lobby[lobby.length - 1].id).toBe('scene-fade');
     expect(lobby[lobby.length - 1].onTap).toBeUndefined();
   });
+
+describe('最后一只女巫被揭穿：游戏桌多停一会再出结算', () => {
+  const witchReveal = () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const w = s.players.find((p) => p.tryals.some((t) => t.kind === 'witch'))!;
+    // 只留这一只女巫，揭穿后村民获胜
+    for (const p of s.players) if (p !== w) for (const t of p.tryals) if (t.kind === 'witch') t.kind = 'villager';
+    return { s, w };
+  };
+  const setup = (room: unknown) => {
+    const ctl = fakeCtl({ code: '1234', room });
+    const ui = fakeUi(ctl);
+    return { ctl, ui, root: new RootScene(ui) };
+  };
+  it('牌桌在显示时局终：停 endHold 后才出结算，期间播翻牌和出局动效', () => {
+    const { s, w } = witchReveal();
+    const first = roomOf(s);
+    const { ctl, ui, root } = setup(first);
+    const first0 = root.build(0);
+    expect(first0.some((n) => n.id?.startsWith('seat:'))).toBe(true);
+    const tid = w.tryals.find((t) => t.kind === 'witch')!.id;
+    revealTryal(s, w.seat, tid, 'trial');
+    expect(s.phase.kind).toBe('ended');
+    (ctl as unknown as { room: unknown }).room = roomOf(s);
+    const t0 = 1000;
+    const held = root.build(t0);
+    expect(held.some((n) => n.id?.startsWith('seat:'))).toBe(true);
+    expect(held.some((n) => n.id === 'result-home')).toBe(false);
+    expect(ui.animator.running(`flip:${w.seat}`, t0 + 1)).toBe(true);
+    expect(ui.animator.running(`dead:${w.seat}`, t0 + ANIM_MS.reveal + ANIM_MS.burst + 1)).toBe(true);
+    const almost = root.build(t0 + ANIM_MS.endHold - 1);
+    expect(almost.some((n) => n.id?.startsWith('seat:'))).toBe(true);
+    const done = root.build(t0 + ANIM_MS.endHold);
+    expect(done.some((n) => n.id === 'result-home')).toBe(true);
+    expect(done.some((n) => n.id?.startsWith('seat:'))).toBe(false);
+  });
+  it('进房时就已结束：直接出结算，不停', () => {
+    const { s, w } = witchReveal();
+    revealTryal(s, w.seat, w.tryals.find((t) => t.kind === 'witch')!.id, 'trial');
+    const { root } = setup(roomOf(s));
+    expect(root.build(0).some((n) => n.id === 'result-home')).toBe(true);
+  });
+});
 });

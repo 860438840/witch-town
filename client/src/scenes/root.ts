@@ -17,6 +17,7 @@ export class RootScene implements Scene {
   private table: TableScene | null = null;
   private tableKey = '';
   private shown = '';
+  private holdKey = '';
 
   constructor(private readonly ui: Ui) {
     this.home = new HomeScene(ui);
@@ -30,12 +31,23 @@ export class RootScene implements Scene {
       // 回到首页就丢掉游戏桌；再进同一局时从新画面开始，不会把离开期间的变化当动效重放
       this.table = null;
       this.tableKey = '';
+      this.holdKey = '';
       return ['home', this.home.build(now)];
     }
     const room = ctl.room;
     if (!room) return ['message', this.message(`正在进入房间 ${ctl.code}…`, 'loading-home')];
     if (!room.view) return room.status === 'lobby' ? ['lobby', this.lobby.build(now)] : ['message', this.message('房间已关闭', 'closed-home')];
-    if (room.view.phase.kind === 'ended') return ['result', this.ended(now)];
+    if (room.view.phase.kind === 'ended') {
+      // 刚在牌桌上看着游戏结束：先把最后的翻牌、出局动效在牌桌上播完，再出结算
+      const key = `${room.code}:${room.gameId}`;
+      const A = this.ui.animator;
+      if (this.shown === 'table' && this.table && this.holdKey !== key) {
+        this.holdKey = key;
+        A.start('endHold', now, ANIM_MS.endHold);
+      }
+      if (this.holdKey === key && this.table && A.running('endHold', now)) return ['table', this.table.build(now)];
+      return ['result', this.ended(now)];
+    }
     return ['table', this.playing(now)];
   }
 
