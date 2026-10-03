@@ -36,7 +36,8 @@ export function diffTables(prev: TableModel | null, next: TableModel): Change[] 
     const before = new Set(prev.priv.hand.map((c) => c.id));
     for (const c of next.priv?.hand ?? []) if (!before.has(c.id)) out.push({ kind: 'cardIn', id: c.id });
   }
-  next.view.log.slice(prev.view.log.length).forEach((e, k) => {
+  const fresh = next.view.log.slice(prev.view.log.length);
+  fresh.forEach((e, k) => {
     if (e.t === 'play') out.push({ kind: 'play', index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
     if (e.t === 'trial') out.push({ kind: 'trial', seat: e.target });
   });
@@ -46,7 +47,18 @@ export function diffTables(prev: TableModel | null, next: TableModel): Change[] 
   next.view.players.forEach((p, i) => {
     const q = prev.view.players[i];
     if (!q) return;
-    if (q.alive && !p.alive) out.push({ kind: 'death', seat: i });
+    if (q.alive && !p.alive) {
+      // 翻开这张牌当场出局（翻出女巫、翻开最后一张）：只播被翻的那张；死亡连带翻开的其余身份卡（cause 'death'）不播
+      const used = new Set<number>();
+      for (const e of fresh) {
+        if (e.t !== 'reveal' || e.seat !== i || e.cause === 'death') continue;
+        const j = p.tryals.findIndex((t, k) => !used.has(k) && t.revealed && q.tryals[k] && !q.tryals[k].revealed && t.kind === e.kind);
+        if (j < 0) continue;
+        used.add(j);
+        out.push({ kind: 'reveal', seat: i, index: j, witch: e.kind === 'witch' });
+      }
+      out.push({ kind: 'death', seat: i });
+    }
     if (i !== next.mySeat && p.handCount > q.handCount) out.push({ kind: 'draw', seat: i, count: p.handCount - q.handCount });
     if (!p.alive) return;
     p.tryals.forEach((t, j) => {

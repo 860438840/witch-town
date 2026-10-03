@@ -7,10 +7,18 @@ import { handOf, newState, roomOf, setDay } from './fixtures';
 import { fakeCtl, fakeUi } from './sceneKit';
 import { MAX_PLAYERS } from '../../server/src/types';
 import { setSurfaceFactory } from '../src/theme/art/cache';
-import { drawNodes } from '../src/core/node';
+import { drawNodes, findNode } from '../src/core/node';
 import { fakeCtx, fakeSurfaces } from './fakes';
+import { revealTryal } from '../../engine/src/death';
 
 const model = (s: ReturnType<typeof newState>, seat = 0) => buildTable(roomOf(s), handOf(s, seat), `u${seat}`)!;
+
+/** 一个手里有未翻开女巫卡的别人座位，和那张卡 */
+const witchSeatOf = (s: ReturnType<typeof newState>) => {
+  const seat = s.players.findIndex((p, i) => i !== 0 && p.tryals.some((t) => t.kind === 'witch' && !t.revealed));
+  const index = s.players[seat].tryals.findIndex((t) => t.kind === 'witch' && !t.revealed);
+  return { seat, index, id: s.players[seat].tryals[index].id };
+};
 
 describe('diffTables', () => {
   it('MAX_VERSION_STEP 跟着最大人数走（夜晚 tick：保护 1 + 每人认罪 + 每人投票）', () => {
@@ -128,6 +136,35 @@ describe('diffTables', () => {
     expect(changes).toContainEqual({ kind: 'reveal', seat: seatW, index: iw, witch: true });
     expect(changes).toContainEqual({ kind: 'reveal', seat: seatV, index: iv, witch: false });
   });
+
+  it('翻出女巫当场出局：仍然有这张牌的翻牌，死亡连带翻开的其余身份卡不算', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const w = witchSeatOf(s);
+    const before = model(s);
+    revealTryal(s, w.seat, w.id, 'trial');
+    s.version += 1;
+    const changes = diffTables(before, model(s));
+    expect(changes).toContainEqual({ kind: 'reveal', seat: w.seat, index: w.index, witch: true });
+    expect(changes).toContainEqual({ kind: 'death', seat: w.seat });
+    expect(changes.filter((c) => c.kind === 'reveal')).toHaveLength(1);
+  });
+
+  it('翻开最后一张（村民）出局：只有这一张的翻牌', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const seat = s.players.findIndex((p, i) => i !== 0 && p.tryals.every((t) => t.kind !== 'witch'));
+    const p = s.players[seat];
+    p.tryals.slice(0, -1).forEach((t) => (t.revealed = true));
+    const last = p.tryals.length - 1;
+    const before = model(s);
+    revealTryal(s, seat, p.tryals[last].id, 'trial');
+    s.version += 1;
+    const changes = diffTables(before, model(s));
+    expect(changes).toContainEqual({ kind: 'reveal', seat, index: last, witch: false });
+    expect(changes).toContainEqual({ kind: 'death', seat });
+    expect(changes.filter((c) => c.kind === 'reveal')).toHaveLength(1);
+  });
 });
 
 describe('游戏桌动效', () => {
@@ -210,6 +247,38 @@ describe('游戏桌动效', () => {
     expect(t.at(m, 1000 + ANIM_MS.reveal / 2).cell(seatW).flash ?? null).toBeNull();
   });
 
+  it('翻出女巫当场出局：先翻牌、再冒红光，之后才盖出局印章', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const w = witchSeatOf(s);
+    const { t, m } = start(s, () => revealTryal(s, w.seat, w.id, 'trial'));
+    const flipping = t.at(m, 1000 + ANIM_MS.reveal / 2).cell(w.seat);
+    expect(flipping.flip).toEqual({ index: w.index, p: expect.any(Number) });
+    expect(flipping.alpha).toBe(1);
+    expect(flipping.stamp).toBe(0);
+    const bursting = t.at(m, 1000 + ANIM_MS.reveal + ANIM_MS.burst / 2).cell(w.seat);
+    expect(bursting.flash).toEqual(expect.any(String));
+    expect(bursting.stamp).toBe(0);
+    expect(t.at(m, 1000 + ANIM_MS.reveal + ANIM_MS.burst + ANIM_MS.death).cell(w.seat).stamp).toBe(1);
+  });
+
+  it('控告引发受审：等牌飞到才晃动', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const { t, m } = start(s, () => {
+      s.log.push({ t: 'play', seat: 1, kind: 'accusation', targets: [2] });
+      s.log.push({ t: 'trial', target: 2, initiator: 1 });
+    });
+    // 不等的话 trial/4 正是晃得最明显的时刻；此时牌还在飞
+    expect(ANIM_MS.trial / 4).toBeLessThan(ANIM_MS.play);
+    for (const dt of [ANIM_MS.trial / 4, ANIM_MS.play / 2]) {
+      const flying = t.at(m, 1000 + dt).cell(2);
+      expect(flying.shake ?? 0).toBe(0);
+      expect(flying.flash ?? null).toBeNull();
+    }
+    expect(Math.abs(t.at(m, 1000 + ANIM_MS.play + ANIM_MS.trial / 4).cell(2).shake ?? 0)).toBeGreaterThan(0.5);
+  });
+
   it('出局：印章盖到一半，结束后盖好', () => {
     const s = newState(5);
     setDay(s, 1);
@@ -252,6 +321,37 @@ describe('游戏桌动效', () => {
     const after1 = surfaces.created.length;
     for (let i = 1; i <= 30; i++) drawNodes(ctx, t.build(1000 + i * 20));
     expect(surfaces.created.length).toBe(after1);
+  });
+
+  it('按住正在飞入的手牌：按下效果按原坐标画，不受飞行的平移缩放影响', () => {
+    const s = newState(5);
+    setDay(s, 0);
+    const ctl = fakeCtl({ room: roomOf(s), hand: handOf(s, 0) }) as unknown as { room: unknown; hand: unknown };
+    const ui = fakeUi(ctl as never);
+    const t = new TableScene(ui);
+    t.build(0);
+    s.players[0].hand.push({ id: 'n1', kind: 'evidence' });
+    s.version += 1;
+    ctl.room = roomOf(s);
+    ctl.hand = handOf(s, 0);
+    t.build(1000);
+    const card = findNode(t.build(1000 + ANIM_MS.cardIn / 2), 'card:n1')!;
+    const { ctx, calls } = fakeCtx();
+    let atShade = -1;
+    drawNodes(ctx, [card], card, () => (atShade = calls.length));
+    // 按调用记录重放平移、缩放和 save/restore，得到画按下效果时的变换
+    type M = { tx: number; ty: number; sx: number; sy: number };
+    let cur: M = { tx: 0, ty: 0, sx: 1, sy: 1 };
+    const stack: M[] = [];
+    for (const [name, args] of calls.slice(0, atShade)) {
+      const [a, b] = args as number[];
+      if (name === 'save') stack.push({ ...cur });
+      if (name === 'restore') cur = stack.pop()!;
+      if (name === 'translate') cur = { ...cur, tx: cur.tx + a * cur.sx, ty: cur.ty + b * cur.sy };
+      if (name === 'scale') cur = { ...cur, sx: cur.sx * a, sy: cur.sy * b };
+    }
+    expect(atShade).toBeGreaterThan(0);
+    expect(cur).toEqual({ tx: 0, ty: 1, sx: 1, sy: 1 });
   });
 
   it('收到新牌时启动滑入动画；入夜时启动天色动画', () => {

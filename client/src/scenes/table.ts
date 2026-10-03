@@ -97,7 +97,15 @@ export class TableScene implements Scene {
   protected anim(m: TableModel, now: number): AnimState {
     const A = this.ui.animator;
     let mine = 0;
-    for (const c of diffTables(this.prev, m)) {
+    const changes = diffTables(this.prev, m);
+    // 同一批里的先后：被翻开的牌翻完（女巫再冒完红光）才盖出局印章；控告的牌飞到了才开始受审
+    const revealEnd = new Map<number, number>();
+    const playTo = new Set<number>();
+    for (const c of changes) {
+      if (c.kind === 'reveal') revealEnd.set(c.seat, Math.max(revealEnd.get(c.seat) ?? 0, ANIM_MS.reveal + (c.witch ? ANIM_MS.burst : 0)));
+      if (c.kind === 'play') playTo.add(c.to);
+    }
+    for (const c of changes) {
       switch (c.kind) {
         case 'cardIn':
           A.start(`in:${c.id}`, now + mine++ * ANIM_MS.cardStagger, ANIM_MS.cardIn);
@@ -110,13 +118,13 @@ export class TableScene implements Scene {
           A.start(`hit:${c.to}`, now + ANIM_MS.play, ANIM_MS.hit, { red: CARD_INFO[c.card].color === 'red' });
           break;
         case 'trial':
-          A.start(`trial:${c.seat}`, now, ANIM_MS.trial);
+          A.start(`trial:${c.seat}`, now + (playTo.has(c.seat) ? ANIM_MS.play : 0), ANIM_MS.trial);
           break;
         case 'night':
           A.start('sky', now, ANIM_MS.night, { from: c.on ? 0 : 1, to: c.on ? 1 : 0 });
           break;
         case 'death':
-          A.start(`dead:${c.seat}`, now, ANIM_MS.death);
+          A.start(`dead:${c.seat}`, now + (revealEnd.get(c.seat) ?? 0), ANIM_MS.death);
           break;
         case 'reveal':
           A.start(`flip:${c.seat}`, now, ANIM_MS.reveal, { index: c.index });
@@ -453,11 +461,14 @@ export class TableScene implements Scene {
           const s = 0.4 + 0.6 * p;
           const q = Math.min(1, Math.max(0, (p - 0.6) / 0.4));
           const sx = Math.abs(1 - 2 * q);
+          // 变换只作用于飞行中的牌：按下效果之后还要按原坐标画
+          ctx.save();
           ctx.translate(x, y);
           ctx.scale(s * Math.max(sx, 0.02), s);
           const local = rect(-cw / 2, -ch / 2, cw, ch);
           if (q < 0.5) drawCardBack(ctx, local);
           else drawCardFace(ctx, local, c.kind, opts);
+          ctx.restore();
         },
       };
     });

@@ -6,6 +6,7 @@ import { TableScene } from '../src/scenes/table';
 import type { Ui } from '../src/scenes/ui';
 import { drawPressShade } from '../src/theme/draw';
 import type { GameState } from '../../engine/src/index';
+import { revealTryal } from '../../engine/src/death';
 import { handOf, newState, roomOf, setDay } from '../test/fixtures';
 import { busy, ctlFor, dpr } from './harness';
 
@@ -44,8 +45,12 @@ const DEMOS: Demo[] = [
     title: '翻出女巫',
     before: busy,
     change: (s) => {
-      const p = s.players[witchSeat(s)];
-      const t = p.tryals.find((x) => x.kind === 'witch' && !x.revealed) ?? p.tryals.find((x) => !x.revealed) ?? p.tryals[0];
+      const seat = witchSeat(s);
+      const p = s.players[seat];
+      const w = p.tryals.find((x) => x.kind === 'witch' && !x.revealed);
+      // 真实对局里翻出女巫会在同一次操作里出局：用引擎的 revealTryal 得到同样的日志和状态
+      if (w) return revealTryal(s, seat, w.id, 'trial');
+      const t = p.tryals.find((x) => !x.revealed) ?? p.tryals[0];
       t.revealed = true;
     },
   },
