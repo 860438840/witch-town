@@ -231,3 +231,10 @@ export function drawIconRef(ctx: Ctx, ref: IconRef, x: number, y: number, h: num
   drawBadge(ctx, x + h / 2, y + h / 2, h / 2, '', 0, ref.char);
   return h;
 }
+
+/** 按下效果：在被按住的元素上盖一层暗色（App 已把它下移 1px） */
+export function drawPressShade(ctx: Ctx, r: Rect): void {
+  roundRect(ctx, r, 8);
+  ctx.fillStyle = C.pressShade;
+  ctx.fill();
+}

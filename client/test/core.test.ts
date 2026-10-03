@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { App, type Scene } from '../src/core/app';
-import { contains, inset, rect } from '../src/core/geom';
+import { contains, inset, rect, type Rect } from '../src/core/geom';
 import { findNode, hitTest, type Node } from '../src/core/node';
 import { ellipsize, wrapText } from '../src/core/text';
 import { Animator, easeOutCubic } from '../src/core/tween';
@@ -218,5 +218,59 @@ describe('App 按住拖动', () => {
     app.touchStart(90, 10);
     app.touchStart(90, 12);
     expect(events.filter((e) => e !== 'frame')).toEqual(['press 10', 'end', 'press 12']);
+  });
+});
+
+describe('按下效果', () => {
+  const setup = () => {
+    const { ctx, ops } = fakeCtx();
+    const shaded: Rect[] = [];
+    const app = new App(ctx, { W: 100, H: 100, top: 0, bottom: 100 }, (cb) => cb(), () => 0, (_c, r) => shaded.push(r));
+    const tap = vi.fn();
+    const btn: Node = { id: 'b', rect: rect(10, 10, 40, 20), onTap: tap, draw: (c) => c.fillRect(0, 0, 1, 1) };
+    const mask: Node = { id: 'm', rect: rect(60, 60, 40, 40), onTap: () => {}, noPress: true };
+    app.setScene({ build: () => [btn, mask] });
+    ops.length = 0;
+    return { app, ops, shaded, tap };
+  };
+
+  it('按住时下沉并盖暗色；松开后恢复并触发点击', () => {
+    const { app, ops, shaded, tap } = setup();
+    app.touchStart(20, 20);
+    expect(ops).toContain('translate');
+    expect(shaded).toEqual([rect(10, 10, 40, 20)]);
+    ops.length = 0;
+    shaded.length = 0;
+    app.touchEnd(20, 20);
+    expect(tap).toHaveBeenCalled();
+    expect(ops).not.toContain('translate');
+    expect(shaded).toEqual([]);
+  });
+
+  it('按下后手指移动超过 8px（滚动）就取消按下效果', () => {
+    const { app, ops, shaded } = setup();
+    app.touchStart(20, 20);
+    ops.length = 0;
+    shaded.length = 0;
+    app.touchMove(20, 40);
+    expect(ops).not.toContain('translate');
+    expect(shaded).toEqual([]);
+  });
+
+  it('系统打断时取消按下效果', () => {
+    const { app, ops, shaded } = setup();
+    app.touchStart(20, 20);
+    ops.length = 0;
+    shaded.length = 0;
+    app.touchCancel();
+    expect(ops).not.toContain('translate');
+    expect(shaded).toEqual([]);
+  });
+
+  it('noPress 的区域（遮罩、弹窗底板）没有按下效果', () => {
+    const { app, ops, shaded } = setup();
+    app.touchStart(70, 70);
+    expect(ops).not.toContain('translate');
+    expect(shaded).toEqual([]);
   });
 });

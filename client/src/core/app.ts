@@ -1,4 +1,4 @@
-import { drawNodes, hitTest, type Ctx, type Drag, type Node } from './node';
+import { drawNodes, hitTest, type Ctx, type Drag, type Node, type PressShade } from './node';
 import { Animator } from './tween';
 
 export interface Screen {
@@ -29,12 +29,14 @@ export class App {
   private scheduled = false;
   private touch: Touch | null = null;
   private drag: Drag | null = null;
+  private press: { x: number; y: number } | null = null;
 
   constructor(
     private readonly ctx: Ctx,
     readonly screen: Screen,
     private readonly raf: (cb: () => void) => void,
     readonly clock: () => number,
+    private readonly shade?: PressShade,
   ) {}
 
   setScene(scene: Scene): void {
@@ -58,7 +60,8 @@ export class App {
     this.drag?.frame?.();
     this.nodes = this.scene.build(now);
     this.ctx.clearRect(0, 0, this.screen.W, this.screen.H);
-    drawNodes(this.ctx, this.nodes);
+    const hit = this.press ? hitTest(this.nodes, this.press.x, this.press.y, 'onTap') : null;
+    drawNodes(this.ctx, this.nodes, hit && !hit.noPress ? hit : null, this.shade);
     // 动画进行中或正在拖动时继续逐帧重画
     if (this.animator.active(now) || this.drag) this.render();
   }
@@ -77,6 +80,8 @@ export class App {
       return;
     }
     this.touch = { x0: x, y0: y, lastY: y, moved: false, scroll: hitTest(this.nodes, x, y, 'onScroll') };
+    this.press = { x, y };
+    this.render();
   }
 
   touchMove(x: number, y: number): void {
@@ -87,7 +92,13 @@ export class App {
     }
     const t = this.touch;
     if (!t) return;
-    if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) t.moved = true;
+    if (!t.moved && Math.abs(x - t.x0) + Math.abs(y - t.y0) > 8) {
+      t.moved = true;
+      if (this.press) {
+        this.press = null;
+        this.render();
+      }
+    }
     if (t.moved && t.scroll) {
       t.scroll.onScroll!(y - t.lastY);
       this.render();
@@ -98,6 +109,10 @@ export class App {
   /** 系统打断触摸（来电、弹窗等）：结束拖动，丢弃未完成的点击和滚动 */
   touchCancel(): void {
     this.touch = null;
+    if (this.press) {
+      this.press = null;
+      this.render();
+    }
     if (this.drag) {
       const d = this.drag;
       this.drag = null;
@@ -113,6 +128,10 @@ export class App {
       d.end();
       this.render();
       return;
+    }
+    if (this.press) {
+      this.press = null;
+      this.render();
     }
     const t = this.touch;
     this.touch = null;

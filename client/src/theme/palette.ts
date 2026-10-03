@@ -37,6 +37,8 @@ export const C = {
   dangerText: '#e5677a',
   /** 出局格子、不可用按钮的灰线 */
   greyLine: '#6b6378',
+  /** 按下效果：盖在被按住的元素上 */
+  pressShade: 'rgba(0,0,0,0.22)',
   transparent: 'rgba(0,0,0,0)',
 } as const;
 

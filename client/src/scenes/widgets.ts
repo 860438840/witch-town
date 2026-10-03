@@ -46,6 +46,7 @@ export function skyNode(screen: Screen, darkness: number, backdrop: Backdrop = '
 export function overlay(screen: Screen, onTap?: () => void): Node {
   return {
     id: 'overlay',
+    noPress: true,
     rect: rect(0, 0, screen.W, screen.H),
     onTap: onTap ?? (() => {}),
     draw: (ctx) => {
@@ -71,6 +72,7 @@ export function sheet(
     overlay(screen, onClose ?? undefined),
     {
       id: 'sheet',
+      noPress: true,
       rect: panel,
       onTap: () => {},
       draw: (ctx) => {

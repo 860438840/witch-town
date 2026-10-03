@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { alpha, C } from '../src/theme/palette';
 import { rect } from '../src/core/geom';
-import { drawButton, drawPanel, drawText, type ButtonStyle } from '../src/theme/draw';
+import { drawButton, drawPanel, drawPressShade, drawText, type ButtonStyle } from '../src/theme/draw';
 import { ScrollBox, sheet } from '../src/scenes/widgets';
 import { fakeCtx } from './fakes';
 import { projectPublic } from '../../engine/src/index';
@@ -259,5 +259,19 @@ describe('酒红底上的红字用亮红', () => {
     const { ctx, ops } = fakeCtx();
     drawCell(ctx, rect(0, 0, 83, 88), projectPublic(s).players[1], { ...CELL, partner: true });
     expect(colorOf(ops, '同伴')).toBe(C.dangerText);
+  });
+});
+
+describe('按下效果用的暗色与遮罩', () => {
+  it('drawPressShade 用调色板里的按下暗色', () => {
+    const { ctx, ops } = fakeCtx();
+    drawPressShade(ctx, rect(0, 0, 50, 20));
+    expect(ops).toContain(`fillStyle=${C.pressShade}`);
+    expect(ops).toContain('fill');
+  });
+  it('弹窗的遮罩和底板不显示按下效果', () => {
+    const { nodes } = sheet(SCREEN, 300, '标题', null);
+    expect(nodes.find((n) => n.id === 'overlay')?.noPress).toBe(true);
+    expect(nodes.find((n) => n.id === 'sheet')?.noPress).toBe(true);
   });
 });

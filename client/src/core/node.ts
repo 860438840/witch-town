@@ -23,18 +23,25 @@ export interface Node {
   children?: Node[];
   /** 绘制时裁剪到 rect（滚动列表用） */
   clip?: boolean;
+  /** 按下时不显示按下效果（全屏遮罩、弹窗底板这类只为拦截点击的区域） */
+  noPress?: boolean;
 }
 
-export function drawNodes(ctx: Ctx, nodes: Node[]): void {
+/** 在被按住的元素上画按下效果（由主题提供，core 不认识颜色） */
+export type PressShade = (ctx: Ctx, r: Rect) => void;
+
+export function drawNodes(ctx: Ctx, nodes: Node[], pressed: Node | null = null, shade?: PressShade): void {
   for (const n of nodes) {
     ctx.save();
+    if (n === pressed) ctx.translate(0, 1);
     if (n.clip) {
       ctx.beginPath();
       ctx.rect(n.rect.x, n.rect.y, n.rect.w, n.rect.h);
       ctx.clip();
     }
     n.draw?.(ctx);
-    if (n.children) drawNodes(ctx, n.children);
+    if (n.children) drawNodes(ctx, n.children, pressed, shade);
+    if (n === pressed && shade) shade(ctx, n.rect);
     ctx.restore();
   }
 }
