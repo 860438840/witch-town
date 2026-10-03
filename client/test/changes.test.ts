@@ -65,7 +65,7 @@ describe('diffTables', () => {
     expect(changes).toContainEqual({ kind: 'cardIn', id: 'new-1' });
     expect(changes).toContainEqual({ kind: 'play', index: before.view.log.length, from: 1, to: 2, card: 'accusation' });
     expect(changes).toContainEqual({ kind: 'death', seat: 3 });
-    expect(changes).toContainEqual({ kind: 'reveal', seat: 2, index: 0 });
+    expect(changes).toContainEqual({ kind: 'reveal', seat: 2, index: 0, witch: s.players[2].tryals[0].kind === 'witch' });
     expect(changes).toContainEqual({ kind: 'panel' });
 
     const dayBefore = model(s);
@@ -77,6 +77,53 @@ describe('diffTables', () => {
     const t1 = model(s);
     setDay(s, 3);
     expect(diffTables(t1, model(s))).toContainEqual({ kind: 'turn', seat: 3 });
+  });
+
+  it('别人抽牌按张数记；我自己的新牌只算 cardIn', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const before = model(s);
+    s.players[2].hand.push({ id: 'x1', kind: 'evidence' }, { id: 'x2', kind: 'evidence' });
+    s.players[0].hand.push({ id: 'mine', kind: 'evidence' });
+    s.version += 1;
+    const changes = diffTables(before, model(s));
+    expect(changes).toContainEqual({ kind: 'draw', seat: 2, count: 2 });
+    expect(changes).toContainEqual({ kind: 'cardIn', id: 'mine' });
+    expect(changes.filter((c) => c.kind === 'draw')).toHaveLength(1);
+  });
+
+  it('手牌变少不算抽牌', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const before = model(s);
+    s.players[2].hand.pop();
+    s.version += 1;
+    expect(diffTables(before, model(s)).some((c) => c.kind === 'draw')).toBe(false);
+  });
+
+  it('受审：新的受审事件', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const before = model(s);
+    s.log.push({ t: 'trial', target: 3, initiator: 1 });
+    s.version += 1;
+    expect(diffTables(before, model(s))).toContainEqual({ kind: 'trial', seat: 3 });
+  });
+
+  it('翻牌时带上是不是女巫', () => {
+    const s = newState(5);
+    setDay(s, 1);
+    const seatW = s.players.findIndex((p) => p.tryals.some((t) => t.kind === 'witch'));
+    const iw = s.players[seatW].tryals.findIndex((t) => t.kind === 'witch');
+    const seatV = s.players.findIndex((p, i) => i !== seatW && p.tryals.some((t) => t.kind !== 'witch'));
+    const iv = s.players[seatV].tryals.findIndex((t) => t.kind !== 'witch');
+    const before = model(s);
+    s.players[seatW].tryals[iw].revealed = true;
+    s.players[seatV].tryals[iv].revealed = true;
+    s.version += 1;
+    const changes = diffTables(before, model(s));
+    expect(changes).toContainEqual({ kind: 'reveal', seat: seatW, index: iw, witch: true });
+    expect(changes).toContainEqual({ kind: 'reveal', seat: seatV, index: iv, witch: false });
   });
 });
 

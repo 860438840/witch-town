@@ -37,6 +37,12 @@ export class Animator {
     return !!it && now < it.start + it.dur;
   }
 
+  /** 延后开始的动画是否已经开始；没有这个动画时为 true */
+  started(key: string, now: number): boolean {
+    const it = this.items.get(key);
+    return !it || now >= it.start;
+  }
+
   /** 是否还有动画在进行；顺便清理已结束的动画 */
   active(now: number): boolean {
     let any = false;

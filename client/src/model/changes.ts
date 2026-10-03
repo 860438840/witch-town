@@ -6,11 +6,17 @@ export type Change =
   | { kind: 'play'; index: number; from: number; to: number; card: CardKind }
   | { kind: 'night'; on: boolean }
   | { kind: 'death'; seat: number }
-  | { kind: 'reveal'; seat: number; index: number }
+  | { kind: 'reveal'; seat: number; index: number; witch: boolean }
   | { kind: 'turn'; seat: number }
-  | { kind: 'panel' };
+  | { kind: 'panel' }
+  | { kind: 'draw'; seat: number; count: number }
+  | { kind: 'trial'; seat: number };
 
-export const ANIM_MS = { cardIn: 300, play: 450, night: 600, death: 500, reveal: 500, turn: 1800, panel: 250 } as const;
+export const ANIM_MS = {
+  cardIn: 450, cardStagger: 80, othersDraw: 400, play: 600, hit: 250, trial: 600,
+  death: 500, reveal: 500, burst: 350, night: 900, turn: 1800, panel: 250, scene: 250,
+  resultTitle: 400, resultRowStart: 250, resultRowStagger: 80, resultRow: 300,
+} as const;
 
 /**
  * 一次服务器写入里 version 最多增加多少：引擎每执行一个操作 version +1；
@@ -32,6 +38,7 @@ export function diffTables(prev: TableModel | null, next: TableModel): Change[] 
   }
   next.view.log.slice(prev.view.log.length).forEach((e, k) => {
     if (e.t === 'play') out.push({ kind: 'play', index: prev.view.log.length + k, from: e.seat, to: e.targets[e.targets.length - 1], card: e.kind });
+    if (e.t === 'trial') out.push({ kind: 'trial', seat: e.target });
   });
   const wasNight = prev.view.phase.kind === 'night';
   const isNight = next.view.phase.kind === 'night';
@@ -40,9 +47,10 @@ export function diffTables(prev: TableModel | null, next: TableModel): Change[] 
     const q = prev.view.players[i];
     if (!q) return;
     if (q.alive && !p.alive) out.push({ kind: 'death', seat: i });
+    if (i !== next.mySeat && p.handCount > q.handCount) out.push({ kind: 'draw', seat: i, count: p.handCount - q.handCount });
     if (!p.alive) return;
     p.tryals.forEach((t, j) => {
-      if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: 'reveal', seat: i, index: j });
+      if (t.revealed && q.tryals[j] && !q.tryals[j].revealed) out.push({ kind: 'reveal', seat: i, index: j, witch: t.kind === 'witch' });
     });
   });
   const turn = dayTurn(next);

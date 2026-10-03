@@ -70,6 +70,13 @@ describe('tween', () => {
     expect(a.active(1400)).toBe(false);
     expect(a.progress('unknown', 0)).toBe(1);
   });
+  it('started：延后开始的动画在开始之前为 false，没有这个动画时为 true', () => {
+    const a = new Animator();
+    a.start('k', 100, 50);
+    expect(a.started('k', 99)).toBe(false);
+    expect(a.started('k', 100)).toBe(true);
+    expect(a.started('none', 0)).toBe(true);
+  });
 });
 
 describe('App', () => {
