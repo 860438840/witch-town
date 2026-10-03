@@ -784,12 +784,12 @@ function playCard(s, seat, cardId, targets2, option, rng) {
   if (targets2.length !== need) throw new RuleError(`\u8FD9\u5F20\u5361\u9700\u8981\u9009\u62E9 ${need} \u540D\u76EE\u6807`);
   const ts = targets2.map((t) => getPlayer(s, t));
   if (ts.some((t) => !t.alive)) throw new RuleError("\u76EE\u6807\u5FC5\u987B\u662F\u6D3B\u7740\u7684\u73A9\u5BB6");
+  if (targets2.includes(seat)) throw new RuleError("\u724C\u4E0D\u80FD\u5BF9\u81EA\u5DF1\u4F7F\u7528");
   if (need === 2 && targets2[0] === targets2[1]) throw new RuleError("\u4E24\u4E2A\u76EE\u6807\u4E0D\u80FD\u76F8\u540C");
   const target = ts[0];
   const asWitness = card.kind === "alibi" && option === "witness";
   if (asWitness && !hasAbility(s, seat, "doctor")) throw new RuleError("\u53EA\u6709\u533B\u751F\u53EF\u4EE5\u628A\u8FA9\u62A4\u5F53\u4F5C\u76EE\u51FB");
   if (isRed(card.kind) || asWitness) {
-    if (target.seat === seat) throw new RuleError("\u4E0D\u80FD\u5BF9\u81EA\u5DF1\u6253\u51FA\u7EA2\u5361");
     if (target.blue.some((c) => c.kind === "piety")) throw new RuleError("\u4FE1\u5F92\uFF1A\u4E0D\u80FD\u5BF9\u8BE5\u73A9\u5BB6\u6253\u51FA\u7EA2\u5361");
   }
   if (card.kind === "matchmaker" && target.blue.some((c) => c.kind === "matchmaker")) {
