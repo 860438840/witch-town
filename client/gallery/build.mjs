@@ -9,6 +9,7 @@ const bundle = async (entry) => {
 };
 const gallery = await bundle('gallery/gallery.ts');
 const screens = await bundle('gallery/screens.ts');
+const demos = await bundle('gallery/demos.ts');
 const html = `<title>女巫镇图鉴</title>
 <style>
   :root { color-scheme: dark; }
@@ -17,12 +18,16 @@ const html = `<title>女巫镇图鉴</title>
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; max-width: 100%; overflow-x: auto; }
   figure { margin: 0; display: grid; gap: 2px; justify-items: center; }
   figcaption { font-size: 11px; color: #8a7fa3; }
+  button { margin-top: 4px; background: #3a0d1c; color: #e8c774; border: 1px solid #d6a44a; border-radius: 6px; padding: 4px 10px; }
 </style>
 <main></main>
 <script>${gallery}</script>
 <h2>真实界面（手机尺寸）</h2>
 <div id="screens" class="row"></div>
 <script>${screens}</script>
+<h2>动效演示（点「重播」再看一次；首页那块可以用鼠标按住按钮）</h2>
+<div id="demos" class="row"></div>
+<script>${demos}</script>
 `;
 mkdirSync('gallery/out', { recursive: true });
 writeFileSync('gallery/out/gallery.html', html);
